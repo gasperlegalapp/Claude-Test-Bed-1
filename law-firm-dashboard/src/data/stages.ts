@@ -6,6 +6,8 @@ export const STAGES: CaseStage[] = [
     label: 'Intake',
     color: 'bg-violet-500',
     textColor: 'text-violet-400',
+    accentBorder: 'border-violet-500',
+    accentBg: 'bg-violet-500/10',
     stuckThresholdDays: 3,
     criticalThresholdDays: 7,
     steps: [
@@ -34,6 +36,8 @@ export const STAGES: CaseStage[] = [
     label: 'Assessment',
     color: 'bg-blue-500',
     textColor: 'text-blue-400',
+    accentBorder: 'border-blue-500',
+    accentBg: 'bg-blue-500/10',
     stuckThresholdDays: 7,
     criticalThresholdDays: 14,
     steps: [
@@ -61,6 +65,8 @@ export const STAGES: CaseStage[] = [
     label: 'Discovery',
     color: 'bg-cyan-500',
     textColor: 'text-cyan-400',
+    accentBorder: 'border-cyan-500',
+    accentBg: 'bg-cyan-500/10',
     stuckThresholdDays: 14,
     criticalThresholdDays: 30,
     steps: [
@@ -98,6 +104,8 @@ export const STAGES: CaseStage[] = [
     label: 'Negotiation',
     color: 'bg-amber-500',
     textColor: 'text-amber-400',
+    accentBorder: 'border-amber-500',
+    accentBg: 'bg-amber-500/10',
     stuckThresholdDays: 10,
     criticalThresholdDays: 21,
     steps: [
@@ -126,6 +134,8 @@ export const STAGES: CaseStage[] = [
     label: 'Litigation',
     color: 'bg-red-500',
     textColor: 'text-red-400',
+    accentBorder: 'border-red-500',
+    accentBg: 'bg-red-500/10',
     stuckThresholdDays: 21,
     criticalThresholdDays: 60,
     steps: [
@@ -163,6 +173,8 @@ export const STAGES: CaseStage[] = [
     label: 'Resolution',
     color: 'bg-emerald-500',
     textColor: 'text-emerald-400',
+    accentBorder: 'border-emerald-500',
+    accentBg: 'bg-emerald-500/10',
     stuckThresholdDays: 7,
     criticalThresholdDays: 14,
     steps: [
@@ -190,6 +202,8 @@ export const STAGES: CaseStage[] = [
     label: 'Closed',
     color: 'bg-gray-500',
     textColor: 'text-gray-400',
+    accentBorder: 'border-gray-600',
+    accentBg: 'bg-gray-500/8',
     stuckThresholdDays: 999,
     criticalThresholdDays: 999,
     steps: [

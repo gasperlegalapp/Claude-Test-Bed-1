@@ -7,15 +7,16 @@ interface ColumnDef {
   label: string
   color: string
   textColor: string
+  accentBg: string
 }
 
 export const TASK_COLUMNS: ColumnDef[] = [
-  { id: 'backlog',     label: 'Backlog',     color: 'bg-gray-500',    textColor: 'text-gray-400' },
-  { id: 'in_progress', label: 'In Progress', color: 'bg-blue-500',    textColor: 'text-blue-400' },
-  { id: 'waiting',    label: 'Waiting',     color: 'bg-amber-500',   textColor: 'text-amber-400' },
-  { id: 'review',     label: 'Review',      color: 'bg-violet-500',  textColor: 'text-violet-400' },
-  { id: 'blocked',    label: 'Blocked',     color: 'bg-red-500',     textColor: 'text-red-400' },
-  { id: 'done',       label: 'Done',        color: 'bg-emerald-500', textColor: 'text-emerald-400' },
+  { id: 'backlog',     label: 'Backlog',     color: 'bg-gray-500',    textColor: 'text-gray-400',    accentBg: 'bg-gray-500/10' },
+  { id: 'in_progress', label: 'In Progress', color: 'bg-blue-500',    textColor: 'text-blue-400',    accentBg: 'bg-blue-500/10' },
+  { id: 'waiting',    label: 'Waiting',     color: 'bg-amber-500',   textColor: 'text-amber-400',   accentBg: 'bg-amber-500/10' },
+  { id: 'review',     label: 'Review',      color: 'bg-violet-500',  textColor: 'text-violet-400',  accentBg: 'bg-violet-500/10' },
+  { id: 'blocked',    label: 'Blocked',     color: 'bg-red-500',     textColor: 'text-red-400',     accentBg: 'bg-red-500/10' },
+  { id: 'done',       label: 'Done',        color: 'bg-emerald-500', textColor: 'text-emerald-400', accentBg: 'bg-emerald-500/10' },
 ]
 
 interface Props {
@@ -48,19 +49,34 @@ export function TaskColumn({ col, tasks }: Props) {
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="kanban-col-header">
+      {/* Colored top accent bar */}
+      <div className={`h-0.5 w-full ${col.color}`} />
+
+      {/* Column header */}
+      <div className={`kanban-col-header ${col.accentBg}`}>
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`w-2.5 h-2.5 rounded-sm flex-shrink-0 ${col.color}`} />
-          <span className={`text-sm font-semibold truncate ${col.textColor}`}>{col.label}</span>
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${col.color}`} />
+          <span className={`text-xs font-bold uppercase tracking-wider truncate ${col.textColor}`}>
+            {col.label}
+          </span>
         </div>
-        <span className="text-xs text-gray-500 bg-white/5 px-1.5 py-0.5 rounded-full flex-shrink-0">
+        <span
+          className={`text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${col.textColor}`}
+          style={{ background: 'rgba(255,255,255,0.06)' }}
+        >
           {tasks.length}
         </span>
       </div>
 
       <div className="flex flex-col gap-2 p-2 overflow-y-auto flex-1">
         {tasks.length === 0 ? (
-          <div className="text-center text-gray-700 text-xs py-6 border border-dashed border-white/5 rounded-lg">
+          <div
+            className="text-center text-xs py-6 rounded-lg"
+            style={{
+              color: 'rgba(255,255,255,0.15)',
+              border: '1px dashed rgba(255,255,255,0.07)',
+            }}
+          >
             Drop here
           </div>
         ) : (

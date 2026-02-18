@@ -25,6 +25,8 @@ export interface CaseStage {
   label: string
   color: string         // Tailwind bg class for column accent
   textColor: string     // Tailwind text class
+  accentBorder: string  // Tailwind border-t color class for column top strip
+  accentBg: string      // Tailwind bg class for column header background
   stuckThresholdDays: number   // Days before Yellow health
   criticalThresholdDays: number // Days before Red health
   steps: Step[]
