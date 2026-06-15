@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Triarchy — A Strategy Duel</title>
+<style>
+  :root {
+    --bg: #0e1320;
+    --panel: #18203250;
+    --panel-solid: #161d2e;
+    --you: #3aa6ff;
+    --enemy: #ff5d5d;
+    --gold: #ffce5c;
+    --eco: #4fd18b;
+    --tech: #b388ff;
+    --mil: #ff9d4d;
+    --text: #e6ecf5;
+    --muted: #8a96ad;
+    --line: #27324a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: radial-gradient(1200px 700px at 50% -10%, #1a2540, var(--bg));
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 18px 16px 60px; }
+  header { text-align: center; margin-bottom: 14px; }
+  h1 {
+    margin: 0; font-size: 30px; letter-spacing: 3px; font-weight: 800;
+    background: linear-gradient(90deg, var(--you), var(--tech), var(--enemy));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tagline { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+  .turnbar {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    margin: 14px 0; font-size: 15px;
+  }
+  .turnchip {
+    padding: 6px 16px; border-radius: 999px; font-weight: 700; letter-spacing: 1px;
+    border: 1px solid var(--line); background: var(--panel-solid);
+  }
+  .turnchip.you { color: var(--you); box-shadow: 0 0 0 2px #3aa6ff33; }
+  .turnchip.enemy { color: var(--enemy); box-shadow: 0 0 0 2px #ff5d5d33; }
+  .turncount { color: var(--muted); font-size: 13px; }
+
+  .board { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .board { grid-template-columns: 1fr; } }
+
+  .player {
+    background: var(--panel-solid);
+    border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px;
+    position: relative; overflow: hidden;
+  }
+  .player.you { border-top: 3px solid var(--you); }
+  .player.enemy { border-top: 3px solid var(--enemy); }
+  .player.active { box-shadow: 0 0 0 2px currentColor inset; }
+  .player.you.active { color: var(--you); }
+  .player.enemy.active { color: var(--enemy); }
+
+  .pname { font-size: 16px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; }
+  .you .pname { color: var(--you); }
+  .enemy .pname { color: var(--enemy); }
+
+  .hpbar { height: 22px; background: #0c1120; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); position: relative; }
+  .hpfill { height: 100%; transition: width .35s ease; }
+  .you .hpfill { background: linear-gradient(90deg, #2c7fd6, var(--you)); }
+  .enemy .hpfill { background: linear-gradient(90deg, #d63c3c, var(--enemy)); }
+  .hptext { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000a; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+  .stat { background: #0f1626; border: 1px solid var(--line); border-radius: 10px; padding: 8px 6px; text-align: center; }
+  .stat .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .stat .val { font-size: 20px; font-weight: 800; margin-top: 2px; }
+  .stat.gold .val { color: var(--gold); }
+  .stat.eco .val { color: var(--eco); }
+  .stat.tech .val { color: var(--tech); }
+  .stat.mil .val { color: var(--mil); }
+  .stat .sub { font-size: 9px; color: var(--muted); margin-top: 1px; min-height: 11px; }
+
+  .actions { margin-top: 16px; }
+  .actions h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+  .btnrow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button.act {
+    text-align: left; cursor: pointer; color: var(--text);
+    background: #131c2e; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; transition: transform .08s ease, border-color .15s, background .15s;
+  }
+  button.act:hover:not(:disabled) { border-color: #3a4a6a; transform: translateY(-1px); background: #182236; }
+  button.act:disabled { opacity: .4; cursor: not-allowed; }
+  .act .atitle { font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .act .acost { font-size: 12px; color: var(--gold); font-weight: 700; }
+  .act .adesc { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
+  .act.eco .atitle { color: var(--eco); }
+  .act.tech .atitle { color: var(--tech); }
+  .act.mil .atitle { color: var(--mil); }
+  .act.attack .atitle { color: var(--enemy); }
+
+  .trainctl { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .trainctl button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: #131c2e; color: var(--text); font-size: 18px; cursor: pointer; }
+  .trainctl .qty { min-width: 28px; text-align: center; font-weight: 800; font-size: 18px; }
+  .trainctl .tcost { margin-left: auto; font-size: 12px; color: var(--gold); }
+
+  .log {
+    margin-top: 18px; background: var(--panel-solid); border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px 16px; height: 170px; overflow-y: auto; font-size: 13px;
+  }
+  .log h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+  .log .entry { padding: 3px 0; border-bottom: 1px dashed #1f293c; line-height: 1.4; }
+  .log .entry:last-child { border-bottom: none; }
+  .log .you-t { color: var(--you); font-weight: 700; }
+  .log .enemy-t { color: var(--enemy); font-weight: 700; }
+  .log .battle { color: var(--mil); font-weight: 700; }
+
+  .overlay {
+    position: fixed; inset: 0; background: #07090fdd; display: none;
+    align-items: center; justify-content: center; z-index: 50;
+  }
+  .overlay.show { display: flex; }
+  .modal { background: var(--panel-solid); border: 1px solid var(--line); border-radius: 16px; padding: 30px 34px; text-align: center; max-width: 440px; }
+  .modal h2 { margin: 0 0 8px; font-size: 28px; }
+  .modal p { color: var(--muted); margin: 0 0 18px; line-height: 1.5; }
+  .modal.win h2 { color: var(--eco); }
+  .modal.lose h2 { color: var(--enemy); }
+  .bigbtn {
+    cursor: pointer; border: none; border-radius: 10px; padding: 12px 26px; font-size: 15px; font-weight: 800;
+    background: linear-gradient(90deg, var(--you), var(--tech)); color: #fff; letter-spacing: 1px;
+  }
+
+  .help { margin-top: 18px; }
+  .help summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .help .body { font-size: 13px; color: var(--muted); line-height: 1.6; margin-top: 10px; }
+  .help b { color: var(--text); }
+  .k-eco { color: var(--eco); } .k-tech { color: var(--tech); } .k-mil { color: var(--mil); } .k-gold { color: var(--gold); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>TRIARCHY</h1>
+    <div class="tagline">A 1v1 strategy duel — Economy &middot; Research &middot; Military. Reduce the enemy Base to 0.</div>
+  </header>
+
+  <div class="turnbar">
+    <span id="turnchip" class="turnchip you">YOUR TURN</span>
+    <span class="turncount">Turn <b id="turnnum">1</b></span>
+  </div>
+
+  <div class="board">
+    <!-- YOU -->
+    <div class="player you active" id="panel-you">
+      <div class="pname">YOU</div>
+      <div class="hpbar"><div class="hpfill" id="you-hpfill"></div><div class="hptext" id="you-hptext"></div></div>
+      <div class="stats">
+        <div class="stat gold"><div class="label">Gold</div><div class="val" id="you-gold">0</div><div class="sub" id="you-income"></div></div>
+        <div class="stat eco"><div class="label">Economy</div><div class="val" id="you-eco">0</div><div class="sub">income/turn</div></div>
+        <div class="stat tech"><div class="label">Research</div><div class="val" id="you-tech">0</div><div class="sub" id="you-techsub"></div></div>
+        <div class="stat mil"><div class="label">Army</div><div class="val" id="you-army">0</div><div class="sub" id="you-str"></div></div>
+      </div>
+      <div class="actions">
+        <h3>Choose one action</h3>
+        <div class="btnrow">
+          <button class="act eco" id="btn-eco">
+            <div class="atitle"><span>Build Economy</span><span class="acost" id="cost-eco"></span></div>
+            <div class="adesc">+1 income every turn. Compounds — but builds no defense.</div>
+          </button>
+          <button class="act tech" id="btn-tech">
+            <div class="atitle"><span>Research</span><span class="acost" id="cost-tech"></span></div>
+            <div class="adesc">+1 attack &amp; +1 defense to <i>every</i> troop you own.</div>
+          </button>
+          <button class="act mil" id="btn-train">
+            <div class="atitle"><span>Train Troops</span><span class="acost">2 ea</span></div>
+            <div class="adesc">Build your army. Each troop has 1 power + research.</div>
+            <div class="trainctl" id="trainctl">
+              <button id="t-minus">&minus;</button>
+              <span class="qty" id="t-qty">1</span>
+              <button id="t-plus">+</button>
+              <span class="tcost" id="t-cost"></span>
+            </div>
+          </button>
+          <button class="act attack" id="btn-attack">
+            <div class="atitle"><span>Attack!</span><span class="acost">free</span></div>
+            <div class="adesc">Send your whole army at the enemy. Defenders have the edge.</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ENEMY -->
+    <div class="player enemy" id="panel-enemy">
+      <div class="pname">ENEMY (AI)</div>
+      <div class="hpbar"><div class="hpfill" id="enemy-hpfill"></div><div class="hptext" id="enemy-hptext"></div></div>
+      <div class="stats">
+        <div class="stat gold"><div class="label">Gold</div><div class="val" id="enemy-gold">0</div><div class="sub">&nbsp;</div></div>
+        <div class="stat eco"><div class="label">Economy</div><div class="val" id="enemy-eco">0</div><div class="sub">income/turn</div></div>
+        <div class="stat tech"><div class="label">Research</div><div class="val" id="enemy-tech">0</div><div class="sub" id="enemy-techsub"></div></div>
+        <div class="stat mil"><div class="label">Army</div><div class="val" id="enemy-army">0</div><div class="sub" id="enemy-str"></div></div>
+      </div>
+      <div class="actions">
+        <h3>Enemy commander</h3>
+        <div class="adesc" id="enemy-think" style="font-size:13px;color:var(--muted);min-height:40px;padding-top:6px;">Waiting for your move...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="log">
+    <h3>Battle Log</h3>
+    <div id="logbody"></div>
+  </div>
+
+  <details class="help">
+    <summary>How to play &amp; the strategy behind the three dynamics</summary>
+    <div class="body">
+      <p>Each turn you collect <span class="k-gold">Gold</span> equal to your <span class="k-eco">Economy</span>, then take <b>one</b> action. The enemy AI does the same. First to knock the opponent's Base from 30 to 0 wins.</p>
+      <p><b class="k-eco">Economy</b> is the engine — more gold every turn, forever. But a turn spent on economy is a turn not spent defending, so a pure economy player is exposed to an early rush.</p>
+      <p><b class="k-mil">Military</b> (Train Troops + Attack) is the only way to deal damage. Each troop has 1 power. Attacking is aggressive tempo, but <b>defenders have the edge</b>: when armies clash, the attacker must overpower the defender just to break even, and only the <i>overflow</i> strength reaches the Base.</p>
+      <p><b class="k-tech">Research</b> multiplies your army — +1 attack and +1 defense to every troop. It's slow and useless without an army, but it's what turns a small force into a decisive one.</p>
+      <p><b>The balance:</b> Economy beats a slow opponent, a rush beats greedy economy, and Research beats a big-but-primitive army. Read your opponent and counter their plan — that's the chess of it.</p>
+    </div>
+  </details>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal">
+    <h2 id="modal-title"></h2>
+    <p id="modal-text"></p>
+    <button class="bigbtn" id="restart">Play Again</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const CFG = {
+  startHP: 30,
+  startGold: 4,
+  startEco: 2,
+  troopCost: 2,
+  ecoCost: (eco) => 2 * eco,          // cost to raise economy by 1
+  techCost: (tech) => 3 + 3 * tech,   // cost to raise research by 1
+};
+
+function newPlayer() {
+  return { hp: CFG.startHP, gold: CFG.startGold, eco: CFG.startEco, tech: 0, army: 0 };
+}
+
+let you, enemy, turnNo, current, busy, trainQty;
+
+function strength(p) { return p.army * (1 + p.tech); }
+
+function reset() {
+  you = newPlayer();
+  enemy = newPlayer();
+  turnNo = 1;
+  current = "you";
+  busy = false;
+  trainQty = 1;
+  document.getElementById("logbody").innerHTML = "";
+  document.getElementById("overlay").classList.remove("show");
+  log("A new duel begins. Build, research, raise an army — and break the enemy Base.", "");
+  startTurn("you"); // both sides collect turn-1 income for a symmetric start
+  render();
+}
+
+function log(msg, who) {
+  const body = document.getElementById("logbody");
+  const e = document.createElement("div");
+  e.className = "entry";
+  const tag = who === "you" ? '<span class="you-t">[You]</span> '
+            : who === "enemy" ? '<span class="enemy-t">[Enemy]</span> '
+            : who === "battle" ? '<span class="battle">[Battle]</span> ' : "";
+  e.innerHTML = tag + msg;
+  body.appendChild(e);
+  body.scrollTop = body.scrollHeight;
+}
+
+function render() {
+  for (const [key, p] of [["you", you], ["enemy", enemy]]) {
+    const hpPct = Math.max(0, p.hp) / CFG.startHP * 100;
+    document.getElementById(key + "-hpfill").style.width = hpPct + "%";
+    document.getElementById(key + "-hptext").textContent = "Base " + Math.max(0, p.hp) + " / " + CFG.startHP;
+    document.getElementById(key + "-gold").textContent = p.gold;
+    document.getElementById(key + "-eco").textContent = p.eco;
+    document.getElementById(key + "-tech").textContent = p.tech;
+    document.getElementById(key + "-army").textContent = p.army;
+    document.getElementById(key + "-str").textContent = "power " + strength(p);
+    const techsub = document.getElementById(key + "-techsub");
+    if (techsub) techsub.textContent = "+" + p.tech + " per troop";
+  }
+  document.getElementById("you-income").textContent = "+" + you.eco + "/turn";
+
+  document.getElementById("turnnum").textContent = turnNo;
+  const chip = document.getElementById("turnchip");
+  chip.className = "turnchip " + current;
+  chip.textContent = current === "you" ? "YOUR TURN" : "ENEMY TURN";
+  document.getElementById("panel-you").classList.toggle("active", current === "you");
+  document.getElementById("panel-enemy").classList.toggle("active", current === "enemy");
+
+  // costs + button availability
+  const ecoCost = CFG.ecoCost(you.eco);
+  const techCost = CFG.techCost(you.tech);
+  document.getElementById("cost-eco").textContent = ecoCost + "g";
+  document.getElementById("cost-tech").textContent = techCost + "g";
+  document.getElementById("t-cost").textContent = (trainQty * CFG.troopCost) + "g";
+  document.getElementById("t-qty").textContent = trainQty;
+
+  const myTurn = current === "you" && !busy && you.hp > 0 && enemy.hp > 0;
+  document.getElementById("btn-eco").disabled = !myTurn || you.gold < ecoCost;
+  document.getElementById("btn-tech").disabled = !myTurn || you.gold < techCost;
+  document.getElementById("btn-train").disabled = !myTurn || you.gold < CFG.troopCost;
+  document.getElementById("btn-attack").disabled = !myTurn || you.army === 0;
+  document.getElementById("t-minus").disabled = !myTurn;
+  document.getElementById("t-plus").disabled = !myTurn;
+}
+
+// ---- Combat ----
+// Attacker army clashes with defender army; overflow strength hits the Base.
+function resolveAttack(att, def, attName, defName) {
+  const aStr = strength(att);
+  const dStr = strength(def);
+  if (aStr === 0) { log(attName + " has no army to attack with.", "battle"); return; }
+
+  if (dStr === 0) {
+    def.hp -= aStr;
+    log(attName + " strikes an undefended Base for <b>" + aStr + "</b> damage!", "battle");
+    return;
+  }
+
+  if (aStr > dStr) {
+    const overflow = aStr - dStr;
+    def.army = 0;                                   // defender army destroyed
+    att.army = Math.floor((aStr - dStr) / (1 + att.tech)); // attacker keeps overflow troops
+    def.hp -= overflow;
+    log(attName + " (power " + aStr + ") overruns " + defName + "'s defense (power " + dStr +
+        "), wipes the defenders and hits the Base for <b>" + overflow + "</b>.", "battle");
+  } else {
+    // defender holds; attacker army destroyed, defender takes proportional losses
+    const remain = dStr - aStr;
+    att.army = 0;
+    def.army = Math.ceil(remain / (1 + def.tech));
+    log(defName + "'s defense (power " + dStr + ") holds against " + attName + " (power " + aStr +
+        "). The attacking army is destroyed; the Base is unharmed.", "battle");
+  }
+}
+
+// ---- Turn flow ----
+const SUDDEN_DEATH = 30;
+function startTurn(side) {
+  const p = side === "you" ? you : enemy;
+  p.gold += p.eco;
+}
+// Applied once per round to BOTH bases so long games resolve fairly.
+function applyUnrest() {
+  if (turnNo <= SUDDEN_DEATH) return;
+  const unrest = turnNo - SUDDEN_DEATH;
+  you.hp -= unrest;
+  enemy.hp -= unrest;
+  log("The war drags on — unrest deals <b>" + unrest + "</b> damage to <i>both</i> Bases.", "battle");
+}
+
+function endTurn() {
+  if (checkEnd()) return;
+  if (current === "you") {
+    current = "enemy";
+    render();
+    busy = true;
+    document.getElementById("enemy-think").textContent = "Plotting...";
+    setTimeout(() => { startTurn("enemy"); render(); setTimeout(aiTurn, 650); }, 500);
+  } else {
+    current = "you";
+    turnNo++;
+    applyUnrest();
+    if (checkEnd()) return;
+    startTurn("you");
+    busy = false;
+    document.getElementById("enemy-think").textContent = "Waiting for your move...";
+    render();
+  }
+}
+
+function checkEnd() {
+  if (enemy.hp <= 0) { showEnd(true); return true; }
+  if (you.hp <= 0) { showEnd(false); return true; }
+  return false;
+}
+
+function showEnd(won) {
+  busy = true;
+  render();
+  const modal = document.getElementById("modal");
+  modal.className = "modal " + (won ? "win" : "lose");
+  document.getElementById("modal-title").textContent = won ? "VICTORY" : "DEFEAT";
+  document.getElementById("modal-text").textContent = won
+    ? "The enemy Base has fallen. The realm is yours, commander."
+    : "Your Base has been overrun. The enemy commander outplayed you this time.";
+  document.getElementById("overlay").classList.add("show");
+}
+
+// ---- Player actions ----
+function playerAction(fn) {
+  if (current !== "you" || busy) return;
+  fn();
+  render();
+  endTurn();
+}
+
+function doEco() {
+  const c = CFG.ecoCost(you.eco);
+  if (you.gold < c) return;
+  you.gold -= c; you.eco += 1;
+  log("invested in <span class='k-eco'>Economy</span> &rarr; income now +" + you.eco + "/turn.", "you");
+}
+function doTech() {
+  const c = CFG.techCost(you.tech);
+  if (you.gold < c) return;
+  you.gold -= c; you.tech += 1;
+  log("completed <span class='k-tech'>Research</span> &rarr; every troop now +" + you.tech + " power.", "you");
+}
+function doTrain() {
+  const n = trainQty, c = n * CFG.troopCost;
+  if (you.gold < c) return;
+  you.gold -= c; you.army += n;
+  log("trained <b>" + n + "</b> troop" + (n > 1 ? "s" : "") + " (army now " + you.army + ", power " + strength(you) + ").", "you");
+}
+function doAttack() {
+  if (you.army === 0) return;
+  log("orders the assault!", "you");
+  resolveAttack(you, enemy, "You", "Enemy");
+}
+
+// ---- AI ----
+function aiTurn() {
+  if (busy === false) return; // safety
+  const me = enemy, foe = you;
+  const myStr = strength(me), foeStr = strength(foe);
+  const ecoCost = CFG.ecoCost(me.eco);
+  const techCost = CFG.techCost(me.tech);
+  let decision = "";
+
+  // 1. Lethal: can I end it now?
+  if (me.army > 0) {
+    const dmg = foeStr === 0 ? myStr : (myStr > foeStr ? myStr - foeStr : 0);
+    if (dmg >= foe.hp && (foeStr === 0 || myStr > foeStr)) {
+      decision = "attack";
+    }
+  }
+
+  // 2. Profitable attack: press a strength edge. The AI grows impatient over
+  //    time, lowering its threshold so long games resolve instead of stalling.
+  const edge = Math.max(1.05, 1.4 - turnNo * 0.02);
+  const minDiff = Math.max(1, 3 - Math.floor(turnNo / 6));
+  if (!decision && me.army > 0 && (foeStr === 0 ? myStr > 0 : myStr > foeStr * edge && myStr - foeStr >= minDiff)) {
+    decision = "attack";
+  }
+
+  // 3. Under threat: enemy army could badly hurt my base next turn -> shore up military
+  if (!decision) {
+    const incomingOverflow = foeStr > myStr ? foeStr - myStr : 0;
+    const threatened = (foeStr === 0 ? 0 : foeStr) >= myStr && incomingOverflow >= Math.min(8, me.hp - 1) && foe.army > 0;
+    if (threatened || (foe.army > 0 && me.army === 0 && foeStr >= 3)) {
+      if (me.gold >= CFG.troopCost) decision = "train";
+      else if (me.tech > 0 && me.gold >= techCost) decision = "tech";
+    }
+  }
+
+  // 4. Development phase — weigh economy, research, troops
+  if (!decision) {
+    const earlyGame = turnNo <= 3;
+    // Keep economy ahead early; cap relative to turn so AI doesn't over-greed.
+    const wantEco = me.eco < 3 + Math.floor(turnNo / 2) && me.gold >= ecoCost && me.eco <= foe.eco + 1;
+    const wantTech = me.army >= 3 && me.tech < 2 + Math.floor(me.army / 4) && me.gold >= techCost;
+    const wantTroops = me.gold >= CFG.troopCost;
+
+    if (earlyGame && wantEco && me.army <= foe.army) {
+      decision = "eco";
+    } else if (wantTech && Math.random() < 0.55) {
+      decision = "tech";
+    } else if (wantEco && Math.random() < 0.5) {
+      decision = "eco";
+    } else if (wantTroops) {
+      decision = "train";
+    } else if (wantEco) {
+      decision = "eco";
+    } else {
+      decision = "pass";
+    }
+  }
+
+  // execute
+  let think = "";
+  switch (decision) {
+    case "attack":
+      think = "Commits to an all-out attack.";
+      log("launches an assault!", "enemy");
+      resolveAttack(me, foe, "Enemy", "You");
+      break;
+    case "train": {
+      const affordable = Math.floor(me.gold / CFG.troopCost);
+      // train a sensible batch (don't always dump everything early)
+      let n = affordable;
+      if (turnNo <= 2) n = Math.min(affordable, 3);
+      n = Math.max(1, n);
+      me.gold -= n * CFG.troopCost; me.army += n;
+      think = "Reinforces with " + n + " troop" + (n > 1 ? "s" : "") + ".";
+      log("trained <b>" + n + "</b> troop" + (n > 1 ? "s" : "") + " (army now " + me.army + ", power " + strength(me) + ").", "enemy");
+      break;
+    }
+    case "eco":
+      me.gold -= ecoCost; me.eco += 1;
+      think = "Expands its economy.";
+      log("invested in <span class='k-eco'>Economy</span> &rarr; income now +" + me.eco + "/turn.", "enemy");
+      break;
+    case "tech":
+      me.gold -= techCost; me.tech += 1;
+      think = "Advances its research.";
+      log("completed <span class='k-tech'>Research</span> &rarr; troops now +" + me.tech + " power.", "enemy");
+      break;
+    default:
+      think = "Holds position, saving gold.";
+      log("holds and saves gold.", "enemy");
+  }
+  document.getElementById("enemy-think").textContent = think;
+
+  render();
+  endTurn();
+}
+
+// ---- Wiring ----
+document.getElementById("btn-eco").addEventListener("click", () => playerAction(doEco));
+document.getElementById("btn-tech").addEventListener("click", () => playerAction(doTech));
+document.getElementById("btn-attack").addEventListener("click", () => playerAction(doAttack));
+document.getElementById("btn-train").addEventListener("click", (e) => {
+  // ignore clicks landing on the +/- steppers
+  if (e.target.id === "t-minus" || e.target.id === "t-plus") return;
+  playerAction(doTrain);
+});
+document.getElementById("t-plus").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const max = Math.floor(you.gold / CFG.troopCost) || 1;
+  trainQty = Math.min(max, trainQty + 1);
+  render();
+});
+document.getElementById("t-minus").addEventListener("click", (e) => {
+  e.stopPropagation();
+  trainQty = Math.max(1, trainQty - 1);
+  render();
+});
+document.getElementById("restart").addEventListener("click", reset);
+
+reset();
+</script>
+</body>
+</html>
