@@ -86,6 +86,8 @@
   .scene .castle.grow { animation: baseGrow .5s ease both; }
   @keyframes troopRise { 0% { transform: translateY(10px) scale(.2); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
   @keyframes baseGrow { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
+  .scene .smoke { animation: smokeDrift 3.5s ease-in-out infinite; }
+  @keyframes smokeDrift { 0%, 100% { opacity: .8; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
 
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
   .stat { background: #0f1626; border: 1px solid var(--line); border-radius: 10px; padding: 8px 6px; text-align: center; }
@@ -513,6 +515,72 @@ function troopGlyph(type, x, yFeet, s, isNew, main, dark, aT, dT) {
   return g;
 }
 
+// A quiet night backdrop — drawn behind everything and not mirrored, so the moon
+// and stars stay put for both camps.
+function skyLayer() {
+  let s = "";
+  s += '<path d="M0 90 Q70 70 150 86 T300 86 L300 150 L0 150 Z" fill="#14223c" opacity="0.6"/>';
+  s += '<path d="M0 94 Q100 78 200 92 T300 92 L300 150 L0 150 Z" fill="#182a46" opacity="0.55"/>';
+  s += '<circle cx="236" cy="26" r="20" fill="url(#moonGlow)"/>';
+  s += '<circle cx="236" cy="26" r="10" fill="#e8eefc"/>';
+  s += '<circle cx="240" cy="23" r="1.6" fill="#c4cfe4"/><circle cx="233" cy="29" r="1.2" fill="#c4cfe4"/><circle cx="238" cy="30" r="0.9" fill="#c4cfe4"/>';
+  const stars = [[28, 18], [66, 36], [110, 14], [150, 40], [186, 22], [212, 50], [276, 54], [92, 52], [44, 60]];
+  for (const [sx, sy] of stars) s += '<circle cx="' + sx + '" cy="' + sy + '" r="0.9" fill="#cbd6ea" opacity="0.85"/>';
+  s += '<g fill="#1b2c4b" opacity="0.7"><ellipse cx="58" cy="40" rx="19" ry="5.5"/><ellipse cx="46" cy="42" rx="11" ry="4.5"/></g>';
+  s += '<g fill="#1b2c4b" opacity="0.5"><ellipse cx="170" cy="62" rx="20" ry="5.5"/><ellipse cx="185" cy="64" rx="12" ry="4.5"/></g>';
+  return s;
+}
+
+// Forge — the Attack-research building. Grows taller with a brighter furnace and
+// more chimney embers as the level climbs.
+function forgeGlyph(level, x, baseY) {
+  const w = 15 + level * 2, h = 12 + level * 2.5, top = baseY - h;
+  const stone = "#6b7689", sdark = "#3c4655";
+  let g = '<g>';
+  g += '<rect x="' + x + '" y="' + top + '" width="' + w + '" height="' + h + '" rx="1" fill="' + stone + '" stroke="' + sdark + '" stroke-width="0.8"/>';
+  g += '<path d="M' + (x - 2) + ' ' + top + ' L' + (x + w / 2) + ' ' + (top - 7) + ' L' + (x + w + 2) + ' ' + top + ' Z" fill="#454f5e" stroke="' + sdark + '" stroke-width="0.8"/>';
+  const chx = x + w - 4.5;
+  g += '<rect x="' + chx + '" y="' + (top - 11) + '" width="3.5" height="9" fill="' + sdark + '"/>';
+  const ox = x + 3, oy = baseY - h * 0.52, ow = w * 0.42, oh = h * 0.46;
+  g += '<rect x="' + ox + '" y="' + oy + '" width="' + ow + '" height="' + oh + '" rx="1.5" fill="#ff7a1a" opacity="' + (0.5 + level * 0.1).toFixed(2) + '"/>';
+  g += '<rect x="' + (ox + 1) + '" y="' + (oy + 1.5) + '" width="' + (ow - 2) + '" height="' + (oh - 2.5) + '" rx="1" fill="#ffd070" opacity="' + (0.35 + level * 0.12).toFixed(2) + '"/>';
+  for (let i = 0; i < level; i++) {
+    const ex = chx + 1.7 + (i % 2 ? 1.4 : -1.4), ey = top - 11 - i * 3;
+    g += '<circle cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="' + (1.2 - i * 0.12).toFixed(2) + '" fill="#ff9d4d" opacity="' + (0.85 - i * 0.13).toFixed(2) + '"/>';
+  }
+  g += "</g>";
+  return g;
+}
+
+// Academy — the Defense-research building. A stone tower that rises with more lit
+// windows, a banner, and a shield as the level climbs.
+function academyGlyph(level, x, baseY) {
+  const w = 12 + level, h = 15 + level * 3, top = baseY - h;
+  const stone = "#6b7689", sdark = "#3c4655";
+  let g = '<g>';
+  g += '<rect x="' + x + '" y="' + top + '" width="' + w + '" height="' + h + '" rx="1" fill="' + stone + '" stroke="' + sdark + '" stroke-width="0.8"/>';
+  for (let cx = x; cx + 2.4 <= x + w; cx += 4.2) g += '<rect x="' + cx.toFixed(1) + '" y="' + (top - 3) + '" width="2.4" height="3.4" fill="' + sdark + '"/>';
+  for (let i = 0; i < level; i++) g += '<rect x="' + (x + w / 2 - 1.6).toFixed(1) + '" y="' + (top + 4 + i * 5).toFixed(1) + '" width="3.2" height="4" rx="0.6" fill="#ffce5c"/>';
+  const px = x + w / 2;
+  g += '<line x1="' + px + '" y1="' + (top - 3) + '" x2="' + px + '" y2="' + (top - 12) + '" stroke="#cbd5e1" stroke-width="0.8"/>';
+  g += '<path d="M' + px + ' ' + (top - 12) + ' l7 2.5 l-7 2.5 z" fill="#62b8ff"/>';
+  if (level >= 2) { const sx = x + w / 2, sy = baseY - 6; g += '<path d="M' + (sx - 3) + ' ' + (sy - 3) + ' h6 v3 q0 3 -3 4 q-3 -1 -3 -4 z" fill="#3a6ea5" stroke="#9fd0ff" stroke-width="0.5"/>'; }
+  g += "</g>";
+  return g;
+}
+
+// Smoke billowing from a battered keep (level 1 when hurt, 2 when critical).
+function smokeGroup(cx, baseTop, level) {
+  let g = '<g class="smoke">';
+  const puffs = level >= 2 ? 5 : 3;
+  for (let i = 0; i < puffs; i++) {
+    const py = baseTop - i * 7, px = cx + (i % 2 ? 4 : -3) + i * 0.6, r = 3 + i * 0.8, op = 0.5 - i * 0.07;
+    g += '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="' + r.toFixed(1) + '" fill="#3a4150" opacity="' + op.toFixed(2) + '"/>';
+  }
+  g += "</g>";
+  return g;
+}
+
 function buildScene(p, side, dev, grewBase, newBy, boosted) {
   const main = side === "you" ? "#3aa6ff" : "#ff5d5d";
   const dark = side === "you" ? "#1f5c96" : "#9e2b2b";
@@ -571,20 +639,23 @@ function buildScene(p, side, dev, grewBase, newBy, boosted) {
   if (hpRatio < 0.66) c += '<polyline points="' + (wallX + cw * 0.4) + ',' + wallTop + ' ' + (wallX + cw * 0.5) + ',' + (wallTop + ch * 0.4) + ' ' + (wallX + cw * 0.42) + ',' + (wallTop + ch * 0.7) + ' ' + (wallX + cw * 0.52) + ',' + GROUND_Y + '" fill="none" stroke="#0a0f1a" stroke-width="1.4"/>';
   if (hpRatio < 0.33) c += '<polyline points="' + (wallX + cw * 0.7) + ',' + wallTop + ' ' + (wallX + cw * 0.62) + ',' + (wallTop + ch * 0.5) + ' ' + (wallX + cw * 0.72) + ',' + GROUND_Y + '" fill="none" stroke="#0a0f1a" stroke-width="1.4"/>';
 
-  // farms in the foreground — one plot per economy level above the start
-  const nFarms = Math.min(p.eco - CFG.startEco, 5);
-  for (let k = 0; k < nFarms; k++) {
-    const fx = 6 + k * 17;
-    const fy = GROUND_Y + 16 + (k % 2) * 12;
-    // tilled green plot with furrows
-    c += '<path d="M' + fx + ' ' + fy + ' l13 0 l3 7 l-13 0 z" fill="#3f7d3a" stroke="#2c5a28" stroke-width="0.6"/>';
-    c += '<path d="M' + (fx + 3) + ' ' + (fy + 2) + ' l11 0 M' + (fx + 2) + ' ' + (fy + 4.5) + ' l12 0" stroke="#5fae54" stroke-width="0.6"/>';
-    // a little haystack on every other plot
-    if (k % 2 === 1) c += '<path d="M' + (fx + 15) + ' ' + (fy + 6) + ' l3 -6 l3 6 z" fill="#e7c14b" stroke="#b8941f" stroke-width="0.5"/>';
-  }
-
   // grow pulse on the whole castle when development increases
   c = '<g class="castle' + (grewBase ? " grow" : "") + '">' + c + "</g>";
+
+  // ---- Foreground town: research buildings + fields (drawn in front, unanimated) ----
+  let fg = "";
+  // research buildings — a forge (Attack) and an academy (Defense) that grow per level
+  if (p.defTech > 0) fg += academyGlyph(Math.min(p.defTech, 4), 4, 126);
+  if (p.atkTech > 0) fg += forgeGlyph(Math.min(p.atkTech, 4), 26, 126);
+  // farms — one tilled plot per economy level above the start
+  const nFarms = Math.min(p.eco - CFG.startEco, 5);
+  for (let k = 0; k < nFarms; k++) {
+    const fx = 58 + k * 16;
+    const fy = GROUND_Y + 18 + (k % 2) * 11;
+    fg += '<path d="M' + fx + ' ' + fy + ' l13 0 l3 7 l-13 0 z" fill="#3f7d3a" stroke="#2c5a28" stroke-width="0.6"/>';
+    fg += '<path d="M' + (fx + 3) + ' ' + (fy + 2) + ' l11 0 M' + (fx + 2) + ' ' + (fy + 4.5) + ' l12 0" stroke="#5fae54" stroke-width="0.6"/>';
+    if (k % 2 === 1) fg += '<path d="M' + (fx + 15) + ' ' + (fy + 6) + ' l3 -6 l3 6 z" fill="#e7c14b" stroke="#b8941f" stroke-width="0.5"/>';
+  }
 
   // ---- Troops ----
   // flatten the army into a list, flagging the freshly-trained ones per type
@@ -607,11 +678,16 @@ function buildScene(p, side, dev, grewBase, newBy, boosted) {
   // wrap troops so we can apply a gold glow while boosted
   t = '<g class="troops' + (boosted ? " boosted" : "") + '">' + t + "</g>";
 
-  const defs = '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + lite + '"/><stop offset="1" stop-color="' + dark + '"/></linearGradient></defs>';
-  const body = c + t;
+  const defs = '<defs>'
+    + '<linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + lite + '"/><stop offset="1" stop-color="' + dark + '"/></linearGradient>'
+    + '<radialGradient id="moonGlow"><stop offset="0" stop-color="#aab8d8" stop-opacity="0.45"/><stop offset="1" stop-color="#aab8d8" stop-opacity="0"/></radialGradient>'
+    + '</defs>';
+  // smoke pours from the keep as the Base is battered
+  const smoke = hpRatio < 0.5 ? smokeGroup(wallX + cw / 2, wallTop - 2, hpRatio < 0.33 ? 2 : 1) : "";
+  const body = c + smoke + t + fg;
   // mirror the enemy so the two camps face each other across the center
   const inner = side === "enemy" ? '<g transform="translate(300,0) scale(-1,1)">' + body + "</g>" : body;
-  return '<svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMax meet">' + defs + inner + "</svg>";
+  return '<svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMax meet">' + defs + skyLayer() + inner + "</svg>";
 }
 
 function render() {
