@@ -258,6 +258,11 @@
     <span id="turnchip" class="turnchip you">YOUR TURN</span>
     <span class="turncount">Turn <b id="turnnum">1</b></span>
     <span class="diffbar">
+      <span class="difflabel">Mode</span>
+      <button class="diff on" id="mode-ai">vs AI</button>
+      <button class="diff" id="mode-pvp">2 Players</button>
+    </span>
+    <span class="diffbar" id="diffbar-ai">
       <span class="difflabel">AI</span>
       <button class="diff" id="diff-easy">Easy</button>
       <button class="diff on" id="diff-normal">Normal</button>
@@ -268,7 +273,7 @@
   <div class="board">
     <!-- PLAYER 1 -->
     <div class="player you active" id="panel-you">
-      <div class="pname">PLAYER 1 (YOU) <span class="boostbadge" id="you-boost" style="display:none"></span></div>
+      <div class="pname"><span id="you-name">PLAYER 1 (YOU)</span> <span class="boostbadge" id="you-boost" style="display:none"></span></div>
       <div class="hpbar"><div class="hpfill" id="you-hpfill"></div><div class="hptext" id="you-hptext"></div></div>
       <div class="scene" id="you-scene"></div>
       <div class="stats">
@@ -281,7 +286,7 @@
 
     <!-- PLAYER 2 -->
     <div class="player enemy" id="panel-enemy">
-      <div class="pname">PLAYER 2 (AI) <span class="boostbadge" id="enemy-boost" style="display:none"></span></div>
+      <div class="pname"><span id="enemy-name">PLAYER 2 (AI)</span> <span class="boostbadge" id="enemy-boost" style="display:none"></span></div>
       <div class="hpbar"><div class="hpfill" id="enemy-hpfill"></div><div class="hptext" id="enemy-hptext"></div></div>
       <div class="scene" id="enemy-scene"></div>
       <div class="stats">
@@ -293,10 +298,10 @@
     </div>
   </div>
 
-  <div class="intent"><span class="intent-label">AI</span><span id="enemy-think">Waiting for your move...</span></div>
+  <div class="intent" id="intent"><span class="intent-label">AI</span><span id="enemy-think">Waiting for your move...</span></div>
 
   <div class="controls">
-    <h3>Your move — take one action</h3>
+    <h3 id="controls-head">Your move — take one action</h3>
     <div class="btngrid">
       <button class="act eco" id="btn-eco">
         <div class="atitle"><span>Build Economy</span><span class="acost" id="cost-eco"></span></div>
@@ -348,7 +353,8 @@
   <details class="help">
     <summary>How to play &amp; the strategy behind the three dynamics</summary>
     <div class="body">
-      <p>Each turn you collect <span class="k-gold">Gold</span> equal to your <span class="k-eco">Economy</span>, then take <b>one</b> action (or <b>Skip</b> to just bank the gold). The enemy AI does the same. First to knock the opponent's Base from 30 to 0 wins. <b>Attacks unlock on turn 4</b> and cost <span class="k-gold">3 gold</span> to launch.</p>
+      <p>Each turn you collect <span class="k-gold">Gold</span> equal to your <span class="k-eco">Economy</span>, then take <b>one</b> action (or <b>Skip</b> to just bank the gold). The enemy does the same. First to knock the opponent's Base from 30 to 0 wins. <b>Attacks unlock on turn 4</b> and cost <span class="k-gold">3 gold</span> to launch.</p>
+      <p><b>Modes</b> (top of the screen): <b>vs AI</b> plays against the computer at your chosen difficulty, or <b>2 Players</b> is local hotseat — two people share one device and the shared controls drive whoever's turn it is. Between turns a "your turn" screen lets you pass the device. Switching mode starts a fresh duel.</p>
       <p><b class="k-eco">Economy</b> is the engine — more gold every turn, forever (you'll see farms appear as it grows). But a turn spent on economy is a turn not spent defending, so a pure economy player is exposed once attacks open up.</p>
       <p><b class="k-mil">Military</b> is the only way to deal damage, capped at <b>15 troops</b>. Three types, each with attack/defense stats: <b>Infantry</b> (3g, 2/2 — balanced), <b>Archers</b> (3g, 3/1 — hit hard but fragile on defense), <b>Knights</b> (6g, 4/4 — elite, durable). When armies clash, the attacker's <i>attack</i> meets the defender's <i>defense</i>; <b>defenders have the edge</b>, and only overflow reaches the Base.</p>
       <p><b>Counter triangle:</b> each unit deals <b>+30% attack</b> when it <i>attacks</i> the type it beats — <b>Infantry &rsaquo; Knights &rsaquo; Archers &rsaquo; Infantry</b> (defense is raw, so counters reward picking the right attacker, not reacting last). Watch the enemy's army on their field and bring the unit that counters their main force. The <b class="k-tech">AI reads your army too</b> and counters it — and it will rush you if you over-greed economy, so vary your play.</p>
@@ -357,6 +363,14 @@
       <p><b>The balance:</b> Economy beats a slow opponent, aggression beats greedy economy, and Research beats a big-but-primitive army. Mass <b>Archers</b> to break a turtle, or hold <b>Knights</b> to repel a rush. Set the <b class="k-tech">AI difficulty</b> up top — changing it starts a fresh duel.</p>
     </div>
   </details>
+</div>
+
+<div class="overlay" id="handoff-overlay">
+  <div class="modal win">
+    <h2 id="handoff-title"></h2>
+    <p>Pass the device to the next player, then tap below.</p>
+    <button class="bigbtn" id="handoff-ready">I'm Ready</button>
+  </div>
 </div>
 
 <div class="battle-overlay" id="battle-overlay">
@@ -426,7 +440,16 @@ function newPlayer() {
 }
 
 let you, enemy, turnNo, current, busy, trainQty, selectedType, difficulty = "normal";
+let mode = "ai"; // "ai" = solo vs AI, "pvp" = local 2-player hotseat
 let prevScene; // tracks last-rendered army/dev per side to animate growth
+
+// The player acting right now, and the human-turn / naming helpers used so the
+// shared controls can drive either side in hotseat mode.
+function actor() { return current === "you" ? you : enemy; }
+function controlPlayer() { return mode === "pvp" ? actor() : you; }
+function isHumanTurn() { return mode === "pvp" ? true : current === "you"; }
+function sideName(side) { return mode === "pvp" ? (side === "you" ? "Player 1" : "Player 2") : (side === "you" ? "You" : "Enemy"); }
+function sideTag(side) { return mode === "pvp" ? (side === "you" ? "P1" : "P2") : (side === "you" ? "You" : "Enemy"); }
 
 function totalTroops(p) { return p.units.inf + p.units.arc + p.units.kni; }
 // Boost is active on the player's turns AFTER activation, for boostDuration turns.
@@ -488,8 +511,8 @@ function log(msg, who) {
   const body = document.getElementById("logbody");
   const e = document.createElement("div");
   e.className = "entry";
-  const tag = who === "you" ? '<span class="you-t">[You]</span> '
-            : who === "enemy" ? '<span class="enemy-t">[Enemy]</span> '
+  const tag = who === "you" ? '<span class="you-t">[' + sideTag("you") + ']</span> '
+            : who === "enemy" ? '<span class="enemy-t">[' + sideTag("enemy") + ']</span> '
             : who === "battle" ? '<span class="battle">[Battle]</span> ' : "";
   e.innerHTML = tag + msg;
   body.appendChild(e);
@@ -770,24 +793,34 @@ function render() {
   document.getElementById("you-income").textContent = "+" + you.eco + "/turn";
 
   document.getElementById("turnnum").textContent = turnNo;
+  const pvp = mode === "pvp";
   const chip = document.getElementById("turnchip");
   chip.className = "turnchip " + current;
-  chip.textContent = current === "you" ? "YOUR TURN" : "ENEMY TURN";
+  chip.textContent = pvp ? (current === "you" ? "PLAYER 1" : "PLAYER 2") : (current === "you" ? "YOUR TURN" : "ENEMY TURN");
   document.getElementById("panel-you").classList.toggle("active", current === "you");
   document.getElementById("panel-enemy").classList.toggle("active", current === "enemy");
+  // labels + chrome adapt to the mode
+  document.getElementById("you-name").textContent = pvp ? "PLAYER 1" : "PLAYER 1 (YOU)";
+  document.getElementById("enemy-name").textContent = pvp ? "PLAYER 2" : "PLAYER 2 (AI)";
+  document.getElementById("diffbar-ai").style.display = pvp ? "none" : "";
+  document.getElementById("intent").style.display = pvp ? "none" : "";
+  document.getElementById("mode-ai").classList.toggle("on", !pvp);
+  document.getElementById("mode-pvp").classList.toggle("on", pvp);
+  document.getElementById("controls-head").textContent = pvp ? sideName(current) + " — take one action" : "Your move — take one action";
 
-  // costs + button availability
-  const ecoCost = CFG.ecoCost(you.eco);
-  const atkResCost = CFG.techCost(you.atkTech);
-  const defResCost = CFG.techCost(you.defTech);
+  // the player the shared controls represent (active side in hotseat; always you vs AI)
+  const ap = controlPlayer();
+  const ecoCost = CFG.ecoCost(ap.eco);
+  const atkResCost = CFG.techCost(ap.atkTech);
+  const defResCost = CFG.techCost(ap.defTech);
   const pct = Math.round((CFG.boostMult - 1) * 100);
   document.getElementById("cost-eco").textContent = ecoCost + "g";
   document.getElementById("cost-ratk").textContent = atkResCost + "g";
   document.getElementById("cost-rdef").textContent = defResCost + "g";
 
   // training: clamp the chosen quantity to what's affordable and under the cap
-  const capLeft = CFG.armyCap - totalTroops(you);
-  const trainMax = maxTrainable(you, selectedType);
+  const capLeft = CFG.armyCap - totalTroops(ap);
+  const trainMax = maxTrainable(ap, selectedType);
   trainQty = Math.max(1, Math.min(trainQty, Math.max(1, trainMax)));
   const trainN = Math.min(trainQty, trainMax);
   document.getElementById("t-cost").textContent = (trainN * TROOPS[selectedType].cost) + "g";
@@ -797,15 +830,15 @@ function render() {
     document.getElementById("ty-" + ty).classList.toggle("on", ty === selectedType);
     // show effective stats including current research
     document.getElementById("ty-" + ty + "-stat").textContent =
-      TROOPS[ty].cost + "g · " + (TROOPS[ty].atk + you.atkTech) + "/" + (TROOPS[ty].def + you.defTech);
+      TROOPS[ty].cost + "g · " + (TROOPS[ty].atk + ap.atkTech) + "/" + (TROOPS[ty].def + ap.defTech);
   }
   document.getElementById("train-label").textContent =
     "Train " + trainN + " " + TROOPS[selectedType].name + (trainMax >= 1 ? " (" + (trainN * TROOPS[selectedType].cost) + "g)" : "");
 
   // boost state
-  document.getElementById("boost-cost").textContent = you.boostUsed ? "used" : CFG.boostCost + "g";
-  document.getElementById("boost-desc").textContent = you.boostUsed
-    ? (boostLeft(you) > 0 ? "Active: +" + pct + "% attack (" + boostLeft(you) + " turn" + (boostLeft(you) === 1 ? "" : "s") + " left)." : "Already used this game.")
+  document.getElementById("boost-cost").textContent = ap.boostUsed ? "used" : CFG.boostCost + "g";
+  document.getElementById("boost-desc").textContent = ap.boostUsed
+    ? (boostLeft(ap) > 0 ? "Active: +" + pct + "% attack (" + boostLeft(ap) + " turn" + (boostLeft(ap) === 1 ? "" : "s") + " left)." : "Already used this game.")
     : "Once per game: +" + pct + "% attack for your next " + CFG.boostDuration + " turns.";
 
   // attack lock state
@@ -815,13 +848,13 @@ function render() {
     ? "Armies mobilize — attacking unlocks on turn " + CFG.attackUnlockTurn + "."
     : "Send your army at the enemy (costs " + CFG.attackCost + "g). Defenders have the edge.";
 
-  const myTurn = current === "you" && !busy && you.hp > 0 && enemy.hp > 0;
-  document.getElementById("btn-eco").disabled = !myTurn || you.gold < ecoCost;
-  document.getElementById("btn-ratk").disabled = !myTurn || you.gold < atkResCost;
-  document.getElementById("btn-rdef").disabled = !myTurn || you.gold < defResCost;
+  const myTurn = isHumanTurn() && !busy && you.hp > 0 && enemy.hp > 0;
+  document.getElementById("btn-eco").disabled = !myTurn || ap.gold < ecoCost;
+  document.getElementById("btn-ratk").disabled = !myTurn || ap.gold < atkResCost;
+  document.getElementById("btn-rdef").disabled = !myTurn || ap.gold < defResCost;
   document.getElementById("btn-train").disabled = !myTurn || trainMax < 1;
-  document.getElementById("btn-attack").disabled = !myTurn || !canAttack(you);
-  document.getElementById("btn-boost").disabled = !myTurn || you.boostUsed || you.gold < CFG.boostCost;
+  document.getElementById("btn-attack").disabled = !myTurn || !canAttack(ap);
+  document.getElementById("btn-boost").disabled = !myTurn || ap.boostUsed || ap.gold < CFG.boostCost;
   document.getElementById("btn-skip").disabled = !myTurn;
   document.getElementById("t-minus").classList.toggle("off", !myTurn);
   document.getElementById("t-plus").classList.toggle("off", !myTurn);
@@ -830,11 +863,11 @@ function render() {
 // ---- Combat ----
 // Attacker's ATTACK clashes with defender's DEFENSE (both matchup-adjusted by the
 // counter triangle); overflow hits the Base.
-function counterNote(actor, opp, verb) {
+function counterNote(army, opp, verb) {
   const oppMain = dominantType(opp);
   if (!oppMain) return "";
   const cType = COUNTER_OF[oppMain];        // unit that counters their main force
-  if (actor.units[cType] > 0) return " <i>(" + TROOPS[cType].name + " " + verb + " their " + TROOPS[oppMain].name + ", +" + Math.round(COUNTER_BONUS * 100) + "%)</i>";
+  if (army.units[cType] > 0) return " <i>(" + TROOPS[cType].name + " " + verb + " their " + TROOPS[oppMain].name + ", +" + Math.round(COUNTER_BONUS * 100) + "%)</i>";
   return "";
 }
 function resolveAttack(att, def, attName, defName) {
@@ -938,9 +971,13 @@ function battleStageSVG(snap, res) {
 }
 
 function battleResultText(res) {
-  if (res.outcome === "holdDef") return { t: res.defName + " hold the line!", good: res.defName === "You" };
-  if (res.outcome === "undefended") return { t: res.attName + " hit an open Base!  −" + res.dmg, good: res.attName === "You" };
-  return { t: res.attName + " break through!  −" + res.dmg, good: res.attName === "You" };
+  const broke = res.outcome !== "holdDef";
+  // solo: green when it's good for you; hotseat: green for a successful assault
+  const good = mode === "pvp" ? broke : ((res.attName === "You") === broke);
+  const t = res.outcome === "holdDef" ? res.defName + " hold the line!"
+    : res.outcome === "undefended" ? res.attName + " hit an open Base!  −" + res.dmg
+    : res.attName + " break through!  −" + res.dmg;
+  return { t, good };
 }
 
 function playBattle(snap, res, onDone) {
@@ -989,18 +1026,21 @@ function applyUnrest() {
 
 function endTurn() {
   if (checkEnd()) return;
-  if (current === "you") {
-    current = "enemy";
-    render();
+  const next = current === "you" ? "enemy" : "you";
+  if (next === "you") { turnNo++; applyUnrest(); if (checkEnd()) return; }
+  current = next;
+  startTurn(current);
+  if (mode === "pvp") {
+    // hotseat: lock the board and hand the device to the other human
     busy = true;
+    render();
+    showHandoff(current);
+  } else if (current === "enemy") {
+    busy = true;
+    render();
     document.getElementById("enemy-think").textContent = "Plotting...";
-    setTimeout(() => { startTurn("enemy"); render(); setTimeout(aiTurn, 650); }, 500);
+    setTimeout(() => { render(); setTimeout(aiTurn, 650); }, 500);
   } else {
-    current = "you";
-    turnNo++;
-    applyUnrest();
-    if (checkEnd()) return;
-    startTurn("you");
     busy = false;
     document.getElementById("enemy-think").textContent = "Waiting for your move...";
     render();
@@ -1013,73 +1053,91 @@ function checkEnd() {
   return false;
 }
 
-function showEnd(won) {
+function showEnd(youWon) {
   busy = true;
   render();
   const modal = document.getElementById("modal");
-  modal.className = "modal " + (won ? "win" : "lose");
-  document.getElementById("modal-title").textContent = won ? "VICTORY" : "DEFEAT";
-  document.getElementById("modal-text").textContent = won
-    ? "The enemy Base has fallen. The realm is yours, commander."
-    : "Your Base has been overrun. The enemy commander outplayed you this time.";
+  let title, text, cls;
+  if (mode === "pvp") {
+    cls = "win";
+    title = (youWon ? "Player 1" : "Player 2") + " wins!";
+    text = "The " + (youWon ? "Player 2" : "Player 1") + " Base has fallen. Well fought.";
+  } else {
+    cls = youWon ? "win" : "lose";
+    title = youWon ? "VICTORY" : "DEFEAT";
+    text = youWon
+      ? "The enemy Base has fallen. The realm is yours, commander."
+      : "Your Base has been overrun. The enemy commander outplayed you this time.";
+  }
+  modal.className = "modal " + cls;
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-text").textContent = text;
   document.getElementById("overlay").classList.add("show");
 }
 
-// ---- Player actions ----
+function showHandoff(side) {
+  document.getElementById("handoff-title").textContent = sideName(side) + " — your turn";
+  document.getElementById("handoff-overlay").classList.add("show");
+}
+
+// ---- Player actions ---- (operate on whoever's turn it is)
 function playerAction(fn) {
-  if (current !== "you" || busy) return;
+  if (busy || !isHumanTurn()) return;
   fn();
   render();
   endTurn();
 }
 
 function doEco() {
-  const c = CFG.ecoCost(you.eco);
-  if (you.gold < c) return;
-  you.gold -= c; you.eco += 1;
-  log("invested in <span class='k-eco'>Economy</span> &rarr; income now +" + you.eco + "/turn.", "you");
+  const p = actor(), c = CFG.ecoCost(p.eco);
+  if (p.gold < c) return;
+  p.gold -= c; p.eco += 1;
+  log("invested in <span class='k-eco'>Economy</span> &rarr; income now +" + p.eco + "/turn.", current);
 }
 function doResearchAtk() {
-  const c = CFG.techCost(you.atkTech);
-  if (you.gold < c) return;
-  you.gold -= c; you.atkTech += 1;
-  log("researched <span class='k-tech'>Attack</span> &rarr; every troop now +" + you.atkTech + " attack.", "you");
+  const p = actor(), c = CFG.techCost(p.atkTech);
+  if (p.gold < c) return;
+  p.gold -= c; p.atkTech += 1;
+  log("researched <span class='k-tech'>Attack</span> &rarr; every troop now +" + p.atkTech + " attack.", current);
 }
 function doResearchDef() {
-  const c = CFG.techCost(you.defTech);
-  if (you.gold < c) return;
-  you.gold -= c; you.defTech += 1;
-  log("researched <span class='k-tech'>Defense</span> &rarr; every troop now +" + you.defTech + " defense.", "you");
+  const p = actor(), c = CFG.techCost(p.defTech);
+  if (p.gold < c) return;
+  p.gold -= c; p.defTech += 1;
+  log("researched <span class='k-tech'>Defense</span> &rarr; every troop now +" + p.defTech + " defense.", current);
 }
 function doTrain() {
-  const type = selectedType, each = TROOPS[type].cost;
-  const n = Math.min(trainQty, maxTrainable(you, type));
+  const p = actor(), type = selectedType, each = TROOPS[type].cost;
+  const n = Math.min(trainQty, maxTrainable(p, type));
   if (n < 1) return;
-  you.gold -= n * each; you.units[type] += n;
-  log("trained <b>" + n + "</b> " + TROOPS[type].name + " (army " + totalTroops(you) + "/" + CFG.armyCap +
-      ", atk " + atkPower(you) + " / def " + defPower(you) + ").", "you");
+  p.gold -= n * each; p.units[type] += n;
+  log("trained <b>" + n + "</b> " + TROOPS[type].name + " (army " + totalTroops(p) + "/" + CFG.armyCap +
+      ", atk " + atkPower(p) + " / def " + defPower(p) + ").", current);
 }
 function requestAttack() {
-  if (current !== "you" || busy || !canAttack(you)) return;
+  const p = actor();
+  if (busy || !isHumanTurn() || !canAttack(p)) return;
   busy = true;                                   // lock input through the clash
-  you.gold -= CFG.attackCost;
-  log("orders the assault! (&minus;" + CFG.attackCost + "g)", "you");
-  performAttack(you, enemy, "You", "Enemy", () => endTurn());
+  const foe = p === you ? enemy : you;
+  p.gold -= CFG.attackCost;
+  log("orders the assault! (&minus;" + CFG.attackCost + "g)", current);
+  performAttack(p, foe, sideName(current), sideName(p === you ? "enemy" : "you"), () => endTurn());
 }
 function doBoost() {
-  if (you.boostUsed || you.gold < CFG.boostCost) return;
-  you.gold -= CFG.boostCost; you.boostUsed = true; you.boostStart = turnNo;
+  const p = actor();
+  if (p.boostUsed || p.gold < CFG.boostCost) return;
+  p.gold -= CFG.boostCost; p.boostUsed = true; p.boostStart = turnNo;
   log("activated <span class='k-boost'>Battle Boost</span> &rarr; +" + Math.round((CFG.boostMult - 1) * 100) +
-      "% attack for the next " + CFG.boostDuration + " turns!", "you");
+      "% attack for the next " + CFG.boostDuration + " turns!", current);
 }
 function doSkip() {
-  log("holds position and banks the gold.", "you");
+  log("holds position and banks the gold.", current);
 }
 
 // ---- AI ----
 // Trains a batch. A smart AI builds the unit that COUNTERS the player's main
 // force; otherwise it falls back to role-based picks (def = durable, off = attack).
-function aiTrain(me, mode, D) {
+function aiTrain(me, role, D) {
   const capLeft = CFG.armyCap - totalTroops(me);
   if (capLeft <= 0 || me.gold < TROOPS.inf.cost) return null;
   const foe = me === enemy ? you : enemy;
@@ -1088,7 +1146,7 @@ function aiTrain(me, mode, D) {
   if (Math.random() < D.smart && foeMain && totalTroops(foe) >= 2) {
     type = COUNTER_OF[foeMain];                              // counter their main force
     if (me.gold < TROOPS[type].cost) type = "inf";           // can't afford the counter -> cheap filler
-  } else if (mode === "def") {
+  } else if (role === "def") {
     type = (me.gold >= TROOPS.kni.cost && Math.random() < 0.6) ? "kni" : "inf";
   } else {
     if (me.gold >= TROOPS.kni.cost && Math.random() < 0.4) type = "kni";
@@ -1264,20 +1322,20 @@ document.getElementById("btn-skip").addEventListener("click", () => playerAction
 document.getElementById("btn-train").addEventListener("click", () => playerAction(doTrain));
 document.getElementById("t-plus").addEventListener("click", (e) => {
   e.stopPropagation();
-  if (current !== "you" || busy) return;
-  trainQty = Math.min(Math.max(1, maxTrainable(you, selectedType)), trainQty + 1);
+  if (busy || !isHumanTurn()) return;
+  trainQty = Math.min(Math.max(1, maxTrainable(actor(), selectedType)), trainQty + 1);
   render();
 });
 document.getElementById("t-minus").addEventListener("click", (e) => {
   e.stopPropagation();
-  if (current !== "you" || busy) return;
+  if (busy || !isHumanTurn()) return;
   trainQty = Math.max(1, trainQty - 1);
   render();
 });
 for (const ty of TYPES) {
   document.getElementById("ty-" + ty).addEventListener("click", (e) => {
     e.stopPropagation();
-    if (current !== "you" || busy) return;
+    if (busy || !isHumanTurn()) return;
     selectedType = ty;
     trainQty = 1;
     render();
@@ -1291,6 +1349,21 @@ for (const d of ["easy", "normal", "hard"]) {
     reset();
   });
 }
+// Mode: solo vs AI, or local 2-player hotseat
+for (const m of ["ai", "pvp"]) {
+  document.getElementById("mode-" + m).addEventListener("click", () => {
+    if (mode === m) return;
+    mode = m;
+    reset();
+  });
+}
+// Hotseat hand-off: reveal the board to the next player only when they're ready
+document.getElementById("handoff-ready").addEventListener("click", () => {
+  document.getElementById("handoff-overlay").classList.remove("show");
+  trainQty = 1;
+  busy = false;
+  render();
+});
 document.getElementById("restart").addEventListener("click", reset);
 
 reset();
