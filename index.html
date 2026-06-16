@@ -319,7 +319,7 @@
       <p>Each turn you collect <span class="k-gold">Gold</span> equal to your <span class="k-eco">Economy</span>, then take <b>one</b> action (or <b>Skip</b> to just bank the gold). The enemy AI does the same. First to knock the opponent's Base from 30 to 0 wins. <b>Attacks unlock on turn 4</b> and cost <span class="k-gold">3 gold</span> to launch.</p>
       <p><b class="k-eco">Economy</b> is the engine — more gold every turn, forever (you'll see farms appear as it grows). But a turn spent on economy is a turn not spent defending, so a pure economy player is exposed once attacks open up.</p>
       <p><b class="k-mil">Military</b> is the only way to deal damage, capped at <b>15 troops</b>. Three types, each with attack/defense stats: <b>Infantry</b> (3g, 2/2 — balanced), <b>Archers</b> (3g, 3/1 — hit hard but fragile on defense), <b>Knights</b> (6g, 4/4 — elite, durable). When armies clash, the attacker's <i>attack</i> meets the defender's <i>defense</i>; <b>defenders have the edge</b>, and only overflow reaches the Base.</p>
-      <p><b>Counter triangle:</b> each unit deals <b>+20% attack</b> when it <i>attacks</i> the type it beats — <b>Infantry &rsaquo; Knights &rsaquo; Archers &rsaquo; Infantry</b> (defense is raw, so counters reward picking the right attacker, not reacting last). Watch the enemy's army on their field and bring the unit that counters their main force. The <b class="k-tech">AI reads your army too</b> and counters it — and it will rush you if you over-greed economy, so vary your play.</p>
+      <p><b>Counter triangle:</b> each unit deals <b>+30% attack</b> when it <i>attacks</i> the type it beats — <b>Infantry &rsaquo; Knights &rsaquo; Archers &rsaquo; Infantry</b> (defense is raw, so counters reward picking the right attacker, not reacting last). Watch the enemy's army on their field and bring the unit that counters their main force. The <b class="k-tech">AI reads your army too</b> and counters it — and it will rush you if you over-greed economy, so vary your play.</p>
       <p><b class="k-tech">Research</b> comes in two tracks you choose between: <b>+Attack</b> (adds attack to every troop) and <b>+Defense</b> (adds defense to every troop). Pour into Attack to crack a turtle, or Defense to harden against a rush.</p>
       <p><b class="k-gold">Boost Attack</b> is a one-time trump card (you and the AI each get one): for <b>12 gold</b> it gives <b>+40% attack</b> on your next 2 turns. Activating it uses your turn, so time it right — pop it, then attack into a defense you couldn't otherwise break. Pick a troop type and quantity, then press the <b>Train</b> button to commit (nothing trains until you do).</p>
       <p><b>The balance:</b> Economy beats a slow opponent, aggression beats greedy economy, and Research beats a big-but-primitive army. Mass <b>Archers</b> to break a turtle, or hold <b>Knights</b> to repel a rush. Set the <b class="k-tech">AI difficulty</b> up top — changing it starts a fresh duel.</p>
@@ -365,7 +365,7 @@ const TYPES = ["inf", "arc", "kni"];
 //   Infantry (pikes) beat Knights, Knights (charge) beat Archers, Archers (volleys) beat Infantry.
 const BEATS = { inf: "kni", kni: "arc", arc: "inf" };  // X beats BEATS[X]
 const COUNTER_OF = { kni: "inf", arc: "kni", inf: "arc" }; // unit that beats the key
-const COUNTER_BONUS = 0.20;                              // +20% when you attack the type you counter
+const COUNTER_BONUS = 0.30;                              // +30% when you attack the type you counter
 
 // All difficulties play the SAME baseline strategy; difficulty only changes how
 // often the AI blunders (mistake) and whether it defends a threat (defend). This
@@ -479,7 +479,12 @@ function drawScene(key, p) {
 // One soldier, drawn standing with feet at the origin; glyph varies by type.
 // Attack research (aT) shows on weapons; defense research (dT) shows as armour.
 function troopGlyph(type, x, yFeet, s, isNew, main, dark, aT, dT) {
-  let g = '<g class="trp' + (isNew ? " new" : "") + '" transform="translate(' + x.toFixed(1) + ',' + yFeet.toFixed(1) + ') scale(' + s.toFixed(2) + ')">';
+  // Outer group positions the troop via the transform ATTRIBUTE; the inner group
+  // carries the rise/pop animation. Keeping them separate stops the CSS keyframe's
+  // transform from overriding the troop's battlefield position (which made fresh
+  // troops jump to the origin and vanish).
+  let g = '<g transform="translate(' + x.toFixed(1) + ',' + yFeet.toFixed(1) + ') scale(' + s.toFixed(2) + ')">';
+  g += '<g class="trp' + (isNew ? " new" : "") + '">';
   if (type === "arc") {                                   // archer: bow + arrow
     g += '<path d="M-6 -16 Q-11 -9 -6 -2" fill="none" stroke="#9a6a33" stroke-width="1.3"/>';
     g += '<line x1="-6" y1="-16" x2="-6" y2="-2" stroke="#cbd5e1" stroke-width="0.5"/>';
@@ -504,7 +509,7 @@ function troopGlyph(type, x, yFeet, s, isNew, main, dark, aT, dT) {
   } else if (aT >= 1 || dT >= 1) {                        // helmet once either research starts
     g += '<path d="M-3.4 -18 A3.4 3.4 0 0 1 3.4 -18 Z" fill="' + dark + '"/>';
   }
-  g += "</g>";
+  g += "</g></g>";
   return g;
 }
 
