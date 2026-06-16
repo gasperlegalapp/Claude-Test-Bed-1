@@ -78,7 +78,7 @@
   .scene {
     margin-top: 12px; height: 150px; border-radius: 10px; overflow: hidden;
     border: 1px solid var(--line);
-    background: linear-gradient(#0c1322 0%, #0f1a2c 58%, #16233a 58%, #0e1726 100%);
+    background: linear-gradient(#7ec3f0 0%, #c7e9fb 57%, #78ba56 57%, #4c8a37 100%);
   }
   .scene svg { display: block; width: 100%; height: 100%; }
   .scene .trp, .scene .castle { transform-box: fill-box; transform-origin: center bottom; }
@@ -515,19 +515,35 @@ function troopGlyph(type, x, yFeet, s, isNew, main, dark, aT, dT) {
   return g;
 }
 
-// A quiet night backdrop — drawn behind everything and not mirrored, so the moon
-// and stars stay put for both camps.
+// A sunny daytime backdrop — drawn behind everything and not mirrored, so the sun
+// and clouds stay put for both camps.
 function skyLayer() {
   let s = "";
-  s += '<path d="M0 90 Q70 70 150 86 T300 86 L300 150 L0 150 Z" fill="#14223c" opacity="0.6"/>';
-  s += '<path d="M0 94 Q100 78 200 92 T300 92 L300 150 L0 150 Z" fill="#182a46" opacity="0.55"/>';
-  s += '<circle cx="236" cy="26" r="20" fill="url(#moonGlow)"/>';
-  s += '<circle cx="236" cy="26" r="10" fill="#e8eefc"/>';
-  s += '<circle cx="240" cy="23" r="1.6" fill="#c4cfe4"/><circle cx="233" cy="29" r="1.2" fill="#c4cfe4"/><circle cx="238" cy="30" r="0.9" fill="#c4cfe4"/>';
-  const stars = [[28, 18], [66, 36], [110, 14], [150, 40], [186, 22], [212, 50], [276, 54], [92, 52], [44, 60]];
-  for (const [sx, sy] of stars) s += '<circle cx="' + sx + '" cy="' + sy + '" r="0.9" fill="#cbd6ea" opacity="0.85"/>';
-  s += '<g fill="#1b2c4b" opacity="0.7"><ellipse cx="58" cy="40" rx="19" ry="5.5"/><ellipse cx="46" cy="42" rx="11" ry="4.5"/></g>';
-  s += '<g fill="#1b2c4b" opacity="0.5"><ellipse cx="170" cy="62" rx="20" ry="5.5"/><ellipse cx="185" cy="64" rx="12" ry="4.5"/></g>';
+  // sun with warm halo, upper right
+  s += '<circle cx="240" cy="26" r="27" fill="url(#sunGlow)"/>';
+  s += '<circle cx="240" cy="26" r="11" fill="#fff1a2"/>';
+  s += '<circle cx="240" cy="26" r="8" fill="#fffbe2"/>';
+  // fluffy clouds
+  s += cloudGlyph(62, 30, 1);
+  s += cloudGlyph(182, 20, 0.78);
+  s += cloudGlyph(120, 54, 0.66);
+  // distant forested hills — a hazy back range, then a greener front range with pines
+  s += hillRange(82, "#9ccf93", null);
+  s += hillRange(90, "#69ad4d", "#3c7a37");
+  return s;
+}
+function cloudGlyph(cx, cy, sc) {
+  return '<g fill="#ffffff" opacity="0.95" transform="translate(' + cx + ',' + cy + ') scale(' + sc + ')">'
+    + '<ellipse cx="0" cy="0" rx="15" ry="6"/><ellipse cx="-9" cy="2.5" rx="9" ry="5"/><ellipse cx="9" cy="2.5" rx="10" ry="5"/><ellipse cx="2" cy="-3.5" rx="8" ry="5"/></g>';
+}
+function hillRange(baseY, color, treeColor) {
+  let s = '<path d="M0 ' + baseY + ' Q80 ' + (baseY - 10) + ' 160 ' + (baseY - 2) + ' T300 ' + (baseY - 4) + ' L300 99 L0 99 Z" fill="' + color + '"/>';
+  if (treeColor) {
+    for (let tx = 12, k = 0; tx < 296; tx += 19, k++) {
+      const ty = baseY - 1, hh = 7 + (k % 2 ? 1.6 : 0);
+      s += '<path d="M' + tx + ' ' + ty + ' l-3 0 l3 ' + (-hh).toFixed(1) + ' l3 ' + hh.toFixed(1) + ' z" fill="' + treeColor + '" opacity="' + (k % 2 ? 1 : 0.88) + '"/>';
+    }
+  }
   return s;
 }
 
@@ -665,22 +681,22 @@ function buildScene(p, side, dev, grewBase, newBy, boosted) {
     for (let i = 0; i < nt; i++) flat.push({ ty, isNew: i >= nt - nn });
   }
   let t = "";
-  const perRow = 6, colGap = 15, maxVis = CFG.armyCap;
-  const x0 = wallX + cw + 16;
+  const maxVis = CFG.armyCap;
+  const x0 = wallX + cw + 14;
   const n = Math.min(flat.length, maxVis);
+  // a single rank, left-to-right; spacing compresses so all 15 stay on the field
+  const gap = Math.min(14, (296 - x0) / Math.max(1, n - 1));
   for (let i = 0; i < n; i++) {
-    const row = Math.floor(i / perRow), col = i % perRow;
-    const x = x0 + col * colGap + row * 7;
-    const yFeet = GROUND_Y - row * 11;
-    const sc = (1 - row * 0.1) * (flat[i].ty === "kni" ? 1.12 : 1);
-    t += troopGlyph(flat[i].ty, x, yFeet, sc, flat[i].isNew, main, dark, p.atkTech, p.defTech);
+    const x = x0 + i * gap;
+    const sc = flat[i].ty === "kni" ? 1.12 : 1;
+    t += troopGlyph(flat[i].ty, x, GROUND_Y, sc, flat[i].isNew, main, dark, p.atkTech, p.defTech);
   }
   // wrap troops so we can apply a gold glow while boosted
   t = '<g class="troops' + (boosted ? " boosted" : "") + '">' + t + "</g>";
 
   const defs = '<defs>'
     + '<linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + lite + '"/><stop offset="1" stop-color="' + dark + '"/></linearGradient>'
-    + '<radialGradient id="moonGlow"><stop offset="0" stop-color="#aab8d8" stop-opacity="0.45"/><stop offset="1" stop-color="#aab8d8" stop-opacity="0"/></radialGradient>'
+    + '<radialGradient id="sunGlow"><stop offset="0" stop-color="#fff0a0" stop-opacity="0.85"/><stop offset="1" stop-color="#fff0a0" stop-opacity="0"/></radialGradient>'
     + '</defs>';
   // smoke pours from the keep as the Base is battered
   const smoke = hpRatio < 0.5 ? smokeGroup(wallX + cw / 2, wallTop - 2, hpRatio < 0.33 ? 2 : 1) : "";
