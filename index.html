@@ -156,6 +156,7 @@
     background: #0f1626; font-size: 11px; font-weight: 700; color: var(--text); cursor: pointer;
   }
   .ty small { font-size: 9px; font-weight: 600; color: var(--muted); }
+  .ty small.beats { color: var(--eco); font-weight: 700; }
   .ty:hover { border-color: #3a4a6a; }
   .ty.on { border-color: var(--mil); background: #1d2740; box-shadow: 0 0 0 1px var(--mil) inset; }
   .ty.on small { color: var(--mil); }
@@ -280,9 +281,9 @@
       <div class="act mil train-tile">
         <div class="atitle"><span>Train Troops</span><span class="acost" id="t-cost"></span></div>
         <div class="typesel" id="typesel">
-          <span class="ty on" id="ty-inf" data-type="inf">Infantry<small id="ty-inf-stat"></small></span>
-          <span class="ty" id="ty-arc" data-type="arc">Archers<small id="ty-arc-stat"></small></span>
-          <span class="ty" id="ty-kni" data-type="kni">Knights<small id="ty-kni-stat"></small></span>
+          <span class="ty on" id="ty-inf" data-type="inf">Infantry<small id="ty-inf-stat"></small><small class="beats">&rsaquo; Knights</small></span>
+          <span class="ty" id="ty-arc" data-type="arc">Archers<small id="ty-arc-stat"></small><small class="beats">&rsaquo; Infantry</small></span>
+          <span class="ty" id="ty-kni" data-type="kni">Knights<small id="ty-kni-stat"></small><small class="beats">&rsaquo; Archers</small></span>
         </div>
         <div class="trainctl" id="trainctl">
           <span class="step" id="t-minus">&minus;</span>
@@ -317,7 +318,8 @@
     <div class="body">
       <p>Each turn you collect <span class="k-gold">Gold</span> equal to your <span class="k-eco">Economy</span>, then take <b>one</b> action (or <b>Skip</b> to just bank the gold). The enemy AI does the same. First to knock the opponent's Base from 30 to 0 wins. <b>Attacks unlock on turn 4</b> and cost <span class="k-gold">3 gold</span> to launch.</p>
       <p><b class="k-eco">Economy</b> is the engine — more gold every turn, forever (you'll see farms appear as it grows). But a turn spent on economy is a turn not spent defending, so a pure economy player is exposed once attacks open up.</p>
-      <p><b class="k-mil">Military</b> is the only way to deal damage, capped at <b>15 troops</b>. Three types, each with attack/defense stats: <b>Infantry</b> (3g, 2/2 — balanced), <b>Archers</b> (3g, 3/1 — hit hard but fragile on defense), <b>Knights</b> (6g, 4/4 — elite, durable). When armies clash, the attacker's <i>attack</i> meets the defender's <i>defense</i>; <b>defenders have the edge</b>, and only overflow reaches the Base — so composition matters.</p>
+      <p><b class="k-mil">Military</b> is the only way to deal damage, capped at <b>15 troops</b>. Three types, each with attack/defense stats: <b>Infantry</b> (3g, 2/2 — balanced), <b>Archers</b> (3g, 3/1 — hit hard but fragile on defense), <b>Knights</b> (6g, 4/4 — elite, durable). When armies clash, the attacker's <i>attack</i> meets the defender's <i>defense</i>; <b>defenders have the edge</b>, and only overflow reaches the Base.</p>
+      <p><b>Counter triangle:</b> each unit gets <b>+50%</b> against the type it beats — <b>Infantry &rsaquo; Knights &rsaquo; Archers &rsaquo; Infantry</b>. Watch the enemy's army (you can see it on their field) and build the unit that counters their main force. The <b class="k-tech">AI reads your army too</b> and counters it — and it will rush you if you over-greed economy, so vary your play.</p>
       <p><b class="k-tech">Research</b> comes in two tracks you choose between: <b>+Attack</b> (adds attack to every troop) and <b>+Defense</b> (adds defense to every troop). Pour into Attack to crack a turtle, or Defense to harden against a rush.</p>
       <p><b class="k-gold">Boost Attack</b> is a one-time trump card (you and the AI each get one): for <b>12 gold</b> it gives <b>+40% attack</b> on your next 2 turns. Activating it uses your turn, so time it right — pop it, then attack into a defense you couldn't otherwise break. Pick a troop type and quantity, then press the <b>Train</b> button to commit (nothing trains until you do).</p>
       <p><b>The balance:</b> Economy beats a slow opponent, aggression beats greedy economy, and Research beats a big-but-primitive army. Mass <b>Archers</b> to break a turtle, or hold <b>Knights</b> to repel a rush. Set the <b class="k-tech">AI difficulty</b> up top — changing it starts a fresh duel.</p>
@@ -358,15 +360,24 @@ const TROOPS = {
 };
 const TYPES = ["inf", "arc", "kni"];
 
+// Counter triangle: each type beats one other (and gets a bonus against it in
+// combat), so no single unit dominates and composition becomes a live read.
+//   Infantry (pikes) beat Knights, Knights (charge) beat Archers, Archers (volleys) beat Infantry.
+const BEATS = { inf: "kni", kni: "arc", arc: "inf" };  // X beats BEATS[X]
+const COUNTER_OF = { kni: "inf", arc: "kni", inf: "arc" }; // unit that beats the key
+const COUNTER_BONUS = 0.30;                              // +30% when you attack the type you counter
+
 // All difficulties play the SAME baseline strategy; difficulty only changes how
 // often the AI blunders (mistake) and whether it defends a threat (defend). This
 // keeps the gradient monotonic: hard = the baseline played cleanly, easy = the
 // same plan frequently fumbled. No resource cheating.
-const AI_BASE = { edge: 1.30, minEdge: 1.05, minDiff: 2, techCap: 4, techBias: 0.55, smartComp: true };
+// "smart" = how reliably the AI makes the clever adaptive play (counter the
+// player's army, punish a greedy opening). Higher difficulty reads you better.
+const AI_BASE = { edge: 1.30, minEdge: 1.05, minDiff: 2, techCap: 4, techBias: 0.55 };
 const AI_PARAMS = {
-  easy:   { ...AI_BASE, mistake: 0.60, defend: 0.25 },
-  normal: { ...AI_BASE, mistake: 0.25, defend: 0.75 },
-  hard:   { ...AI_BASE, mistake: 0.00, defend: 1.00 },
+  easy:   { ...AI_BASE, mistake: 0.65, defend: 0.25, smart: 0.20 },
+  normal: { ...AI_BASE, mistake: 0.30, defend: 0.65, smart: 0.50 },
+  hard:   { ...AI_BASE, mistake: 0.08, defend: 0.90, smart: 0.75 },
 };
 
 function newPlayer() {
@@ -386,6 +397,31 @@ function boostLeft(p) {
 }
 function atkPower(p) { let s = 0; for (const t of TYPES) s += p.units[t] * (TROOPS[t].atk + p.atkTech); return boostActive(p) ? Math.floor(s * CFG.boostMult) : s; }
 function defPower(p) { let s = 0; for (const t of TYPES) s += p.units[t] * (TROOPS[t].def + p.defTech); return s; }
+
+// The army's biggest single type — its "main force" the opponent reads to counter.
+function dominantType(p) {
+  let best = null, bestN = 0;
+  for (const t of TYPES) if (p.units[t] > bestN) { bestN = p.units[t]; best = t; }
+  return best;
+}
+// Matchup-aware power: units that counter the enemy's main force fight at +bonus.
+function atkVs(att, def) {
+  const dMain = dominantType(def);
+  let s = 0;
+  for (const t of TYPES) {
+    let p = att.units[t] * (TROOPS[t].atk + att.atkTech);
+    if (dMain && BEATS[t] === dMain) p *= (1 + COUNTER_BONUS);
+    s += p;
+  }
+  if (boostActive(att)) s *= CFG.boostMult;
+  return Math.round(s);
+}
+// Counters are an OFFENSIVE tool only: the attacker who brings the unit that
+// beats the enemy's main force hits harder. Defense is raw — so it favours the
+// player who proactively picks the right attack, not the one who reacts last.
+function defVs(def, att) {
+  return defPower(def);
+}
 function clearArmy(p) { p.units = { inf: 0, arc: 0, kni: 0 }; }
 function reduceArmy(p, keep) { for (const t of TYPES) p.units[t] = Math.max(0, Math.round(p.units[t] * keep)); }
 function maxTrainable(p, type) { return Math.min(Math.floor(p.gold / TROOPS[type].cost), CFG.armyCap - totalTroops(p)); }
@@ -652,15 +688,25 @@ function render() {
 }
 
 // ---- Combat ----
-// Attacker's ATTACK power clashes with defender's DEFENSE power; overflow hits the Base.
+// Attacker's ATTACK clashes with defender's DEFENSE (both matchup-adjusted by the
+// counter triangle); overflow hits the Base.
+function counterNote(actor, opp, verb) {
+  const oppMain = dominantType(opp);
+  if (!oppMain) return "";
+  const cType = COUNTER_OF[oppMain];        // unit that counters their main force
+  if (actor.units[cType] > 0) return " <i>(" + TROOPS[cType].name + " " + verb + " their " + TROOPS[oppMain].name + ", +" + Math.round(COUNTER_BONUS * 100) + "%)</i>";
+  return "";
+}
 function resolveAttack(att, def, attName, defName) {
-  const aStr = atkPower(att);
+  const aStr = atkVs(att, def);
   if (aStr === 0) { log(attName + " has no army to attack with.", "battle"); return; }
-  const dStr = defPower(def);
+  const dStr = defVs(def, att);
+  const aNote = counterNote(att, def, "counter");
+  const dNote = counterNote(def, att, "hold off");
 
   if (dStr === 0) {
     def.hp -= aStr;
-    log(attName + " strikes an undefended Base for <b>" + aStr + "</b> damage!", "battle");
+    log(attName + " strikes an undefended Base for <b>" + aStr + "</b> damage!" + aNote, "battle");
     return;
   }
 
@@ -670,12 +716,12 @@ function resolveAttack(att, def, attName, defName) {
     reduceArmy(att, (aStr - dStr) / aStr); // attacker keeps the overflow fraction
     def.hp -= overflow;
     log(attName + " (atk " + aStr + ") overruns " + defName + "'s defense (def " + dStr +
-        "), wipes the defenders and hits the Base for <b>" + overflow + "</b>.", "battle");
+        "), wipes the defenders and hits the Base for <b>" + overflow + "</b>." + aNote, "battle");
   } else {
     reduceArmy(def, (dStr - aStr) / dStr); // defender takes proportional losses
     clearArmy(att);                        // attacking army destroyed
     log(defName + "'s defense (def " + dStr + ") holds against " + attName + " (atk " + aStr +
-        "). The attackers are destroyed; the Base is unharmed.", "battle");
+        "). The attackers are destroyed; the Base is unharmed." + dNote, "battle");
   }
 }
 
@@ -783,17 +829,24 @@ function doSkip() {
 }
 
 // ---- AI ----
-// Trains a batch toward a goal ("def" = durable defenders, "off" = attack power).
+// Trains a batch. A smart AI builds the unit that COUNTERS the player's main
+// force; otherwise it falls back to role-based picks (def = durable, off = attack).
 function aiTrain(me, mode, D) {
   const capLeft = CFG.armyCap - totalTroops(me);
   if (capLeft <= 0 || me.gold < TROOPS.inf.cost) return null;
+  const foe = me === enemy ? you : enemy;
+  const foeMain = dominantType(foe);
   let type;
-  if (mode === "def") {
-    type = (D.smartComp && me.gold >= TROOPS.kni.cost && Math.random() < 0.6) ? "kni" : "inf";
+  if (Math.random() < D.smart && foeMain && totalTroops(foe) >= 2) {
+    type = COUNTER_OF[foeMain];                              // counter their main force
+    if (me.gold < TROOPS[type].cost) type = "inf";           // can't afford the counter -> cheap filler
+  } else if (mode === "def") {
+    type = (me.gold >= TROOPS.kni.cost && Math.random() < 0.6) ? "kni" : "inf";
   } else {
-    if (D.smartComp && me.gold >= TROOPS.kni.cost && Math.random() < 0.4) type = "kni";
+    if (me.gold >= TROOPS.kni.cost && Math.random() < 0.4) type = "kni";
     else type = Math.random() < 0.5 ? "arc" : "inf";
   }
+  if (me.gold < TROOPS[type].cost) type = "inf";
   const each = TROOPS[type].cost;
   let n = Math.min(Math.floor(me.gold / each), capLeft);
   if (turnNo <= 2) n = Math.min(n, 3);
@@ -807,9 +860,13 @@ function aiTurn() {
   if (busy === false) return; // safety
   const me = enemy, foe = you;
   const D = AI_PARAMS[difficulty];
-  const myAtk = atkPower(me), foeDef = defPower(foe);
-  const foeAtk = atkPower(foe), myDef = defPower(me);
+  // matchup-aware: each value already accounts for the counter triangle
+  const myAtk = atkVs(me, foe), foeDef = defVs(foe, me);
+  const foeAtk = atkVs(foe, me), myDef = defVs(me, foe);
   const myTotal = totalTroops(me), foeTotal = totalTroops(foe);
+  // read the player's posture to adapt
+  const foeGreedy = foeTotal === 0 && foe.eco >= me.eco && turnNo >= 2;       // hoarding economy, no army
+  const nearUnlock = turnNo >= CFG.attackUnlockTurn - 2;
   const ecoCost = CFG.ecoCost(me.eco);
   const atkResCost = CFG.techCost(me.atkTech);
   const defResCost = CFG.techCost(me.defTech);
@@ -853,18 +910,24 @@ function aiTurn() {
     const behindOnDef = foeTotal > 0 && foeAtk > myDef;         // opponent could overflow my defense
 
     if (safe) {
+      // while no one can attack: ramp economy — but if the player is skipping an
+      // army entirely, raise a strike force to punish their open base at unlock.
       const wantEco = me.eco < 5;
-      if (wantEco && me.gold >= ecoCost) decision = "eco";
+      if (foeGreedy && nearUnlock && !atCap && me.gold >= TROOPS.inf.cost && Math.random() < D.smart) decision = "train_off";
+      else if (wantEco && me.gold >= ecoCost) decision = "eco";
       else if (wantEco) decision = "save";
       else if (!atCap && me.gold >= TROOPS.inf.cost) decision = "train_off";
       else decision = me.gold >= ecoCost ? "eco" : "save";
     } else if (behindOnDef && Math.random() < D.defend) {
-      // pressured: research DEFENSE (multiplies whole-army def), or mass defenders
-      if (canTechDef && Math.random() < 0.5) decision = "tech_def";
+      // pressured: research DEFENSE (multiplies whole-army def), or mass counter-units
+      if (canTechDef && Math.random() < 0.45) decision = "tech_def";
       else if (!atCap && me.gold >= TROOPS.inf.cost) decision = "train_def";
       else if (canTechDef) decision = "tech_def";
       else if (me.gold >= ecoCost && me.eco < 7) decision = "eco";
       else decision = "save";
+    } else if (foeGreedy && !atCap && me.gold >= TROOPS.inf.cost && Math.random() < D.smart) {
+      // player is turtling economy with no defense — build up and go punish it
+      decision = "train_off";
     } else {
       // comfortable: grow economy to a ceiling, then a researched standing army
       const wantEco = me.eco < 5 && me.gold >= ecoCost;
