@@ -1,66 +1,69 @@
-# REROUTE
+# CSS WAYFARER — Cargo Command
 
-*A spaceship game about routing power under fire.*
+*A bridge-officer dashboard sim. Command a deep-space cargo hauler under raider
+attack: route power, fight fires, and keep crew, passengers and cargo alive.*
 
-> Eight cells. Four systems. Never enough.
+You don't fly the ship — you **command** it. The entire game is the information
+and the triage: a live HTML/CSS command dashboard driven by a simulation tick.
 
-## The hook
+## The core tension
 
-Most spaceship games keep mining, combat, and upgrading in separate menus.
-REROUTE ties them together with one live decision: your **reactor has a fixed
-number of power cells**, shared across four systems. You can only make one
-thing strong by starving another — and you redistribute *during* the fight.
+The reactor can't power everything. Every cell you give to shields is a cell
+you take from life support — and:
 
-- **Shields** — bigger bubble, faster regen.
-- **Weapons** — faster fire, more damage. At zero cells your guns are offline.
-- **Engines** — thrust and top speed.
-- **Mining** — the salvage laser's range and yield.
+- **Shields up, life support down** → the hull holds but crew suffocate.
+- **Life support up, shields down** → everyone breathes but the hull caves in.
+- **Ignore the cargo bays** → fires and breaches destroy your payload and you
+  fail the contract even if the ship survives.
 
-Want to mine that glowing asteroid? Pour cells into mining — and accept that
-your shields and guns just went soft while raiders close in. Incoming missile?
-Dump engines into shields *now*. That constant triage is the game.
+So you constantly re-balance the reactor, dispatch repair teams, and spend
+emergency actions while raiders keep coming.
 
 ## Play
 
 Open `index.html` in any modern browser. No build step, no dependencies.
+Click **ASSUME COMMAND**.
 
-| Input | Action |
-|---|---|
-| `W` `A` `S` `D` / arrows | Thrust |
-| Mouse | Aim |
-| Click (hold) | Fire |
-| `1` `2` `3` `4` | Add a power cell to a system |
-| `Shift` + `1`–`4` | Pull a cell back |
-| `Tab` | Dry dock — spend salvage on upgrades (pauses) |
+- **Power management (right panel):** use `+ / −` on each system
+  (Reactor, Shields, Engines, Weapons, Sensors, Life Support, Cargo Bay).
+  Watch **Power Reserve** — go negative and you brown out, weakening everything.
+- **Ship schematic (center):** click any compartment to dispatch a repair team.
+  Rooms show status (normal/damaged/critical), fire, breach, and crew.
+- **Emergency Actions:** Prioritize Shields, Emergency Power, Damage Control
+  (suppress fires & seal breaches), Evacuate Passengers. Each has a cooldown.
+- **Top bar:** pause `❚❚` and fast-forward `▶▶`.
 
-Mining fires automatically when a powered laser has an asteroid in range.
-Green asteroids are rich (more minerals). The threat level climbs over time;
-survive, bank resources, and upgrade between fights.
+### Win / lose
 
-## Two currencies, two upgrade trees
+- **Survive the raid** (~210s) with cargo integrity above **30%** → win.
+- **Lose** if hull hits 0%, cargo integrity falls below 30%, or all crew die.
 
-The two halves of the loop pay out in different resources, so you can't tunnel
-one and ignore the other:
+A passive player loses to a cargo-bay fire; an active commander pulls through.
 
-- **Minerals ◇** (from mining) fund **building, moving, harvesting**: Hull
-  Plating, Engine Tuning, Mining Optics.
-- **Scrap ◆** (from kills) funds **fighting**: Weapon Calibration, Shield
-  Emitters.
-- **Reactor Capacity** — the meta-pivot that eases the power triage — costs
-  *both*, so growing your ship means engaging combat *and* mining.
+## What each system actually does
+
+| System | Effect | Neglect it and… |
+|---|---|---|
+| Reactor | Total power budget (overclock = heat) | Everything browns out |
+| Shields | Absorb incoming volleys | Hits leak into rooms, start fires |
+| Engines | Evade volleys | More hits land |
+| Weapons | Destroy raiders | The raid never thins out |
+| Sensors | Point defense | Missiles hit harder |
+| Life Support | Keeps crew/passengers alive | Casualties, panic, deaths |
+| Cargo Bay | Cargo environmental control | Cargo integrity decays |
 
 ## Project layout
 
 | File | Purpose |
 |---|---|
-| `index.html` | Markup + title/dock/game-over overlays |
-| `style.css` | HUD and overlay styling |
-| `game.js` | Whole game: loop, physics, combat, mining, upgrades, render |
+| `index.html` | Dashboard markup (all panels) + title/result overlays |
+| `style.css` | Sci-fi command-deck theme, segmented bars, grid layout |
+| `game.js` | State, UI builders, simulation tick, interactions, external-cam canvas |
 
-## Where it could go next
+## Not yet built (deliberately)
 
-- A second currency split (raw minerals vs. combat scrap) so each loop funds
-  different upgrade trees.
-- Power *presets* you can snap to with a key (combat / mining / flee).
-- Persistent wrecks: leave a defeated enemy's hull to salvage for its modules.
-- Bosses that force a specific routing puzzle to beat.
+- Rendered ship-combat animation. The external cam is lightweight ambiance
+  (drifting stars, laser bolts, a hull silhouette) — full battle rendering is a
+  later/optional step.
+- Multi-leg campaign, sector navigation map, and the trade/economy meta-layer
+  seen in the wider concept art.
