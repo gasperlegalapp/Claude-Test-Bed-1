@@ -210,6 +210,36 @@
     background: linear-gradient(90deg, var(--you), var(--tech)); color: #fff; letter-spacing: 1px;
   }
 
+  /* cinematic battle pop-up */
+  .battle-overlay {
+    position: fixed; inset: 0; background: #07090fcc; display: none;
+    align-items: center; justify-content: center; z-index: 60; cursor: pointer;
+  }
+  .battle-overlay.show { display: flex; animation: fadeIn .15s ease; }
+  .battle-box {
+    width: min(94vw, 560px); background: var(--panel-solid); border: 1px solid var(--line);
+    border-radius: 16px; padding: 16px 16px 12px; text-align: center; box-shadow: 0 18px 60px #000b;
+  }
+  .battle-title { font-size: 21px; font-weight: 800; letter-spacing: 1px; color: var(--text); min-height: 26px; }
+  .battle-title.win { color: var(--eco); }
+  .battle-title.lose { color: var(--enemy); }
+  .battle-stage { margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #86c9f2; }
+  .battle-stage svg { display: block; width: 100%; }
+  .battle-sub { margin-top: 9px; font-size: 14px; font-weight: 700; color: var(--muted); min-height: 18px; letter-spacing: .5px; }
+  .battle-hint { margin-top: 4px; font-size: 11px; color: var(--muted); opacity: .65; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .battle-stage .charge-att { animation: chargeRight .8s cubic-bezier(.5,0,.9,.6) both; }
+  .battle-stage .charge-def { animation: braceLeft .8s ease-out both; }
+  .battle-stage .bfall { animation: battleFall .6s ease-in both; }
+  .battle-stage .bspark { opacity: 0; animation: sparkPop .55s ease-out .76s; }
+  .battle-stage .bkeep.hit { animation: keepShake .45s ease-in-out .82s; }
+  @keyframes chargeRight { 0% { transform: translateX(0); } 70% { transform: translateX(80px); } 100% { transform: translateX(70px); } }
+  @keyframes braceLeft { 0% { transform: translateX(0); } 70% { transform: translateX(-16px); } 100% { transform: translateX(-11px); } }
+  @keyframes battleFall { 0% { transform: rotate(0) translateY(0); opacity: 1; } 100% { transform: rotate(74deg) translateY(7px); opacity: 0; } }
+  @keyframes sparkPop { 0% { opacity: 0; transform: scale(.3); } 35% { opacity: .95; } 100% { opacity: 0; transform: scale(1.5); } }
+  @keyframes keepShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+
   .help { margin-top: 18px; }
   .help summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .help .body { font-size: 13px; color: var(--muted); line-height: 1.6; margin-top: 10px; }
@@ -327,6 +357,15 @@
       <p><b>The balance:</b> Economy beats a slow opponent, aggression beats greedy economy, and Research beats a big-but-primitive army. Mass <b>Archers</b> to break a turtle, or hold <b>Knights</b> to repel a rush. Set the <b class="k-tech">AI difficulty</b> up top — changing it starts a fresh duel.</p>
     </div>
   </details>
+</div>
+
+<div class="battle-overlay" id="battle-overlay">
+  <div class="battle-box">
+    <div class="battle-title" id="battle-title"></div>
+    <div class="battle-stage" id="battle-stage"></div>
+    <div class="battle-sub" id="battle-sub"></div>
+    <div class="battle-hint">click to skip</div>
+  </div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -480,13 +519,9 @@ function drawScene(key, p) {
 
 // One soldier, drawn standing with feet at the origin; glyph varies by type.
 // Attack research (aT) shows on weapons; defense research (dT) shows as armour.
-function troopGlyph(type, x, yFeet, s, isNew, main, dark, aT, dT) {
-  // Outer group positions the troop via the transform ATTRIBUTE; the inner group
-  // carries the rise/pop animation. Keeping them separate stops the CSS keyframe's
-  // transform from overriding the troop's battlefield position (which made fresh
-  // troops jump to the origin and vanish).
-  let g = '<g transform="translate(' + x.toFixed(1) + ',' + yFeet.toFixed(1) + ') scale(' + s.toFixed(2) + ')">';
-  g += '<g class="trp' + (isNew ? " new" : "") + '">';
+// The soldier shapes themselves, drawn with feet at the local origin (0,0).
+function troopBody(type, main, dark, aT, dT) {
+  let g = "";
   if (type === "arc") {                                   // archer: bow + arrow
     g += '<path d="M-6 -16 Q-11 -9 -6 -2" fill="none" stroke="#9a6a33" stroke-width="1.3"/>';
     g += '<line x1="-6" y1="-16" x2="-6" y2="-2" stroke="#cbd5e1" stroke-width="0.5"/>';
@@ -511,8 +546,16 @@ function troopGlyph(type, x, yFeet, s, isNew, main, dark, aT, dT) {
   } else if (aT >= 1 || dT >= 1) {                        // helmet once either research starts
     g += '<path d="M-3.4 -18 A3.4 3.4 0 0 1 3.4 -18 Z" fill="' + dark + '"/>';
   }
-  g += "</g></g>";
   return g;
+}
+
+// Outer group positions the troop via the transform ATTRIBUTE; the inner group
+// carries the rise/pop animation. Keeping them separate stops the CSS keyframe's
+// transform from overriding the troop's battlefield position (which made fresh
+// troops jump to the origin and vanish).
+function troopGlyph(type, x, yFeet, s, isNew, main, dark, aT, dT) {
+  return '<g transform="translate(' + x.toFixed(1) + ',' + yFeet.toFixed(1) + ') scale(' + s.toFixed(2) + ')">'
+    + '<g class="trp' + (isNew ? " new" : "") + '">' + troopBody(type, main, dark, aT, dT) + "</g></g>";
 }
 
 // A sunny daytime backdrop — drawn behind everything and not mirrored, so the sun
@@ -796,7 +839,7 @@ function counterNote(actor, opp, verb) {
 }
 function resolveAttack(att, def, attName, defName) {
   const aStr = atkVs(att, def);
-  if (aStr === 0) { log(attName + " has no army to attack with.", "battle"); return; }
+  if (aStr === 0) { log(attName + " has no army to attack with.", "battle"); return { outcome: "noArmy", attName, defName }; }
   const dStr = defVs(def, att);
   const aNote = counterNote(att, def, "counter");
   const dNote = counterNote(def, att, "hold off");
@@ -804,7 +847,7 @@ function resolveAttack(att, def, attName, defName) {
   if (dStr === 0) {
     def.hp -= aStr;
     log(attName + " strikes an undefended Base for <b>" + aStr + "</b> damage!" + aNote, "battle");
-    return;
+    return { outcome: "undefended", aStr, dStr: 0, dmg: aStr, attName, defName };
   }
 
   if (aStr > dStr) {
@@ -814,12 +857,119 @@ function resolveAttack(att, def, attName, defName) {
     def.hp -= overflow;
     log(attName + " (atk " + aStr + ") overruns " + defName + "'s defense (def " + dStr +
         "), wipes the defenders and hits the Base for <b>" + overflow + "</b>." + aNote, "battle");
+    return { outcome: "wipeDef", aStr, dStr, dmg: overflow, attName, defName };
   } else {
     reduceArmy(def, (dStr - aStr) / dStr); // defender takes proportional losses
     clearArmy(att);                        // attacking army destroyed
     log(defName + "'s defense (def " + dStr + ") holds against " + attName + " (atk " + aStr +
         "). The attackers are destroyed; the Base is unharmed." + dNote, "battle");
+    return { outcome: "holdDef", aStr, dStr, dmg: 0, attName, defName };
   }
+}
+
+// ---- Cinematic battle pop-up ----
+// Snapshot the two armies (pre-resolution), resolve, then play the clash modal.
+let battleFX = true;
+function performAttack(att, def, attName, defName, onDone) {
+  const snap = {
+    att: { side: att === you ? "you" : "enemy", units: { ...att.units }, atkTech: att.atkTech, defTech: att.defTech },
+    def: { side: def === you ? "you" : "enemy", units: { ...def.units }, atkTech: def.atkTech, defTech: def.defTech },
+  };
+  const res = resolveAttack(att, def, attName, defName);
+  render();
+  if (!battleFX || !res || res.outcome === "noArmy") { onDone(); return; }
+  playBattle(snap, res, onDone);
+}
+
+function lineUpBattle(snap, dir, startX, endX, role, falls) {
+  const col = snap.side === "you" ? "#3aa6ff" : "#ff5d5d";
+  const dark = snap.side === "you" ? "#1f5c96" : "#9e2b2b";
+  const flat = [];
+  for (const ty of TYPES) for (let i = 0; i < snap.units[ty]; i++) flat.push(ty);
+  const n = Math.min(flat.length, 10);
+  if (n === 0) return "";
+  const gap = n > 1 ? (endX - startX) / (n - 1) : 0;
+  const chargeCls = role === "att" ? "charge-att" : "charge-def";
+  let g = "";
+  for (let i = 0; i < n; i++) {
+    const x = startX + i * gap;
+    const sc = (flat[i] === "kni" ? 1.18 : 1.05) * dir;   // dir -1 mirrors defenders to face left
+    const inner = '<g transform="translate(' + x.toFixed(1) + ',96) scale(' + sc.toFixed(2) + ',' + Math.abs(sc).toFixed(2) + ')">'
+      + (falls ? '<g class="bfall" style="animation-delay:' + (0.9 + i * 0.03).toFixed(2) + 's">' : '<g>')
+      + troopBody(flat[i], col, dark, snap.atkTech, snap.defTech) + '</g></g>';
+    g += '<g class="' + chargeCls + '">' + inner + '</g>';
+  }
+  return g;
+}
+
+function miniCastle(cx, side, hit) {
+  const dark = side === "you" ? "#1f5c96" : "#9e2b2b";
+  const lite = side === "you" ? "#7fc4ff" : "#ff9a9a";
+  const w = 48, h = 46, x = cx - w / 2, top = 96 - h, gid = "bkeep-" + side;
+  let c = '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + lite + '"/><stop offset="1" stop-color="' + dark + '"/></linearGradient></defs>';
+  c += '<g class="bkeep' + (hit ? " hit" : "") + '">';
+  c += '<rect x="' + (x - 6) + '" y="' + (top - 8) + '" width="12" height="' + (h + 8) + '" fill="url(#' + gid + ')" stroke="' + dark + '" stroke-width="1"/>';
+  c += '<rect x="' + (x + w - 6) + '" y="' + (top - 8) + '" width="12" height="' + (h + 8) + '" fill="url(#' + gid + ')" stroke="' + dark + '" stroke-width="1"/>';
+  c += '<rect x="' + x + '" y="' + top + '" width="' + w + '" height="' + h + '" fill="url(#' + gid + ')" stroke="' + dark + '" stroke-width="1"/>';
+  for (let bx = x - 6; bx + 5 <= x + w + 6; bx += 10) c += '<rect x="' + bx + '" y="' + (top - 13) + '" width="5" height="6" fill="' + dark + '"/>';
+  c += '<path d="M' + (cx - 9) + ' 96 L' + (cx - 9) + ' ' + (top + 16) + ' Q' + cx + ' ' + (top + 6) + ' ' + (cx + 9) + ' ' + (top + 16) + ' L' + (cx + 9) + ' 96 Z" fill="#0a0f1a" stroke="' + dark + '" stroke-width="0.8"/>';
+  c += '</g>';
+  return c;
+}
+
+function battleStageSVG(snap, res) {
+  const attWins = res.outcome === "wipeDef" || res.outcome === "undefended";
+  let s = '<svg viewBox="0 0 320 150" preserveAspectRatio="xMidYMid meet">';
+  s += '<defs><linearGradient id="bsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#86c9f2"/><stop offset="1" stop-color="#cdeafb"/></linearGradient></defs>';
+  s += '<rect x="0" y="0" width="320" height="150" fill="url(#bsky)"/>';
+  s += '<circle cx="44" cy="22" r="17" fill="#fff1a2" opacity="0.85"/>';
+  s += '<g fill="#fff" opacity="0.9"><ellipse cx="140" cy="24" rx="16" ry="6"/><ellipse cx="128" cy="27" rx="10" ry="5"/></g>';
+  s += '<g fill="#fff" opacity="0.8"><ellipse cx="238" cy="36" rx="13" ry="5"/><ellipse cx="228" cy="38" rx="8" ry="4"/></g>';
+  s += '<rect x="0" y="96" width="320" height="54" fill="#6fb24f"/>';
+  s += '<path d="M0 98 Q90 88 180 96 T320 94 L320 108 L0 108 Z" fill="#5aa043" opacity="0.6"/>';
+  s += miniCastle(286, snap.def.side, attWins);
+  // defenders hold in front of their castle (face left); attackers charge in from the left
+  s += lineUpBattle(snap.def, -1, 250, 205, "def", attWins);
+  s += lineUpBattle(snap.att, 1, 22, 110, "att", !attWins);
+  // clash spark at center
+  s += '<g transform="translate(168,80)"><g class="bspark"><circle r="15" fill="#fff2a8"/><circle r="8" fill="#ffffff"/></g></g>';
+  s += "</svg>";
+  return s;
+}
+
+function battleResultText(res) {
+  if (res.outcome === "holdDef") return { t: res.defName + " hold the line!", good: res.defName === "You" };
+  if (res.outcome === "undefended") return { t: res.attName + " hit an open Base!  −" + res.dmg, good: res.attName === "You" };
+  return { t: res.attName + " break through!  −" + res.dmg, good: res.attName === "You" };
+}
+
+function playBattle(snap, res, onDone) {
+  const ov = document.getElementById("battle-overlay");
+  document.getElementById("battle-stage").innerHTML = battleStageSVG(snap, res);
+  const title = document.getElementById("battle-title");
+  const sub = document.getElementById("battle-sub");
+  title.textContent = res.attName + " assault!";
+  title.className = "battle-title";
+  sub.textContent = res.outcome === "undefended"
+    ? "atk " + res.aStr + "  ·  undefended"
+    : "atk " + res.aStr + "   vs   def " + res.dStr;
+  ov.classList.add("show");
+
+  const rt = battleResultText(res);
+  let ended = false;
+  const reveal = () => { title.textContent = rt.t; title.className = "battle-title " + (rt.good ? "win" : "lose"); };
+  const t1 = setTimeout(reveal, 1150);
+  const finish = () => {
+    if (ended) return;
+    ended = true;
+    clearTimeout(t1); clearTimeout(t2);
+    reveal();
+    ov.classList.remove("show");
+    ov.onclick = null;
+    onDone();
+  };
+  const t2 = setTimeout(finish, 2200);
+  ov.onclick = finish;                      // click to skip / speed up
 }
 
 // ---- Turn flow ----
@@ -909,11 +1059,12 @@ function doTrain() {
   log("trained <b>" + n + "</b> " + TROOPS[type].name + " (army " + totalTroops(you) + "/" + CFG.armyCap +
       ", atk " + atkPower(you) + " / def " + defPower(you) + ").", "you");
 }
-function doAttack() {
-  if (!canAttack(you)) return;
+function requestAttack() {
+  if (current !== "you" || busy || !canAttack(you)) return;
+  busy = true;                                   // lock input through the clash
   you.gold -= CFG.attackCost;
   log("orders the assault! (&minus;" + CFG.attackCost + "g)", "you");
-  resolveAttack(you, enemy, "You", "Enemy");
+  performAttack(you, enemy, "You", "Enemy", () => endTurn());
 }
 function doBoost() {
   if (you.boostUsed || you.gold < CFG.boostCost) return;
@@ -1053,10 +1204,10 @@ function aiTurn() {
   switch (decision) {
     case "attack":
       me.gold -= CFG.attackCost;
-      think = "Commits to an assault.";
       log("launches an assault! (&minus;" + CFG.attackCost + "g)", "enemy");
-      resolveAttack(me, foe, "Enemy", "You");
-      break;
+      document.getElementById("enemy-think").textContent = "Commits to an assault.";
+      performAttack(me, foe, "Enemy", "You", () => endTurn());
+      return;                                  // the battle animation drives render + endTurn
     case "boost":
       me.gold -= CFG.boostCost; me.boostUsed = true; me.boostStart = turnNo;
       think = "Rallies a battle boost!";
@@ -1106,7 +1257,7 @@ function aiTurn() {
 document.getElementById("btn-eco").addEventListener("click", () => playerAction(doEco));
 document.getElementById("btn-ratk").addEventListener("click", () => playerAction(doResearchAtk));
 document.getElementById("btn-rdef").addEventListener("click", () => playerAction(doResearchDef));
-document.getElementById("btn-attack").addEventListener("click", () => playerAction(doAttack));
+document.getElementById("btn-attack").addEventListener("click", requestAttack);
 document.getElementById("btn-boost").addEventListener("click", () => playerAction(doBoost));
 document.getElementById("btn-skip").addEventListener("click", () => playerAction(doSkip));
 // Train only commits via its dedicated button — clicking the setup tile does nothing.
