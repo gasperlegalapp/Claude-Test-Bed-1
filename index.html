@@ -128,6 +128,7 @@
   .act .atitle { font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
   .act .acost { font-size: 12px; color: var(--gold); font-weight: 700; white-space: nowrap; }
   .act .adesc { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
+  .usebadge { display: inline-block; margin-top: 2px; padding: 1px 6px; border-radius: 6px; background: #1b2233; border: 1px solid var(--line); color: var(--tech); font-weight: 700; font-size: 10px; white-space: nowrap; }
   .act.eco .atitle { color: var(--eco); }
   .act.atk .atitle { color: var(--ratk); }
   .act.def .atitle { color: var(--rdef); }
@@ -309,11 +310,11 @@
       </button>
       <button class="act atk" id="btn-ratk">
         <div class="atitle"><span>Research: Attack</span><span class="acost" id="cost-ratk"></span></div>
-        <div class="adesc">+1 attack to <i>every</i> troop you own.</div>
+        <div class="adesc">+1 attack to <i>every</i> troop you own. <span class="usebadge" id="ratk-used"></span></div>
       </button>
       <button class="act def" id="btn-rdef">
         <div class="atitle"><span>Research: Defense</span><span class="acost" id="cost-rdef"></span></div>
-        <div class="adesc">+1 defense to <i>every</i> troop you own.</div>
+        <div class="adesc">+1 defense to <i>every</i> troop you own. <span class="usebadge" id="rdef-used"></span></div>
       </button>
       <div class="act mil train-tile">
         <div class="atitle"><span>Train Troops</span><span class="acost" id="t-cost"></span></div>
@@ -355,10 +356,10 @@
     <div class="body">
       <p>Each turn you collect <span class="k-gold">Gold</span> equal to your <span class="k-eco">Economy</span>, then take <b>one</b> action (or <b>Skip</b> to just bank the gold). The enemy does the same. First to knock the opponent's Base from 30 to 0 wins. <b>Attacks unlock on turn 4</b> and cost <span class="k-gold">3 gold</span> to launch.</p>
       <p><b>Modes</b> (top of the screen): <b>vs AI</b> plays against the computer at your chosen difficulty, or <b>2 Players</b> is local hotseat — two people share one device and the shared controls drive whoever's turn it is. Between turns a "your turn" screen lets you pass the device. Switching mode starts a fresh duel.</p>
-      <p><b class="k-eco">Economy</b> is the engine — more gold every turn, forever (you'll see farms appear as it grows). But a turn spent on economy is a turn not spent defending, so a pure economy player is exposed once attacks open up.</p>
+      <p><b class="k-eco">Economy</b> is the engine — more gold every turn (you'll see farms appear as it grows), up to a maximum of <b>+15/turn</b>. But a turn spent on economy is a turn not spent defending, so a pure economy player is exposed once attacks open up.</p>
       <p><b class="k-mil">Military</b> is the only way to deal damage, capped at <b>15 troops</b>. Three types, each with attack/defense stats: <b>Infantry</b> (3g, 2/2 — balanced), <b>Archers</b> (3g, 3/1 — hit hard but fragile on defense), <b>Knights</b> (6g, 4/4 — elite, durable). When armies clash, the attacker's <i>attack</i> meets the defender's <i>defense</i>; <b>defenders have the edge</b>, and only overflow reaches the Base.</p>
       <p><b>Counter triangle:</b> each unit deals <b>+30% attack</b> when it <i>attacks</i> the type it beats — <b>Infantry &rsaquo; Knights &rsaquo; Archers &rsaquo; Infantry</b> (defense is raw, so counters reward picking the right attacker, not reacting last). Watch the enemy's army on their field and bring the unit that counters their main force. The <b class="k-tech">AI reads your army too</b> and counters it — and it will rush you if you over-greed economy, so vary your play.</p>
-      <p><b class="k-tech">Research</b> comes in two tracks you choose between: <b>+Attack</b> (adds attack to every troop) and <b>+Defense</b> (adds defense to every troop). Pour into Attack to crack a turtle, or Defense to harden against a rush.</p>
+      <p><b class="k-tech">Research</b> comes in two tracks you choose between: <b>+Attack</b> (adds attack to every troop) and <b>+Defense</b> (adds defense to every troop). You get <b>5 research points total</b> across both tracks (e.g. 4 attack + 1 defense) — spend them to crack a turtle or harden against a rush.</p>
       <p><b class="k-gold">Boost Attack</b> is a one-time trump card (you and the AI each get one): for <b>12 gold</b> it gives <b>+40% attack</b> on your next 2 turns. Activating it uses your turn, so time it right — pop it, then attack into a defense you couldn't otherwise break. Pick a troop type and quantity, then press the <b>Train</b> button to commit (nothing trains until you do).</p>
       <p><b>The balance:</b> Economy beats a slow opponent, aggression beats greedy economy, and Research beats a big-but-primitive army. Mass <b>Archers</b> to break a turtle, or hold <b>Knights</b> to repel a rush. Set the <b class="k-tech">AI difficulty</b> up top — changing it starts a fresh duel.</p>
     </div>
@@ -405,6 +406,8 @@ const CFG = {
   boostCost: 12,                       // gold to activate the one-time boost
   boostMult: 1.4,                      // +40% attack while boosted
   boostDuration: 2,                    // active for your next 2 turns
+  ecoCap: 15,                          // max economy / income per turn
+  techCap: 5,                          // max total research traits (attack + defense combined)
 };
 
 // Troop types: attackers and defenders use different stats, so composition matters.
@@ -814,9 +817,14 @@ function render() {
   const atkResCost = CFG.techCost(ap.atkTech);
   const defResCost = CFG.techCost(ap.defTech);
   const pct = Math.round((CFG.boostMult - 1) * 100);
-  document.getElementById("cost-eco").textContent = ecoCost + "g";
-  document.getElementById("cost-ratk").textContent = atkResCost + "g";
-  document.getElementById("cost-rdef").textContent = defResCost + "g";
+  const ecoMaxed = ap.eco >= CFG.ecoCap;
+  const techUsed = ap.atkTech + ap.defTech;
+  const techMaxed = techUsed >= CFG.techCap;
+  document.getElementById("cost-eco").textContent = ecoMaxed ? "MAXED" : ecoCost + "g";
+  document.getElementById("cost-ratk").textContent = techMaxed ? "MAXED" : atkResCost + "g";
+  document.getElementById("cost-rdef").textContent = techMaxed ? "MAXED" : defResCost + "g";
+  document.getElementById("ratk-used").textContent = techUsed + " of " + CFG.techCap + " used";
+  document.getElementById("rdef-used").textContent = techUsed + " of " + CFG.techCap + " used";
 
   // training: clamp the chosen quantity to what's affordable and under the cap
   const capLeft = CFG.armyCap - totalTroops(ap);
@@ -849,9 +857,9 @@ function render() {
     : "Send your army at the enemy (costs " + CFG.attackCost + "g). Defenders have the edge.";
 
   const myTurn = isHumanTurn() && !busy && you.hp > 0 && enemy.hp > 0;
-  document.getElementById("btn-eco").disabled = !myTurn || ap.gold < ecoCost;
-  document.getElementById("btn-ratk").disabled = !myTurn || ap.gold < atkResCost;
-  document.getElementById("btn-rdef").disabled = !myTurn || ap.gold < defResCost;
+  document.getElementById("btn-eco").disabled = !myTurn || ecoMaxed || ap.gold < ecoCost;
+  document.getElementById("btn-ratk").disabled = !myTurn || techMaxed || ap.gold < atkResCost;
+  document.getElementById("btn-rdef").disabled = !myTurn || techMaxed || ap.gold < defResCost;
   document.getElementById("btn-train").disabled = !myTurn || trainMax < 1;
   document.getElementById("btn-attack").disabled = !myTurn || !canAttack(ap);
   document.getElementById("btn-boost").disabled = !myTurn || ap.boostUsed || ap.gold < CFG.boostCost;
@@ -1010,24 +1018,15 @@ function playBattle(snap, res, onDone) {
 }
 
 // ---- Turn flow ----
-const SUDDEN_DEATH = 30;
 function startTurn(side) {
   const p = side === "you" ? you : enemy;
   p.gold += p.eco;
-}
-// Applied once per round to BOTH bases so long games resolve fairly.
-function applyUnrest() {
-  if (turnNo <= SUDDEN_DEATH) return;
-  const unrest = turnNo - SUDDEN_DEATH;
-  you.hp -= unrest;
-  enemy.hp -= unrest;
-  log("The war drags on — unrest deals <b>" + unrest + "</b> damage to <i>both</i> Bases.", "battle");
 }
 
 function endTurn() {
   if (checkEnd()) return;
   const next = current === "you" ? "enemy" : "you";
-  if (next === "you") { turnNo++; applyUnrest(); if (checkEnd()) return; }
+  if (next === "you") { turnNo++; if (checkEnd()) return; }
   current = next;
   startTurn(current);
   if (mode === "pvp") {
@@ -1090,19 +1089,19 @@ function playerAction(fn) {
 
 function doEco() {
   const p = actor(), c = CFG.ecoCost(p.eco);
-  if (p.gold < c) return;
+  if (p.gold < c || p.eco >= CFG.ecoCap) return;
   p.gold -= c; p.eco += 1;
   log("invested in <span class='k-eco'>Economy</span> &rarr; income now +" + p.eco + "/turn.", current);
 }
 function doResearchAtk() {
   const p = actor(), c = CFG.techCost(p.atkTech);
-  if (p.gold < c) return;
+  if (p.gold < c || p.atkTech + p.defTech >= CFG.techCap) return;
   p.gold -= c; p.atkTech += 1;
   log("researched <span class='k-tech'>Attack</span> &rarr; every troop now +" + p.atkTech + " attack.", current);
 }
 function doResearchDef() {
   const p = actor(), c = CFG.techCost(p.defTech);
-  if (p.gold < c) return;
+  if (p.gold < c || p.atkTech + p.defTech >= CFG.techCap) return;
   p.gold -= c; p.defTech += 1;
   log("researched <span class='k-tech'>Defense</span> &rarr; every troop now +" + p.defTech + " defense.", current);
 }
@@ -1210,8 +1209,9 @@ function aiTurn() {
   if (!decision) {
     const atCap = totalTroops(me) >= CFG.armyCap;
     const safe = turnNo < CFG.attackUnlockTurn;                 // turns 1-3: nobody can attack
-    const canTechDef = myTotal >= 2 && me.defTech < D.techCap && me.gold >= defResCost;
-    const canTechAtk = myTotal >= 2 && me.atkTech < D.techCap && me.gold >= atkResCost;
+    const techFull = me.atkTech + me.defTech >= CFG.techCap;
+    const canTechDef = myTotal >= 2 && me.defTech < D.techCap && !techFull && me.gold >= defResCost;
+    const canTechAtk = myTotal >= 2 && me.atkTech < D.techCap && !techFull && me.gold >= atkResCost;
     const balanceTech = me.atkTech <= me.defTech ? "tech_atk" : "tech_def"; // research the lagging track
     const behindOnDef = foeTotal > 0 && foeAtk > myDef;         // opponent could overflow my defense
 
@@ -1256,6 +1256,13 @@ function aiTurn() {
     opts.push("pass");
     decision = opts[Math.floor(Math.random() * opts.length)];
   }
+
+  // Hard caps: never pour a turn into a maxed track — redirect to army or banking.
+  const armyRoom = totalTroops(me) < CFG.armyCap;
+  if (decision === "eco" && me.eco >= CFG.ecoCap)
+    decision = (armyRoom && me.gold >= TROOPS.inf.cost) ? "train_off" : "save";
+  if ((decision === "tech_atk" || decision === "tech_def") && me.atkTech + me.defTech >= CFG.techCap)
+    decision = (armyRoom && me.gold >= TROOPS.inf.cost) ? "train_off" : "save";
 
   // execute
   let think = "";
