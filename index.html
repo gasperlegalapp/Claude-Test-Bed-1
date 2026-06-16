@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>REROUTE — power routing under fire</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Title screen -->
+  <div id="title" class="overlay">
+    <div class="panel">
+      <h1>REROUTE</h1>
+      <p class="tag">Eight cells. Four systems. Never enough.</p>
+      <div class="brief">
+        <p>Your reactor can't power everything at once. Drag power between
+        <b>shields</b>, <b>weapons</b>, <b>engines</b> and the <b>mining laser</b>
+        in the middle of a fight. Mine asteroids for salvage, blast raiders,
+        and reroute power to survive the next wave.</p>
+        <ul class="keys">
+          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> thrust</li>
+          <li><kbd>Mouse</kbd> aim &middot; <kbd>Click</kbd> fire</li>
+          <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> add power to a system</li>
+          <li><kbd>Shift</kbd>+<kbd>1-4</kbd> pull power back</li>
+          <li><kbd>Tab</kbd> dry dock (spend salvage on upgrades)</li>
+          <li>Mining laser fires automatically when an asteroid is in range</li>
+        </ul>
+      </div>
+      <button id="startBtn">Launch</button>
+    </div>
+  </div>
+
+  <!-- Dry dock (upgrades) -->
+  <div id="dock" class="overlay hidden">
+    <div class="panel">
+      <h2>DRY DOCK</h2>
+      <p class="tag">Salvage: <span id="dockSalvage">0</span></p>
+      <div id="upgradeList" class="upgrades"></div>
+      <button id="resumeBtn">Resume <kbd>Tab</kbd></button>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div id="dead" class="overlay hidden">
+    <div class="panel">
+      <h2>HULL BREACH</h2>
+      <p class="tag" id="deadStats"></p>
+      <button id="retryBtn">Re-engage</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
