@@ -34,13 +34,20 @@ Open `index.html` in any modern browser. No build step, no dependencies.
 | `Tab` | Dry dock — spend salvage on upgrades (pauses) |
 
 Mining fires automatically when a powered laser has an asteroid in range.
-Green asteroids are rich (more salvage). The threat level climbs over time;
-survive, bank salvage, and upgrade between fights.
+Green asteroids are rich (more minerals). The threat level climbs over time;
+survive, bank resources, and upgrade between fights.
 
-## Upgrades (dry dock)
+## Two currencies, two upgrade trees
 
-Reactor capacity, hull plating, weapon/shield/engine/mining efficiency. Reactor
-capacity is the meta-pivot: more cells means less brutal triage.
+The two halves of the loop pay out in different resources, so you can't tunnel
+one and ignore the other:
+
+- **Minerals ◇** (from mining) fund **building, moving, harvesting**: Hull
+  Plating, Engine Tuning, Mining Optics.
+- **Scrap ◆** (from kills) funds **fighting**: Weapon Calibration, Shield
+  Emitters.
+- **Reactor Capacity** — the meta-pivot that eases the power triage — costs
+  *both*, so growing your ship means engaging combat *and* mining.
 
 ## Project layout
 

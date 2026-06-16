@@ -17,8 +17,9 @@
       <div class="brief">
         <p>Your reactor can't power everything at once. Drag power between
         <b>shields</b>, <b>weapons</b>, <b>engines</b> and the <b>mining laser</b>
-        in the middle of a fight. Mine asteroids for salvage, blast raiders,
-        and reroute power to survive the next wave.</p>
+        in the middle of a fight. Mine asteroids for <b>minerals</b>, blast raiders
+        for <b>scrap</b>, and reroute power to survive the next wave. Minerals and
+        scrap fund different upgrade trees &mdash; you need both.</p>
         <ul class="keys">
           <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> thrust</li>
           <li><kbd>Mouse</kbd> aim &middot; <kbd>Click</kbd> fire</li>
@@ -36,7 +37,9 @@
   <div id="dock" class="overlay hidden">
     <div class="panel">
       <h2>DRY DOCK</h2>
-      <p class="tag">Salvage: <span id="dockSalvage">0</span></p>
+      <p class="tag"><span class="cMin">Minerals <span id="dockMinerals">0</span> &#9671;</span>
+        &nbsp;&middot;&nbsp;
+        <span class="cScr">Scrap <span id="dockScrap">0</span> &#9670;</span></p>
       <div id="upgradeList" class="upgrades"></div>
       <button id="resumeBtn">Resume <kbd>Tab</kbd></button>
     </div>

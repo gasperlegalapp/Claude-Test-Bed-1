@@ -139,3 +139,24 @@ button kbd { background: rgba(0,0,0,0.25); border-color: rgba(0,0,0,0.3); color:
   transform: none;
 }
 .upg.maxed button { background: #335c3a; color: #bfe9c6; }
+
+/* currency-tree tinting */
+.upg.minerals { border-left: 3px solid #5be0a0; }
+.upg.scrap { border-left: 3px solid #ffb86a; }
+.upg.both { border-left: 3px solid #9fd0ff; }
+
+.cur {
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 5px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+.cur.minerals { color: #061a12; background: #5be0a0; }
+.cur.scrap { color: #2a1404; background: #ffb86a; }
+.cur.both { color: #04101f; background: #9fd0ff; }
+
+.cMin { color: #5be0a0; }
+.cScr { color: #ffb86a; }

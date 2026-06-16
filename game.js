@@ -72,7 +72,7 @@
         hullMax: 100, hull: 100, shield: 0, fireCd: 0, hitFlash: 0, thrusting: false,
       },
       bullets: [], ebullets: [], enemies: [], asteroids: [], particles: [], floaters: [], stars: [],
-      salvage: 0, totalSalvage: 0, kills: 0, score: 0,
+      minerals: 0, scrap: 0, totalMinerals: 0, totalScrap: 0, kills: 0, score: 0,
       spawnTimer: 1.5, astTimer: 0, beamTarget: null, routeHintT: 6,
     };
   }
@@ -245,8 +245,8 @@
         }
         if (best.hp <= 0) {
           const yield_ = Math.round(best.r * (best.rich ? 1.6 : 0.8));
-          g.salvage += yield_; g.totalSalvage += yield_;
-          floater(g, best.x, best.y, '+' + yield_, best.rich ? '#9ff7c8' : '#cfe0ff');
+          g.minerals += yield_; g.totalMinerals += yield_;
+          floater(g, best.x, best.y, '+' + yield_ + '◇', best.rich ? '#9ff7c8' : '#cfe0ff');
           burst(g, best.x, best.y, best.rich ? '#9ff7c8' : '#aab6cc', 18, 130);
           g.asteroids.splice(g.asteroids.indexOf(best), 1);
         }
@@ -349,7 +349,7 @@
       if (f.life <= 0) { g.floaters.splice(i, 1); }
     }
 
-    g.score = Math.floor(g.t * 10 + g.totalSalvage * 2 + g.kills * 5);
+    g.score = Math.floor(g.t * 10 + (g.totalMinerals + g.totalScrap) * 2 + g.kills * 5);
     if (p.hull <= 0) { gameOver(); }
   }
 
@@ -372,8 +372,8 @@
     g.enemies.splice(index, 1);
     g.kills++;
     const reward = e.heavy ? 14 : 6;
-    g.salvage += reward; g.totalSalvage += reward;
-    floater(g, e.x, e.y, '+' + reward, '#ffd9a0');
+    g.scrap += reward; g.totalScrap += reward;
+    floater(g, e.x, e.y, '+' + reward + '◆', '#ffb86a');
     burst(g, e.x, e.y, e.heavy ? '#ffb86a' : '#ff8a6a', e.heavy ? 28 : 16, 180);
   }
 
@@ -533,17 +533,19 @@
     barLabeled(20, 22, 240, 'HULL', p.hull, p.hullMax, '#ff6a6a', '#3a1820');
     barLabeled(20, 46, 240, 'SHIELD', p.shield, Math.max(1, s.shieldMax), '#4fb0ff', '#13283f');
 
-    // top-right: salvage / threat / score
+    // top-right: minerals / scrap / score / threat
     ctx.textAlign = 'right';
-    ctx.font = 'bold 18px ui-monospace, monospace';
-    ctx.fillStyle = '#9ff7c8';
-    ctx.fillText('SALVAGE ' + g.salvage, W - 20, 30);
-    ctx.fillStyle = '#cfe0ff';
+    ctx.font = 'bold 17px ui-monospace, monospace';
+    ctx.fillStyle = '#5be0a0';
+    ctx.fillText('MINERALS ' + g.minerals + ' ◇', W - 20, 28);
+    ctx.fillStyle = '#ffb86a';
+    ctx.fillText('SCRAP ' + g.scrap + ' ◆', W - 20, 50);
     ctx.font = '13px ui-monospace, monospace';
-    ctx.fillText('SCORE ' + g.score, W - 20, 52);
+    ctx.fillStyle = '#cfe0ff';
+    ctx.fillText('SCORE ' + g.score, W - 20, 72);
     const threat = Math.floor(g.t / 30) + 1;
     ctx.fillStyle = '#ff9a9a';
-    ctx.fillText('THREAT ' + threat, W - 20, 72);
+    ctx.fillText('THREAT ' + threat, W - 20, 90);
     ctx.textAlign = 'left';
 
     // reactor panel bottom-left
@@ -611,61 +613,76 @@
   }
 
   // ---------------------------------------------------------------- upgrades / dock
+  // Each upgrade is funded by a currency tree. Minerals (mining) build/move/harvest;
+  // scrap (combat) makes you fight better; the reactor — the meta pivot — needs both,
+  // so you can't tunnel one loop and ignore the other.
   const UPGRADES = [
-    { id: 'reactor', name: 'Reactor Capacity', max: 4,
-      desc: 'Add a power cell to the reactor. More to route everywhere.',
-      cost: l => 60 + l * 70,
+    { id: 'reactor', name: 'Reactor Capacity', max: 4, cur: 'both',
+      desc: 'Add a power cell. Costs minerals AND scrap — both loops feed it.',
+      price: l => ({ m: 50 + l * 55, s: 40 + l * 45 }),
       apply: g => { g.reactor.capacity++; g.up.lvl.reactor++; } },
-    { id: 'hull', name: 'Hull Plating', max: 6,
-      desc: '+30 max hull, fully repaired on purchase.',
-      cost: l => 40 + l * 35,
-      apply: g => { g.player.hullMax += 30; g.player.hull = g.player.hullMax; g.up.lvl.hull++; } },
-    { id: 'weapon', name: 'Weapon Calibration', max: 6,
-      desc: '+25% weapon damage per cell routed to weapons.',
-      cost: l => 50 + l * 45,
-      apply: g => { g.up.dmg += 0.25; g.up.lvl.weapon++; } },
-    { id: 'shield', name: 'Shield Emitters', max: 6,
-      desc: '+25% shield strength and regen per cell.',
-      cost: l => 50 + l * 45,
-      apply: g => { g.up.shieldEff += 0.25; g.up.lvl.shield++; } },
-    { id: 'engine', name: 'Engine Tuning', max: 6,
-      desc: '+20% thrust and top speed per cell.',
-      cost: l => 45 + l * 40,
-      apply: g => { g.up.engineEff += 0.2; g.up.lvl.engine++; } },
-    { id: 'mining', name: 'Mining Optics', max: 6,
-      desc: '+30% mining yield rate per cell.',
-      cost: l => 45 + l * 40,
+    { id: 'mining', name: 'Mining Optics', max: 6, cur: 'minerals',
+      desc: '+30% mining yield per cell routed to mining.',
+      price: l => ({ m: 40 + l * 38, s: 0 }),
       apply: g => { g.up.miningEff += 0.3; g.up.lvl.mining++; } },
+    { id: 'engine', name: 'Engine Tuning', max: 6, cur: 'minerals',
+      desc: '+20% thrust and top speed per cell.',
+      price: l => ({ m: 42 + l * 38, s: 0 }),
+      apply: g => { g.up.engineEff += 0.2; g.up.lvl.engine++; } },
+    { id: 'hull', name: 'Hull Plating', max: 6, cur: 'minerals',
+      desc: '+30 max hull, fully repaired on purchase.',
+      price: l => ({ m: 38 + l * 34, s: 0 }),
+      apply: g => { g.player.hullMax += 30; g.player.hull = g.player.hullMax; g.up.lvl.hull++; } },
+    { id: 'weapon', name: 'Weapon Calibration', max: 6, cur: 'scrap',
+      desc: '+25% weapon damage per cell routed to weapons.',
+      price: l => ({ m: 0, s: 48 + l * 44 }),
+      apply: g => { g.up.dmg += 0.25; g.up.lvl.weapon++; } },
+    { id: 'shield', name: 'Shield Emitters', max: 6, cur: 'scrap',
+      desc: '+25% shield strength and regen per cell.',
+      price: l => ({ m: 0, s: 48 + l * 44 }),
+      apply: g => { g.up.shieldEff += 0.25; g.up.lvl.shield++; } },
   ];
+  const CUR_LABEL = { minerals: 'MINERALS', scrap: 'SCRAP', both: 'MINERALS + SCRAP' };
 
   const dockEl = document.getElementById('dock');
   const upgradeListEl = document.getElementById('upgradeList');
-  const dockSalvageEl = document.getElementById('dockSalvage');
+  const dockMineralsEl = document.getElementById('dockMinerals');
+  const dockScrapEl = document.getElementById('dockScrap');
+
+  function priceStr(p) {
+    const parts = [];
+    if (p.m) { parts.push(p.m + ' ◇'); }
+    if (p.s) { parts.push(p.s + ' ◆'); }
+    return parts.join('  +  ');
+  }
 
   function renderDock() {
     const g = game;
-    dockSalvageEl.textContent = g.salvage;
+    dockMineralsEl.textContent = g.minerals;
+    dockScrapEl.textContent = g.scrap;
     upgradeListEl.innerHTML = '';
     for (const up of UPGRADES) {
       const lvl = g.up.lvl[up.id];
       const maxed = lvl >= up.max;
-      const cost = up.cost(lvl);
+      const price = up.price(lvl);
       const row = document.createElement('div');
-      row.className = 'upg' + (maxed ? ' maxed' : '');
+      row.className = 'upg ' + up.cur + (maxed ? ' maxed' : '');
       row.innerHTML =
         '<div class="info">' +
-          '<div class="name">' + up.name + '</div>' +
+          '<div class="name">' + up.name +
+            ' <span class="cur ' + up.cur + '">' + CUR_LABEL[up.cur] + '</span></div>' +
           '<div class="desc">' + up.desc + '</div>' +
           '<div class="lvl">LVL ' + lvl + ' / ' + up.max + '</div>' +
         '</div>';
       const btn = document.createElement('button');
       if (maxed) { btn.textContent = 'MAX'; btn.disabled = true; }
       else {
-        btn.textContent = cost + ' ⬡';
-        btn.disabled = g.salvage < cost;
+        const afford = g.minerals >= price.m && g.scrap >= price.s;
+        btn.textContent = priceStr(price);
+        btn.disabled = !afford;
         btn.onclick = () => {
-          if (g.salvage >= cost) {
-            g.salvage -= cost;
+          if (g.minerals >= price.m && g.scrap >= price.s) {
+            g.minerals -= price.m; g.scrap -= price.s;
             up.apply(g);
             renderDock();
           }
@@ -695,7 +712,7 @@
     state = 'dead';
     document.getElementById('deadStats').innerHTML =
       'Survived ' + Math.floor(game.t) + 's &middot; ' + game.kills + ' kills &middot; ' +
-      game.totalSalvage + ' salvage &middot; SCORE ' + game.score;
+      game.totalMinerals + ' minerals &middot; ' + game.totalScrap + ' scrap &middot; SCORE ' + game.score;
     document.getElementById('dead').classList.remove('hidden');
   }
   document.getElementById('startBtn').onclick = start;
