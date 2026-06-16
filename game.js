@@ -33,20 +33,21 @@
     { key: 'cargo',   label: 'CARGO BAY',    icon: '▤', base: 10, power: 70,  min: 0,  max: 150 },
   ];
 
-  // ship compartments laid out on a 6x3 deck grid; some link to a power system
+  // ship compartments on a 6x3 deck grid. Each has crew stations that, when
+  // manned, boost that compartment's function — pull crew away and it sags.
   const ROOM_DEFS = [
-    { key: 'engines',  label: 'ENGINES',          gc: '1',     gr: '1 / 4', sys: 'engines', crew: 4 },
-    { key: 'reactor',  label: 'REACTOR',          gc: '2',     gr: '1 / 3', sys: 'reactor', crew: 3 },
-    { key: 'life',     label: 'LIFE SUPPORT',     gc: '3',     gr: '1',     sys: 'life',    crew: 2 },
-    { key: 'pax',      label: 'PASSENGER DECK',   gc: '4 / 6', gr: '1',     sys: null,      crew: 2, pax: true },
-    { key: 'bridge',   label: 'BRIDGE',           gc: '6',     gr: '1 / 3', sys: null,      crew: 3 },
-    { key: 'cargoA',   label: 'CARGO BAY A',      gc: '3',     gr: '2',     sys: null,      crew: 1, cargo: 0 },
-    { key: 'cargoB',   label: 'CARGO BAY B',      gc: '4',     gr: '2',     sys: null,      crew: 1, cargo: 1 },
-    { key: 'cargoC',   label: 'CARGO BAY C',      gc: '5',     gr: '2',     sys: null,      crew: 1, cargo: 2 },
-    { key: 'weapons',  label: 'WEAPONS DECK',     gc: '2',     gr: '3',     sys: 'weapons', crew: 2 },
-    { key: 'shieldgen',label: 'SHIELD GENERATOR', gc: '3 / 5', gr: '3',     sys: 'shields', crew: 2 },
-    { key: 'sensors',  label: 'SENSORS ARRAY',    gc: '5',     gr: '3',     sys: 'sensors', crew: 1 },
-    { key: 'medbay',   label: 'MED BAY',          gc: '6',     gr: '3',     sys: null,      crew: 2, med: true },
+    { key: 'engines',  label: 'ENGINES',          gc: '1',     gr: '1 / 4', sys: 'engines', stations: 2, fn: 'THRUST CONTROL', fdesc: 'evasion vs incoming fire' },
+    { key: 'reactor',  label: 'REACTOR',          gc: '2',     gr: '1 / 3', sys: 'reactor', stations: 2, fn: 'REACTOR CONTROL', fdesc: 'safe output & cooling' },
+    { key: 'life',     label: 'LIFE SUPPORT',     gc: '3',     gr: '1',     sys: 'life',    stations: 2, fn: 'ATMOSPHERICS',    fdesc: 'keeps crew & passengers alive' },
+    { key: 'pax',      label: 'PASSENGER DECK',   gc: '4 / 6', gr: '1',     sys: null,      stations: 2, fn: 'STEWARDS',       fdesc: 'calms passenger panic', pax: true },
+    { key: 'bridge',   label: 'BRIDGE',           gc: '6',     gr: '1 / 3', sys: null,      stations: 3, fn: 'COMMAND',        fdesc: 'ship-wide coordination bonus' },
+    { key: 'cargoA',   label: 'CARGO BAY A',      gc: '3',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects this cargo', cargo: 0 },
+    { key: 'cargoB',   label: 'CARGO BAY B',      gc: '4',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects this cargo', cargo: 1 },
+    { key: 'cargoC',   label: 'CARGO BAY C',      gc: '5',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects this cargo', cargo: 2 },
+    { key: 'weapons',  label: 'WEAPONS DECK',     gc: '2',     gr: '3',     sys: 'weapons', stations: 2, fn: 'GUNNERY',        fdesc: 'raider kill rate' },
+    { key: 'shieldgen',label: 'SHIELD GENERATOR', gc: '3 / 5', gr: '3',     sys: 'shields', stations: 2, fn: 'SHIELD OPS',     fdesc: 'shield strength & regen' },
+    { key: 'sensors',  label: 'SENSORS ARRAY',    gc: '5',     gr: '3',     sys: 'sensors', stations: 1, fn: 'SENSOR OPS',     fdesc: 'point-defense accuracy' },
+    { key: 'medbay',   label: 'MED BAY',          gc: '6',     gr: '3',     sys: null,      stations: 2, fn: 'MEDICAL',        fdesc: 'heals injured, prevents deaths', med: true },
   ];
 
   const DEPT_DEFS = [
@@ -81,8 +82,8 @@
     const sys = {};
     SYS_DEFS.forEach(d => { sys[d.key] = { ...d, power: d.power }; });
     const rooms = ROOM_DEFS.map(d => ({
-      ...d, status: 'normal', health: 100, fire: false, breach: false,
-      crew: d.crew, crewMax: d.crew,
+      ...d, status: 'normal', health: 100, fire: false, breach: false, sealed: false,
+      crew: d.stations, crewMax: d.stations,
     }));
     const depts = {};
     DEPT_DEFS.forEach(d => { depts[d.key] = { ...d, count: d.max, health: rand(88, 100), morale: rand(70, 95) }; });
@@ -107,6 +108,7 @@
       attackers: 12,
       reserve: 0, brownout: false,
       captain: { name: 'LT. K. DRAVEN', role: 'CAPTAIN', health: 87, morale: 'High' },
+      crewIdle: 3, openRoom: null,
       killed: 4, injured: 10, missing: 0,
       pax: Array.from({ length: 48 }, (_, i) => (i < 38 ? 'safe' : (i < 44 ? 'panic' : 'dead'))),
       paxMorale: 68,
@@ -221,7 +223,7 @@
         '<div><div class="room-name">' + rm.label + '</div>' +
         '<div class="room-stat"></div></div>' +
         '<div class="crewdots"></div><div class="badge"></div>';
-      el.addEventListener('click', () => dispatchRepair(rm.key));
+      el.addEventListener('click', () => openRoom(rm.key));
       sc.appendChild(el);
       R.rooms[rm.key] = { el, stat: el.querySelector('.room-stat'),
         dots: el.querySelector('.crewdots'), badge: el.querySelector('.badge') };
@@ -287,17 +289,41 @@
     // top controls
     $('btnPause').onclick = togglePause;
     $('btnFast').onclick = toggleFast;
+
+    // room inspector: one delegated handler (innerHTML is rebuilt each frame)
+    const modal = $('roomModal');
+    modal.addEventListener('click', e => {
+      if (e.target === modal) { closeRoom(); return; }
+      const b = e.target.closest('[data-act]');
+      if (!b || b.disabled) { return; }
+      const act = b.getAttribute('data-act');
+      if (act === 'close') { closeRoom(); return; }
+      const key = S.openRoom; if (!key) { return; }
+      const rm = roomByKey(key);
+      if (act === 'crew+') { moveCrew(key, +1); }
+      else if (act === 'crew-') { moveCrew(key, -1); }
+      else if (act === 'seal') { toggleSeal(key); }
+      else if (act === 'vent') { ventRoom(key); }
+      else if (act === 'repair') { dispatchRepair(key); }
+      else if (act === 'pow+' && rm.sys) { adjustPower(rm.sys, rm.sys === 'reactor' ? 3 : 5); }
+      else if (act === 'pow-' && rm.sys) { adjustPower(rm.sys, rm.sys === 'reactor' ? -3 : -5); }
+      renderModal();
+    });
+    window.addEventListener('keydown', e => { if (e.key === 'Escape' && S.openRoom) { closeRoom(); } });
   }
 
   // ---------------------------------------------------------------- helpers (model)
+  function roomByKey(key) { return S.rooms.find(r => r.key === key); }
   function roomBySys(key) { return S.rooms.find(r => r.sys === key); }
+  function mannedFrac(rm) { return rm && rm.stations ? clamp(rm.crew / rm.stations, 0, 1) : 1; }
+  function mannedBoost(rm) { return 0.5 + 0.5 * mannedFrac(rm); } // unmanned 0.5x, fully manned 1x
   function sysEff(key) {
-    // effectiveness = power level * linked-room health * brownout penalty
+    // effectiveness = power * linked-room health * crew manning * brownout penalty
     const sy = S.sys[key];
     if (!sy) { return 1; }
     let e = sy.power / 100;
     const rm = roomBySys(key);
-    if (rm) { e *= rm.health / 100; }
+    if (rm) { e *= rm.health / 100; e *= mannedBoost(rm); }
     if (S.brownout && key !== 'reactor') { e *= clamp(S.reserve >= 0 ? 1 : (S.sys.reactor.power / usedPower()), 0.45, 1); }
     if (S.buffs.shields && key === 'shields') { e *= 1.25; }
     return clamp(e, 0, 2);
@@ -307,7 +333,7 @@
     SYS_DEFS.forEach(d => { if (d.key !== 'reactor') { u += d.base * S.sys[d.key].power / 100; } });
     return u;
   }
-  function aliveCrew() { return S.rooms.reduce((n, r) => n + r.crew, 0); }
+  function aliveCrew() { return S.rooms.reduce((n, r) => n + r.crew, 0) + S.crewIdle; }
   function cargoIntegrity() {
     const t = S.cargo.reduce((a, c) => a + c.value, 0);
     return S.cargo.reduce((a, c) => a + c.integrity * c.value, 0) / t;
@@ -319,6 +345,32 @@
     const sy = S.sys[key];
     sy.power = clamp(sy.power + d, sy.min, sy.max);
   }
+  function moveCrew(roomKey, d) {
+    if (S.over) { return; }
+    const rm = roomByKey(roomKey);
+    if (rm.sealed) { return; } // bulkhead locked — crew can't transit
+    if (d > 0 && S.crewIdle > 0 && rm.crew < rm.stations) { rm.crew++; S.crewIdle--; }
+    else if (d < 0 && rm.crew > 0) { rm.crew--; S.crewIdle++; }
+  }
+  function toggleSeal(roomKey) {
+    if (S.over) { return; }
+    const rm = roomByKey(roomKey);
+    rm.sealed = !rm.sealed;
+    logEvent('warn', (rm.sealed ? 'Bulkhead sealed: ' : 'Bulkhead opened: ') + rm.label);
+    comms(rm.sealed ? 'warn' : 'info', (rm.sealed ? 'SEALED ' : 'OPENED ') + rm.label);
+  }
+  function ventRoom(roomKey) {
+    if (S.over) { return; }
+    const rm = roomByKey(roomKey);
+    if (!rm.fire) { return; }
+    rm.fire = false;
+    S.crewIdle += rm.crew; rm.crew = 0; // crew auto-evacuate to safety
+    logEvent('good', 'Atmosphere vented in ' + rm.label + ' — fire out, crew evacuated');
+    comms('good', 'VENTED ' + rm.label + ' — FIRE OUT');
+  }
+  function openRoom(key) { S.openRoom = key; $('roomModal').classList.remove('hidden'); renderModal(); }
+  function closeRoom() { S.openRoom = null; $('roomModal').classList.add('hidden'); }
+
   function dispatchRepair(roomKey) {
     if (S.over) { return; }
     const rm = S.rooms.find(r => r.key === roomKey);
@@ -407,9 +459,10 @@
       S.combatTimer = rand(1.6, 2.8) / S.pressure;
       volley();
     }
-    // weapons whittle down attackers (steady grind, scaled by power + tactical crew)
+    // weapons whittle down attackers (power + tactical crew + bridge coordination)
+    const cmd = 0.8 + 0.2 * mannedFrac(roomByKey('bridge'));
     const wpEff = sysEff('weapons') * (0.6 + 0.4 * S.depts.tactical.count / S.depts.tactical.max);
-    S.killProg += wpEff * 0.22 * dt;
+    S.killProg += wpEff * 0.22 * cmd * dt;
     while (S.killProg >= 1 && S.attackers > 0) {
       S.killProg -= 1; S.attackers--;
       logEvent('good', 'Raider destroyed (' + S.attackers + ' remaining)'); comms('good', 'RAIDER DESTROYED');
@@ -425,31 +478,30 @@
       logEvent('warn', n + ' raiders entering weapons range'); comms('bad', 'RAIDER WING INBOUND ×' + n);
     }
 
-    // ---- fires spread & damage rooms ----
+    // ---- fires & breaches damage rooms (sealing contains them; crew fight them) ----
+    const lifeEff = sysEff('life');
     S.rooms.forEach(rm => {
+      const sealFx = rm.sealed ? 0.45 : 1;       // sealed bulkhead contains the hazard
       if (rm.fire) {
-        const ctrl = sysEff('life') * 0.4; // life support helps suppress
-        rm.health = clamp(rm.health - (3.2 - ctrl) * dt, 0, 100);
-        // casualties from fire
-        if (rm.crew > 0 && chance(0.04 * dt * 60 / 60 * dt * 0)) { /* placeholder */ }
+        const ctrl = lifeEff * 0.4;
+        rm.health = clamp(rm.health - (3.2 - ctrl) * sealFx * dt, 0, 100);
+        // crew on station fight the fire and can put it out
+        if (rm.crew > 0 && !rm.sealed && chance(0.10 * rm.crew * dt)) { rm.fire = false; logEvent('good', 'Crew suppressed fire in ' + rm.label); }
         if (rm.crew > 0 && chance(0.02 * dt)) { hurtRoom(rm, 'fire'); }
-        // fire can spread to neighbor cargo
-        if (chance(0.01 * dt) && rm.cargo === undefined) { /* keep simple */ }
         if (chance(0.02 * dt)) { logEvent('bad', 'Fire spreading in ' + rm.label); }
       }
       if (rm.breach) {
-        rm.health = clamp(rm.health - 2.5 * dt, 0, 100);
-        if (rm.crew > 0 && chance(0.03 * dt)) { hurtRoom(rm, 'breach'); }
+        rm.health = clamp(rm.health - 2.5 * sealFx * dt, 0, 100);
+        if (rm.crew > 0 && !rm.sealed && chance(0.03 * dt)) { hurtRoom(rm, 'breach'); }
       }
-      // life support failure damages crew morale & causes slow casualties everywhere
-      if (sysEff('life') < 0.5 && rm.crew > 0 && chance(0.012 * (0.5 - sysEff('life')) * dt * 4)) {
+      // life-support failure causes slow casualties everywhere there is crew
+      if (lifeEff < 0.5 && rm.crew > 0 && chance(0.012 * (0.5 - lifeEff) * dt * 4)) {
         hurtRoom(rm, 'life support');
       }
-      // recompute status from health
       rm.status = rm.health < 33 ? 'critical' : rm.health < 75 ? 'damaged' : 'normal';
     });
 
-    // ---- cargo integrity ----
+    // ---- cargo integrity (cargo-control crew protect their bay) ----
     S.cargo.forEach((c, i) => {
       const bay = S.rooms.find(r => r.cargo === i);
       let decay = 0;
@@ -459,6 +511,7 @@
         if (bay.status === 'critical') { decay += 2; }
       }
       decay += (1 - sysEff('cargo')) * 1.5; // poor cargo-bay env
+      if (bay) { decay *= (1 - 0.4 * mannedFrac(bay)); } // manned cargo control reduces loss
       c.integrity = clamp(c.integrity - decay * dt, 0, 100);
     });
 
@@ -469,7 +522,8 @@
     // ---- passengers panic / morale ----
     const hazardCount = S.rooms.filter(r => r.fire || r.breach).length;
     S.paxMorale = clamp(S.paxMorale + (hazardCount > 0 ? -2.5 : 1.2) * dt - (sysEff('life') < 0.6 ? 3 * dt : 0), 0, 100);
-    if (hazardCount > 0 && chance(0.05 * hazardCount * dt)) {
+    const stewards = mannedFrac(roomByKey('pax'));
+    if (hazardCount > 0 && chance(0.05 * hazardCount * (1 - 0.5 * stewards) * dt)) {
       const idx = S.pax.findIndex(p => p === 'safe');
       if (idx >= 0) { S.pax[idx] = 'panic'; }
     }
@@ -497,8 +551,9 @@
       if (rm.health >= 99 && !rm.fire && !rm.breach) { t.target = null; t.progress = 0; }
     });
 
-    // injured slowly recover with medical
-    if (S.injured > 0 && chance(0.04 * S.depts.medical.count / S.depts.medical.max * dt * 4)) {
+    // injured recover faster with medical dept AND a manned med bay
+    const medMan = mannedBoost(roomByKey('medbay'));
+    if (S.injured > 0 && chance(0.04 * S.depts.medical.count / S.depts.medical.max * medMan * dt * 4)) {
       S.injured--; logEvent('good', 'Crew member recovered in Med Bay');
     }
 
@@ -542,10 +597,11 @@
   }
 
   function hurtRoom(rm, cause) {
-    // kill or injure someone in the room; reflect in departments
-    if (chance(0.45)) {
+    // kill or injure someone in the room; a manned med bay saves lives
+    const pDeath = 0.45 * (1 - 0.4 * mannedFrac(roomByKey('medbay')));
+    if (chance(pDeath)) {
       if (rm.crew > 0) { rm.crew--; S.killed++; logEvent('bad', 'Crew lost in ' + rm.label + ' (' + cause + ')'); }
-      // drop a department headcount to match
+      else if (S.crewIdle > 0) { S.crewIdle--; S.killed++; }
       const d = pick(Object.values(S.depts));
       if (d.count > 0 && chance(0.6)) { d.count--; }
     } else {
@@ -588,7 +644,7 @@
       setSeg(ref.bar, st.health / 100, colorFor(st.health));
       crewTotal += st.count;
     });
-    $('crewCount').textContent = aliveCrew() + ' / 28 CREW';
+    $('crewCount').textContent = aliveCrew() + ' / 28 · ' + S.crewIdle + ' IDLE';
 
     // repair teams
     let active = 0;
@@ -633,13 +689,12 @@
       else if (rm.med || rm.key === 'bridge') { statTxt = rm.crew + ' / ' + rm.crewMax; }
       else { statTxt = Math.round(rm.health) + '%'; }
       ref.stat.textContent = statTxt;
-      ref.badge.textContent = rm.fire ? '🔥' : rm.breach ? '✷' : '';
-      // crew dots
-      const dn = Math.min(rm.crew, 6);
-      if (ref.dots.children.length !== dn) {
-        ref.dots.innerHTML = '';
-        for (let i = 0; i < dn; i++) { const d = document.createElement('span'); d.className = 'cd'; d.style.animationDelay = (i * 0.2) + 's'; ref.dots.appendChild(d); }
-      }
+      const repairing = S.repair.some(t => t.target === rm.key);
+      ref.badge.textContent = rm.fire ? '🔥' : rm.breach ? '✷' : rm.sealed ? '🔒' : repairing ? '🛠' : '';
+      // station pips: filled = manned, hollow = empty station
+      let pips = '';
+      for (let i = 0; i < rm.stations; i++) { pips += '<i class="pip' + (i < rm.crew ? ' on' : '') + '"></i>'; }
+      ref.dots.innerHTML = pips;
     });
     $('hullPct').textContent = Math.round(S.hull) + '%';
     setSeg(R.hullBar, S.hull / 100, ('hull ' + colorFor(S.hull)).trim());
@@ -722,6 +777,58 @@
     R.commsTrack.innerHTML = S.comms.map(c =>
       '<span class="ct">' + c.t + ' <b>' + c.msg + '</b></span>').join('');
     $('autosave').textContent = '◌ AUTOSAVE ' + clockStr();
+
+    if (S.openRoom) { renderModal(); }
+  }
+
+  // ---------------------------------------------------------------- room inspector
+  function stationPips(rm) {
+    let s = '<div class="rm-pips">';
+    for (let i = 0; i < rm.stations; i++) { s += '<i class="bigpip' + (i < rm.crew ? ' on' : '') + '">☻</i>'; }
+    return s + '</div>';
+  }
+  function powerReroute(rm) {
+    const sy = S.sys[rm.sys];
+    const max = rm.sys === 'reactor' ? 153 : 150;
+    const w = clamp(sy.power / max, 0, 1) * 100;
+    return '<div class="rm-sec"><div class="rm-sec-h">POWER — ' + sy.label + '</div>' +
+      '<div class="rm-pwrrow"><button class="pbtn" data-act="pow-">−</button>' +
+      '<div class="rm-bar"><i style="width:' + w.toFixed(0) + '%"></i></div>' +
+      '<span class="rm-pwrn">' + Math.round(sy.power) + (rm.sys === 'reactor' ? ' MW' : '%') + '</span>' +
+      '<button class="pbtn" data-act="pow+">+</button></div></div>';
+  }
+  function renderModal() {
+    const rm = roomByKey(S.openRoom);
+    if (!rm) { return; }
+    const eff = Math.round(mannedBoost(rm) * 100);
+    const statusTxt = rm.fire ? 'FIRE' : rm.breach ? 'BREACH' : rm.status.toUpperCase();
+    const statusCls = rm.fire ? 'critical' : rm.breach ? 'breach' : rm.status;
+    let metric;
+    if (rm.cargo !== undefined) { metric = 'CARGO INTEGRITY ' + Math.round(S.cargo[rm.cargo].integrity) + '% · ' + Math.round(rm.health) + '% structure'; }
+    else if (rm.pax) { metric = S.pax.filter(p => p !== 'dead').length + ' PASSENGERS · ' + Math.round(rm.health) + '% structure'; }
+    else { metric = 'STRUCTURE ' + Math.round(rm.health) + '%'; }
+    const repairing = S.repair.some(t => t.target === rm.key);
+
+    $('roomModalPanel').innerHTML =
+      '<div class="rm-head">' +
+        '<div><div class="rm-title">' + rm.label + '</div><div class="rm-sub">' + metric + '</div></div>' +
+        '<span class="rm-chip ' + statusCls + '">' + statusTxt + '</span>' +
+        '<button class="rm-close" data-act="close">✕</button></div>' +
+      '<div class="rm-sec"><div class="rm-sec-h">' + rm.fn + ' — CREW STATIONS</div>' +
+        '<div class="rm-stationrow">' + stationPips(rm) +
+          '<div class="rm-crewctl"><button class="pbtn" data-act="crew-">−</button>' +
+          '<span class="rm-crewn">' + rm.crew + ' / ' + rm.stations + '</span>' +
+          '<button class="pbtn" data-act="crew+">+</button></div></div>' +
+        '<div class="rm-eff">Station output <b>' + eff + '%</b> &middot; ' + rm.fdesc +
+          (rm.sealed ? ' &middot; <b class="warnt">crew locked in (sealed)</b>' : '') + '</div>' +
+        '<div class="rm-idle">IDLE CREW AVAILABLE: <b>' + S.crewIdle + '</b> — drag power and people where the fight is</div>' +
+      '</div>' +
+      (rm.sys ? powerReroute(rm) : '') +
+      '<div class="rm-sec"><div class="rm-sec-h">FUNCTIONS</div><div class="rm-fns">' +
+        '<button class="rm-fn" data-act="repair"' + (repairing ? ' disabled' : '') + '>🛠 ' + (repairing ? 'REPAIR UNDERWAY' : 'DISPATCH REPAIR TEAM') + '</button>' +
+        '<button class="rm-fn' + (rm.sealed ? ' on' : '') + '" data-act="seal">🔒 ' + (rm.sealed ? 'OPEN BULKHEAD' : 'SEAL BULKHEAD') + '</button>' +
+        '<button class="rm-fn" data-act="vent"' + (rm.fire ? '' : ' disabled') + '>🌀 VENT ATMOSPHERE</button>' +
+      '</div></div>';
   }
 
   // ---------------------------------------------------------------- external cam (ambiance)

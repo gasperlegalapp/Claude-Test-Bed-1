@@ -27,8 +27,31 @@ Click **ASSUME COMMAND**.
 - **Power management (right panel):** use `+ / −` on each system
   (Reactor, Shields, Engines, Weapons, Sensors, Life Support, Cargo Bay).
   Watch **Power Reserve** — go negative and you brown out, weakening everything.
-- **Ship schematic (center):** click any compartment to dispatch a repair team.
-  Rooms show status (normal/damaged/critical), fire, breach, and crew.
+- **Ship schematic (center):** click any compartment to open its **inspector**.
+  Each compartment is a station you operate:
+  - **Assign crew** to its stations (± moves people to/from the idle pool). A
+    manned station runs at 100%; an empty one drops to ~50% — so pulling gunners
+    over to fight a fire really does weaken your guns.
+  - **Reroute power** to that compartment's system right from the inspector.
+  - **Functions:** *Dispatch Repair Team*, *Seal Bulkhead* (contains fire/breach
+    damage but locks the crew inside), *Vent Atmosphere* (instantly kills a fire
+    and auto-evacuates the crew — you lose their manning).
+  - Tiles show station pips (manned/empty) and badges for fire/breach/sealed/repair.
+
+### What manning each station does
+
+| Compartment | Station | Manned effect |
+|---|---|---|
+| Shield Generator | Shield Ops | Shield strength & regen |
+| Weapons Deck | Gunnery | Raider kill rate |
+| Engines | Thrust Control | Evasion vs incoming fire |
+| Sensors Array | Sensor Ops | Point-defense accuracy |
+| Reactor | Reactor Control | Safe output & cooling |
+| Life Support | Atmospherics | Keeps crew & passengers alive |
+| Med Bay | Medical | Heals injured, prevents deaths |
+| Bridge | Command | Ship-wide coordination bonus |
+| Passenger Deck | Stewards | Calms passenger panic |
+| Cargo Bay A/B/C | Cargo Control | Protects that cargo |
 - **Emergency Actions:** Prioritize Shields, Emergency Power, Damage Control
   (suppress fires & seal breaches), Evacuate Passengers. Each has a cooldown.
 - **Top bar:** pause `❚❚` and fast-forward `▶▶`.
