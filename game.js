@@ -1243,49 +1243,82 @@
       y: rand(8, h - 8), vx: rand(-6, 6), vy: rand(-5, 5), fireCd: rand(0.6, 2.4),
     };
   }
+  // ---- 16-bit pixel-art rendering: draw tiny, scale up nearest-neighbour ----
+  let _pxCanvas = null, _pxCtx = null;
+  function pxBuf(pw, ph) {
+    if (!_pxCanvas) { _pxCanvas = document.createElement('canvas'); _pxCtx = _pxCanvas.getContext ? _pxCanvas.getContext('2d') : null; }
+    _pxCanvas.width = pw; _pxCanvas.height = ph;
+    if (_pxCtx) { _pxCtx.imageSmoothingEnabled = false; }
+    return _pxCtx;
+  }
+  function blitPx(ctx, pw, ph, w, h) {
+    if (!ctx || !_pxCanvas) { return; }
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(_pxCanvas, 0, 0, pw, ph, 0, 0, w, h);
+  }
+  function px(ctx, x, y, w, h, c) {
+    ctx.fillStyle = c;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+  }
+  // a flat panel with a 1px lit top/left edge and dark bottom/right edge
+  function panel(ctx, x, y, w, h, base, hi, sh) {
+    px(ctx, x, y, w, h, base);
+    px(ctx, x, y, w, 1, hi); px(ctx, x, y, 1, h, hi);
+    px(ctx, x, y + h - 1, w, 1, sh); px(ctx, x + w - 1, y, 1, h, sh);
+  }
+  // banded retro starfield
+  function paintSpace(ctx, w, h, dt, speed, redTint) {
+    px(ctx, 0, 0, w, h, '#070a16');
+    px(ctx, 0, Math.round(h * 0.5), w, Math.ceil(h * 0.5), '#0a1020');
+    px(ctx, 0, Math.round(h * 0.8), w, Math.ceil(h * 0.2), '#0c1428');
+    if (redTint) { ctx.globalAlpha = 0.16; px(ctx, 0, Math.round(h * 0.3), w, Math.round(h * 0.4), '#5a1414'); ctx.globalAlpha = 1; }
+    stars.forEach(s => {
+      s.x -= s.z * speed * dt; if (s.x < 0) { s.x += 1; s.y = Math.random(); }
+      const c = s.z > 0.8 ? '#d6e6ff' : s.z > 0.55 ? '#8fb2e2' : '#4f6a96';
+      const sz = s.z > 0.8 ? 2 : 1;
+      px(ctx, s.x * w, s.y * h, sz, sz, c);
+    });
+  }
+  function drawRaider(ctx, x, y, faceLeft) {
+    const d = faceLeft ? -1 : 1;
+    px(ctx, x - 2, y - 1, 4, 2, '#c8536a');                 // hull
+    px(ctx, x + d * 2, y, 2, 1, '#ff9aa9');                 // nose
+    px(ctx, x - d, y - 2, 1, 1, '#9c3a4e'); px(ctx, x - d, y + 1, 1, 1, '#9c3a4e'); // wings
+    px(ctx, x - d * 3, y, 1, 1, 'rgba(255,150,90,0.95)');   // thruster
+  }
+
   function drawExt(dt) {
     const ctx = R.extCtx; if (!ctx) { return; }
     const w = R.ext.width = R.ext.clientWidth || 300;
     const h = R.ext.height = 150;
-    const unit = Math.min(w * 0.085, (h * 0.5 - 8) / 2.9);
-    const cx = w * 0.5, cy = h * 0.52, L = unit * 9.5;
+    const PX = 3;
+    const pw = Math.max(1, Math.round(w / PX)), ph = Math.max(1, Math.round(h / PX));
+    const p = pxBuf(pw, ph); if (!p) { return; }
     const under = S && S.attackers > 0;
     const hull = S ? S.hull : 100;
     const fires = S ? S.rooms.filter(r => r.fire).length : 0;
+    const u = Math.min(pw * 0.085, (ph * 0.5 - 3) / 2.9);
+    const cx = pw * 0.5, cy = ph * 0.52, L = u * 9.5;
 
-    // backdrop
-    const bg = ctx.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, '#04060f'); bg.addColorStop(1, '#080c1a');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-    if (under) {
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.6);
-      g.addColorStop(0, 'rgba(90,22,22,0.25)'); g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    }
-    // parallax stars
-    stars.forEach(s => {
-      s.x -= s.z * 0.05 * dt; if (s.x < 0) { s.x += 1; s.y = Math.random(); }
-      ctx.globalAlpha = 0.25 + s.z * 0.6; ctx.fillStyle = '#9fc0ff';
-      ctx.fillRect(s.x * w, s.y * h, s.z * 1.6, s.z * 1.6);
-    });
-    ctx.globalAlpha = 1;
+    paintSpace(p, pw, ph, dt, 0.05, under);
+    drawShip(p, cx, cy, u, S ? S.loadout : META.loadout, S ? S.t : 0, { hull: hull, fires: fires });
 
-    drawShip(ctx, cx, cy, unit, S ? S.loadout : META.loadout, S ? S.t : 0, { hull: hull, fires: fires });
-
-    // shield bubble
+    // shield bubble — a stippled pixel ring
     if (S) {
       const shMax = 120 * sysEff('shields');
       const sf = shMax > 0 ? clamp(S.shieldPool / shMax, 0, 1) : 0;
       if (sf > 0.04) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(90,180,255,' + (0.10 + sf * 0.30 + (under ? 0.06 * Math.sin(S.t * 8) : 0)) + ')';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.ellipse(cx, cy, L * 0.60, h * 0.44, 0, 0, TAU); ctx.stroke();
-        ctx.restore();
+        const rx = L * 0.62, ry = ph * 0.44, segs = 72;
+        p.fillStyle = 'rgba(110,195,255,' + (0.3 + sf * 0.45) + ')';
+        for (let i = 0; i < segs; i++) {
+          if ((i % 2) && !under) { continue; }
+          const a = (i / segs) * TAU;
+          p.fillRect(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), 1, 1);
+        }
       }
     }
 
-    // raiders + their fire
+    // raiders (motion stays in screen space; draw converted into the buffer)
     if (S) {
       const want = Math.min(S.attackers, 7);
       while (raiders.length < want) { raiders.push(spawnRaider(w, h)); }
@@ -1298,146 +1331,136 @@
         if (r.x > w + 24) { r.x = w + 24; r.vx = -Math.abs(r.vx); }
         if (r.y < 6 || r.y > h - 6) { r.vy = -r.vy; }
         r.fireCd -= dt;
-        if (r.fireCd <= 0) { r.fireCd = rand(1.0, 3.0); bolts.push({ x0: r.x, y0: r.y, x: r.x, y: r.y, tx: cx, ty: cy, t: 0 }); }
+        if (r.fireCd <= 0) { r.fireCd = rand(1.0, 3.0); bolts.push({ x0: r.x, y0: r.y, tx: cx * PX, ty: cy * PX, t: 0 }); }
       }
-      // little arrow raider pointing at the ship
-      const ang = Math.atan2(cy - r.y, cx - r.x);
-      ctx.save(); ctx.translate(r.x, r.y); ctx.rotate(ang);
-      ctx.fillStyle = '#c46'; ctx.strokeStyle = '#f8a'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -3); ctx.lineTo(-4, 3); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = 'rgba(255,120,90,0.9)'; ctx.fillRect(-6, -1, 2, 2);
-      ctx.restore();
+      drawRaider(p, r.x / PX, r.y / PX, r.x > cx * PX);
     });
-    // bolts travel to the shield/hull then flash
+    // bolts — dashed pixel lasers
     for (let i = bolts.length - 1; i >= 0; i--) {
-      const b = bolts[i];
-      b.t += dt * 2.2;
-      const px = b.x0 + (b.tx - b.x0) * Math.min(1, b.t);
-      const py = b.y0 + (b.ty - b.y0) * Math.min(1, b.t);
-      ctx.strokeStyle = 'rgba(255,90,70,0.9)'; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.moveTo(b.x0 + (px - b.x0) * 0.7, b.y0 + (py - b.y0) * 0.7); ctx.lineTo(px, py); ctx.stroke();
+      const b = bolts[i]; b.t += dt * 2.2;
+      const hx = (b.x0 + (b.tx - b.x0) * Math.min(1, b.t)) / PX;
+      const hy = (b.y0 + (b.ty - b.y0) * Math.min(1, b.t)) / PX;
+      const ang = Math.atan2(b.ty - b.y0, b.tx - b.x0);
+      for (let k = 0; k < 4; k++) { px(p, hx - Math.cos(ang) * k * 1.5, hy - Math.sin(ang) * k * 1.5, k ? 1 : 2, k ? 1 : 2, k === 0 ? '#ffe0b0' : '#ff5a46'); }
       if (b.t >= 1) {
-        // impact on the shield perimeter
-        const ia = Math.atan2(py - cy, px - cx);
-        flashes.push({ x: cx + Math.cos(ia) * L * 0.6, y: cy + Math.sin(ia) * h * 0.44, life: 0.35 });
+        const ia = Math.atan2(hy - cy, hx - cx);
+        flashes.push({ x: cx + Math.cos(ia) * L * 0.62, y: cy + Math.sin(ia) * ph * 0.44, life: 0.3 });
         bolts.splice(i, 1);
       }
     }
     for (let i = flashes.length - 1; i >= 0; i--) {
       const f = flashes[i]; f.life -= dt;
       if (f.life <= 0) { flashes.splice(i, 1); continue; }
-      ctx.globalAlpha = clamp(f.life * 3, 0, 1);
-      ctx.fillStyle = '#bfe0ff';
-      ctx.beginPath(); ctx.arc(f.x, f.y, 3.5, 0, TAU); ctx.fill();
-      ctx.globalAlpha = 1;
+      p.globalAlpha = clamp(f.life * 3.3, 0, 1);
+      px(p, f.x - 2, f.y, 5, 1, '#bfe6ff'); px(p, f.x, f.y - 2, 1, 5, '#bfe6ff'); px(p, f.x, f.y, 1, 1, '#ffffff');
+      p.globalAlpha = 1;
     }
+    blitPx(ctx, pw, ph, w, h);
   }
 
-  // The ship: engine cluster (rear/left), thin spine, big command module
-  // (front/right), and pods bolted to hardpoints along the spine. The pods
-  // drawn reflect the player's actual loadout.
-  function roundRect(ctx, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-  }
+  // The freighter as pixel-art: engine block (rear/left), spine, slant-nosed
+  // command module (front/right), and pods on hardpoints. The pods drawn
+  // reflect the player's actual loadout. Everything is flat-shaded blocks with
+  // 1px highlight/shadow edges, drawn into the low-res buffer.
   function drawPod(ctx, x, y, u, type, top, t) {
-    const w = u * 1.7, h = u * 1.25, x0 = x - w / 2, y0 = y - h / 2;
+    const w = Math.max(4, Math.round(u * 1.7)), h = Math.max(3, Math.round(u * 1.3));
+    const x0 = Math.round(x - w / 2), y0 = Math.round(y - h / 2);
     if (!type) {
-      ctx.strokeStyle = 'rgba(140,170,210,0.45)'; ctx.lineWidth = Math.max(1, u * 0.16);
-      ctx.strokeRect(x - u * 0.45, y - u * 0.38, u * 0.9, u * 0.76);
+      px(ctx, x0 + 1, y0 + 1, w - 2, 1, '#46566e'); px(ctx, x0 + 1, y0 + h - 2, w - 2, 1, '#283344');
+      px(ctx, x0 + 1, y0 + 1, 1, h - 2, '#46566e'); px(ctx, x0 + w - 2, y0 + 1, 1, h - 2, '#283344');
       return;
     }
     if (type === 'cargo') {
-      const cols = 4, rows = 3;
+      px(ctx, x0, y0, w, h, '#241a10'); // dark backing shows as gridlines
+      const cols = 3, rows = 2, gw = (w - 1) / cols, gh = (h - 1) / rows;
       for (let c = 0; c < cols; c++) { for (let r = 0; r < rows; r++) {
-        ctx.fillStyle = (c + r) % 2 ? '#9a6a3e' : '#7d5230';
-        ctx.fillRect(x0 + c * w / cols, y0 + r * h / rows, w / cols - 1, h / rows - 1);
+        px(ctx, x0 + 1 + c * gw, y0 + 1 + r * gh, gw - 1, gh - 1, (c + r) % 2 ? '#a06f3f' : '#7d5230');
       } }
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
+      px(ctx, x0, y0, w, 1, '#c69050');
     } else if (type === 'passenger') {
-      ctx.fillStyle = '#33485e'; roundRect(ctx, x0, y0, w, h, u * 0.3); ctx.fill();
-      ctx.strokeStyle = '#5fb6ff'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = 'rgba(150,220,255,' + (0.55 + 0.4 * Math.sin(t * 3 + x)) + ')';
-      for (let i = 0; i < 4; i++) { ctx.fillRect(x0 + u * 0.22 + i * (w - u * 0.4) / 4, y - u * 0.13, (w - u * 0.5) / 4, u * 0.28); }
+      panel(ctx, x0, y0, w, h, '#33485e', '#54718f', '#1f2c3a');
+      const lit = 0.5 + 0.45 * Math.sin(t * 3 + x);
+      for (let i = 0; i < 3; i++) { px(ctx, x0 + 2 + i * Math.round(w / 3), y - 1, Math.max(1, Math.round(w / 6)), 2, 'rgba(150,225,255,' + lit + ')'); }
     } else if (type === 'military') {
-      ctx.fillStyle = '#33414f'; ctx.fillRect(x0, y0, w, h);
-      ctx.fillStyle = '#c0563a'; ctx.fillRect(x0, y + h * 0.16, w, u * 0.22);
-      ctx.strokeStyle = '#7a8ba0'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
-      ctx.fillStyle = '#222c3a'; ctx.fillRect(x - u * 0.16, top ? y0 - u * 0.45 : y0 + h, u * 0.32, u * 0.45);
+      panel(ctx, x0, y0, w, h, '#3a4554', '#586a7e', '#222b36');
+      px(ctx, x0, y + Math.round(h * 0.1), w, Math.max(1, Math.round(u * 0.28)), '#c0563a');
+      px(ctx, x - 1, top ? y0 - Math.round(u * 0.5) : y0 + h, 2, Math.round(u * 0.5) + 1, '#222c3a');
     } else if (type === 'shield') {
-      ctx.fillStyle = '#25405c'; roundRect(ctx, x0, y0, w, h, u * 0.3); ctx.fill();
-      ctx.strokeStyle = '#4fb0ff'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.strokeStyle = 'rgba(90,180,255,' + (0.4 + 0.3 * Math.sin(t * 4 + x)) + ')';
-      ctx.beginPath(); ctx.arc(x, y, u * 0.5, 0, TAU); ctx.stroke();
+      panel(ctx, x0, y0, w, h, '#25405c', '#3f6a92', '#16293c');
+      px(ctx, x - 1, y0 - 1, 2, 2, '#7fd0ff');
+      for (let i = 0; i < 5; i++) { const a = t * 2 + i * 0.5; px(ctx, x + Math.cos(a) * u * 0.7, y + Math.sin(a) * u * 0.55, 1, 1, 'rgba(120,200,255,0.9)'); }
     }
   }
   function drawShip(ctx, cx, cy, u, loadout, t, opts) {
     opts = opts || {}; loadout = loadout || [];
     const hull = opts.hull == null ? 100 : opts.hull, fires = opts.fires || 0;
-    const xEng = cx - u * 4.5, xCmd = cx + u * 4.0;
-    // spine
-    ctx.strokeStyle = '#3a475e'; ctx.lineWidth = Math.max(2, u * 0.5);
-    ctx.beginPath(); ctx.moveTo(xEng, cy); ctx.lineTo(xCmd, cy); ctx.stroke();
-    ctx.strokeStyle = '#62799a'; ctx.lineWidth = Math.max(1, u * 0.16);
-    ctx.beginPath(); ctx.moveTo(xEng, cy); ctx.lineTo(xCmd, cy); ctx.stroke();
-    // hardpoint pods (pairs top/bottom along the spine)
+    cx = Math.round(cx); cy = Math.round(cy);
+    const xEng = Math.round(cx - u * 4.3), xCmd = Math.round(cx + u * 2.9);
+
+    // ---- spine ----
+    const sH = Math.max(2, Math.round(u * 0.5));
+    panel(ctx, xEng + Math.round(u * 0.6), cy - Math.round(sH / 2), xCmd - xEng, sH, '#46546c', '#6e84a6', '#28313f');
+
+    // ---- hardpoint pods (pairs top/bottom) + amber pylons ----
     const n = loadout.length || 6, pairs = Math.ceil(n / 2);
-    const startX = xEng + u * 1.7, endX = xCmd - u * 2.0;
+    const startX = xEng + u * 1.8, endX = xCmd - u * 0.4;
     for (let i = 0; i < n; i++) {
       const pair = Math.floor(i / 2), top = (i % 2) === 0;
-      const px = pairs > 1 ? startX + (endX - startX) * (pair / (pairs - 1)) : (startX + endX) / 2;
-      const py = cy + (top ? -1 : 1) * u * 1.45;
-      ctx.strokeStyle = '#caa24a'; ctx.lineWidth = Math.max(1.5, u * 0.2);
-      ctx.beginPath(); ctx.moveTo(px, cy); ctx.lineTo(px, py + (top ? u * 0.55 : -u * 0.55)); ctx.stroke();
-      drawPod(ctx, px, py, u, loadout[i], top, t);
+      const pxx = pairs > 1 ? startX + (endX - startX) * (pair / (pairs - 1)) : (startX + endX) / 2;
+      const py = cy + (top ? -1 : 1) * u * 1.55;
+      px(ctx, pxx - 1, top ? py : cy, 2, u * 1.55, '#c9a23f');
+      drawPod(ctx, pxx, py, u, loadout[i], top, t);
     }
-    // engines (rear)
-    ctx.fillStyle = '#2a3344'; roundRect(ctx, xEng - u * 1.3, cy - u * 1.6, u * 1.8, u * 3.2, u * 0.4); ctx.fill();
-    ctx.strokeStyle = '#46566c'; ctx.lineWidth = 1; ctx.stroke();
-    const eg = 0.5 + 0.4 * Math.sin(t * 9);
+
+    // ---- engine block + blocky exhaust plumes ----
+    const ebX = Math.round(xEng - u * 0.6), ebY = Math.round(cy - u * 1.75), ebW = Math.round(u * 2.2), ebH = Math.round(u * 3.5);
+    panel(ctx, ebX, ebY, ebW, ebH, '#39465a', '#5a6e8c', '#222b3a');
+    px(ctx, ebX + 1, Math.round(cy - u * 0.9), ebW - 2, 1, '#222b3a');
+    px(ctx, ebX + 1, Math.round(cy + u * 0.9), ebW - 2, 1, '#222b3a');
+    const eg = 0.55 + 0.45 * Math.sin(t * 9);
     for (let k = -1; k <= 1; k++) {
-      const ey = cy + k * u * 1.0;
-      ctx.fillStyle = '#161e2b'; ctx.fillRect(xEng - u * 1.7, ey - u * 0.32, u * 0.55, u * 0.64);
-      const g = ctx.createRadialGradient(xEng - u * 1.9, ey, 0, xEng - u * 1.9, ey, u * 1.5);
-      g.addColorStop(0, 'rgba(120,190,255,' + eg + ')'); g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(xEng - u * 2.0, ey, u * 1.4, 0, TAU); ctx.fill();
+      const ey = Math.round(cy + k * u * 1.05);
+      px(ctx, ebX - u * 0.6, ey - u * 0.28, u * 0.7, u * 0.56, '#10161f'); // nozzle
+      const fl = u * (1.0 + 0.7 * eg);
+      px(ctx, ebX - u * 0.6 - fl, ey - 1, fl, 3, 'rgba(90,170,255,0.85)');
+      px(ctx, ebX - u * 0.6 - fl * 0.6, ey - 1, fl * 0.6, 3, 'rgba(150,215,255,0.95)');
+      px(ctx, ebX - u * 0.6 - fl * 0.3, ey, fl * 0.3 + 1, 1, '#ffffff');
     }
-    // command module (front)
-    const cw = u * 3.0, ch = u * 2.3;
-    const cg = ctx.createLinearGradient(0, cy - ch / 2, 0, cy + ch / 2);
-    cg.addColorStop(0, '#5a6a7e'); cg.addColorStop(1, '#27313e');
-    ctx.fillStyle = cg; roundRect(ctx, xCmd - u * 0.3, cy - ch / 2, cw, ch, u * 0.9); ctx.fill();
-    ctx.strokeStyle = '#7d8ea2'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = '#3fa7ff'; ctx.fillRect(xCmd - u * 0.3, cy - ch / 2 + u * 0.35, cw, u * 0.16);
-    ctx.fillStyle = 'rgba(150,220,255,' + (0.6 + 0.4 * Math.sin(t * 3)) + ')';
-    for (let i = 0; i < 3; i++) { ctx.fillRect(xCmd + cw - u * 1.3, cy - u * 0.7 + i * u * 0.55, u * 0.5, u * 0.24); }
-    // nose running light
-    ctx.fillStyle = (Math.sin(t * 4) > 0) ? '#ff7a7a' : 'rgba(255,120,120,0.3)';
-    ctx.beginPath(); ctx.arc(xCmd + cw - u * 0.2, cy, u * 0.18, 0, TAU); ctx.fill();
-    // damage fire/smoke
+
+    // ---- command module with stepped slant nose ----
+    const ch = Math.max(4, Math.round(u * 2.4)), cTop = cy - Math.round(ch / 2), bodyW = Math.max(4, Math.round(u * 1.9));
+    panel(ctx, xCmd, cTop, bodyW, ch, '#515f73', '#7c8da3', '#313b49');
+    px(ctx, xCmd + 1, cTop + Math.round(u * 0.5), bodyW - 2, Math.max(1, Math.round(u * 0.25)), '#4fb8ff'); // viewport
+    const wl = 0.55 + 0.45 * Math.sin(t * 3);
+    for (let i = 0; i < 3; i++) { px(ctx, xCmd + 2 + i * Math.round(u * 0.55), cTop + ch - Math.round(u * 0.75), Math.max(1, Math.round(u * 0.3)), Math.max(1, Math.round(u * 0.3)), 'rgba(150,220,255,' + wl + ')'); }
+    const noseX = xCmd + bodyW, noseW = Math.max(3, Math.round(u * 1.4)), segs = Math.max(3, Math.round(u));
+    for (let i = 0; i < segs; i++) {
+      const fx = noseX + Math.round(i * noseW / segs);
+      const inset = Math.round((i / segs) * (ch * 0.5));
+      panel(ctx, fx, cTop + inset, Math.ceil(noseW / segs) + 1, ch - 2 * inset, '#5a6a7e', '#7c8da3', '#313b49');
+    }
+    px(ctx, noseX + noseW, cy - 1, 2, 2, (Math.sin(t * 4) > 0) ? '#ff6a6a' : 'rgba(255,120,120,0.3)'); // nose light
+
+    // ---- damage: blocky fire + smoke ----
     const burn = fires + (hull < 60 ? 1 : 0) + (hull < 35 ? 1 : 0);
     for (let i = 0; i < burn; i++) {
-      const fx = startX + (endX - startX) * ((i * 0.37) % 1), fy = cy + (i % 2 ? 1 : -1) * u * 0.6;
-      const fl = 0.5 + 0.5 * Math.sin(t * 18 + i * 2);
-      ctx.fillStyle = 'rgba(120,130,150,0.4)'; ctx.beginPath(); ctx.arc(fx, fy - u * 0.6, u * 0.4 + fl * u * 0.2, 0, TAU); ctx.fill();
-      ctx.fillStyle = 'rgba(255,' + (120 + fl * 80 | 0) + ',40,' + (0.6 + fl * 0.3) + ')';
-      ctx.beginPath(); ctx.arc(fx, fy, u * 0.3 + fl * u * 0.25, 0, TAU); ctx.fill();
+      const fx = startX + (endX - startX) * ((i * 0.37) % 1), fy = cy + (i % 2 ? 1 : -1) * u * 0.5;
+      const fk = 0.5 + 0.5 * Math.sin(t * 16 + i * 2);
+      px(ctx, fx - 1, fy - u * 0.8 - fk * 2, 2, 2, 'rgba(120,130,150,0.5)');
+      px(ctx, fx - 1, fy, 2, 2, '#ffcf3a'); px(ctx, fx, fy - 1, 1, 1, '#ff7a1e');
     }
   }
 
   function drawPreviewScene(canvas, dt) {
     const ctx = canvas.getContext ? canvas.getContext('2d') : null; if (!ctx) { return; }
     const w = canvas.width = canvas.clientWidth || 600, h = canvas.height = canvas.clientHeight || 320;
-    const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#070d1c'); bg.addColorStop(1, '#04060f');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#9fc0ff';
-    stars.forEach(s => { s.x -= s.z * 0.02 * dt; if (s.x < 0) { s.x += 1; s.y = Math.random(); } ctx.globalAlpha = 0.25 + s.z * 0.6; ctx.fillRect(s.x * w, s.y * h, s.z * 1.7, s.z * 1.7); });
-    ctx.globalAlpha = 1;
-    const u = Math.min(w * 0.072, (h * 0.5 - 16) / 2.9);
-    drawShip(ctx, w * 0.5, h * 0.5, u, META.loadout, previewT, { hull: 100, fires: 0 });
+    const PX = 4;
+    const pw = Math.max(1, Math.round(w / PX)), ph = Math.max(1, Math.round(h / PX));
+    const p = pxBuf(pw, ph); if (!p) { return; }
+    paintSpace(p, pw, ph, dt, 0.02, false);
+    const u = Math.min(pw * 0.072, (ph * 0.5 - 5) / 2.9);
+    drawShip(p, pw * 0.5, ph * 0.5, u, META.loadout, previewT, { hull: 100, fires: 0 });
+    blitPx(ctx, pw, ph, w, h);
   }
 
   // ================================================================ screens
