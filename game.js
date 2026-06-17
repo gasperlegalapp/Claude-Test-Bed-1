@@ -22,6 +22,8 @@
   const INTRO = 22;                 // calm sim-seconds before the first contact
   const CARGO_FAIL = 30;            // lose if cargo integrity drops below this
   const SEGMENTS = 14;              // segments per bar
+  const TOTAL_TECHS = 6;            // pool of reassignable repair technicians
+  const TRAVEL_TIME = 4;            // sim-seconds for techs to reach a compartment
   const THREAT_LABEL = ['STANDBY', 'LOW', 'GUARDED', 'ELEVATED', 'SEVERE', 'HORDE'];
 
   // power systems (reactor is the generator; the rest draw from it)
@@ -180,6 +182,7 @@
     const rooms = ROOM_DEFS.map(d => ({
       ...d, status: 'normal', health: 100, fire: false, breach: false, sealed: false,
       crew: d.stations, crewMax: d.stations,
+      repairTechs: 0, repairState: 'idle', repairEta: 0, // idle | enroute | working
     }));
     const depts = {};
     DEPT_DEFS.forEach(d => { depts[d.key] = { ...d, count: Math.min(d.max, d.max + crewBonus), health: rand(88, 100), morale: rand(78, 96) }; });
@@ -204,10 +207,10 @@
       reserve: 0, brownout: false,
       captain: { name: 'LT. K. DRAVEN', role: 'CAPTAIN', health: 100, morale: 'High' },
       crewIdle: 3, openRoom: null,
+      repairPool: TOTAL_TECHS,
       killed: 0, injured: 0, missing: 0,
       pax: Array.from({ length: paxCount }, () => 'safe'),
       paxMorale: 92,
-      repair: REPAIR_NAMES.map((n, i) => ({ name: n, target: null, progress: 0 })),
       actions: {}, buffs: {},
       events: [], comms: [],
       combatTimer: 0, hazardTimer: 0, killProg: 0, batchTimer: INTRO + rand(3, 6),
@@ -240,6 +243,7 @@
     }
   }
   const colorFor = pct => (pct >= 66 ? '' : pct >= 33 ? 'amber' : 'red');
+  function techIcons(n) { let s = '<span class="techicons">'; for (let i = 0; i < n; i++) { s += '<i class="techic">⛏</i>'; } return s + '</span>'; }
 
   // (re)build the cargo manifest + passenger grid to match the current mission
   function buildCargo() {
@@ -297,18 +301,11 @@
       R.depts[d.key] = { pct: row.querySelector('.pct'), bar };
     });
 
-    // repair teams
-    R.repair = [];
-    const rl = $('repairList');
-    S.repair.forEach((t, i) => {
-      const row = document.createElement('div'); row.className = 'rteam';
-      row.innerHTML =
-        '<span class="rt-ico">🛠</span><div class="rt-main">' +
-        '<div class="rt-name">' + t.name + '</div>' +
-        '<div class="rt-task"></div></div><span class="rt-pct"></span>';
-      const bar = seg(6); row.querySelector('.rt-main').appendChild(bar);
-      rl.appendChild(row);
-      R.repair.push({ row, task: row.querySelector('.rt-task'), pct: row.querySelector('.rt-pct'), bar });
+    // repair crew panel (dynamic) + release delegation
+    R.repairBody = $('repairBody');
+    R.repairBody.addEventListener('click', e => {
+      const b = e.target.closest('[data-release]');
+      if (b) { releaseRoom(b.getAttribute('data-release')); }
     });
 
     // casualties
@@ -410,7 +407,9 @@
       else if (act === 'crew-') { moveCrew(key, -1); }
       else if (act === 'seal') { toggleSeal(key); }
       else if (act === 'vent') { ventRoom(key); }
-      else if (act === 'repair') { dispatchRepair(key); }
+      else if (act === 'rtech+') { assignTech(key, +1); }
+      else if (act === 'rtech-') { assignTech(key, -1); }
+      else if (act === 'release') { releaseRoom(key); }
       else if (act === 'pow+' && rm.sys) { adjustPower(rm.sys, rm.sys === 'reactor' ? 3 : 5); }
       else if (act === 'pow-' && rm.sys) { adjustPower(rm.sys, rm.sys === 'reactor' ? -3 : -5); }
       if (S.openRoom) { updateModal(roomByKey(S.openRoom)); }
@@ -487,16 +486,26 @@
   function openRoom(key) { S.openRoom = key; $('roomModal').classList.remove('hidden'); buildModal(roomByKey(key)); }
   function closeRoom() { S.openRoom = null; R.modal = null; $('roomModal').classList.add('hidden'); }
 
-  function dispatchRepair(roomKey) {
+  function assignTech(roomKey, d) {
     if (S.over) { return; }
-    const rm = S.rooms.find(r => r.key === roomKey);
-    if (rm.health >= 99 && !rm.fire && !rm.breach) { logEvent('info', rm.label + ' nominal — no repair needed'); return; }
-    // free a team (prefer idle, else the one with most-healthy target) and send it
-    let team = S.repair.find(t => t.target === null);
-    if (!team) { team = S.repair.find(t => t.target === roomKey) || S.repair[0]; }
-    team.target = roomKey; team.progress = 0;
-    logEvent('info', team.name + ' dispatched to ' + rm.label);
-    comms('info', team.name + ' → ' + rm.label);
+    const rm = roomByKey(roomKey);
+    if (d > 0) {
+      if (S.repairPool <= 0) { return; }
+      S.repairPool--; rm.repairTechs++;
+      if (rm.repairState === 'idle') { rm.repairState = 'enroute'; rm.repairEta = TRAVEL_TIME; }
+      if (rm.repairTechs === 1) { logEvent('info', 'Repair tech dispatched to ' + rm.label + ' (en route)'); comms('info', 'REPAIR → ' + rm.label); }
+    } else {
+      if (rm.repairTechs <= 0) { return; }
+      rm.repairTechs--; S.repairPool++;
+      if (rm.repairTechs === 0) { rm.repairState = 'idle'; rm.repairEta = 0; }
+    }
+  }
+  function releaseRoom(roomKey) {
+    const rm = roomByKey(roomKey);
+    if (rm.repairTechs > 0) {
+      S.repairPool += rm.repairTechs; rm.repairTechs = 0; rm.repairState = 'idle'; rm.repairEta = 0;
+      logEvent('info', 'Repair crew released from ' + rm.label);
+    }
   }
   function triggerAction(key) {
     if (S.over || S.actions[key] > 0) { return; }
@@ -661,23 +670,20 @@
       if (idx >= 0) { S.pax[idx] = 'dead'; logEvent('bad', 'Passenger lost — life support failure'); }
     }
 
-    // ---- repair teams ----
+    // ---- repair crew (player-assigned techs; travel, then work) ----
     const engFactor = 0.5 + 0.5 * S.depts.engineering.count / S.depts.engineering.max;
-    S.repair.forEach(t => {
-      if (t.target === null) {
-        // auto-assign worst room
-        const worst = S.rooms.filter(r => r.health < 90 || r.fire || r.breach)
-          .sort((a, b) => a.health - b.health)[0];
-        if (worst) { t.target = worst.key; t.progress = 0; }
+    S.rooms.forEach(rm => {
+      if (rm.repairTechs <= 0) { return; }
+      if (rm.repairState === 'enroute') {
+        rm.repairEta -= dt;
+        if (rm.repairEta <= 0) { rm.repairState = 'working'; logEvent('good', rm.repairTechs + ' repair tech(s) on station at ' + rm.label); }
         return;
       }
-      const rm = S.rooms.find(r => r.key === t.target);
-      const rate = (14 * engFactor * S.crewSkill) * (S.brownout ? 0.6 : 1);
-      if (rm.fire && chance(0.5 * dt)) { rm.fire = false; logEvent('good', t.name + ' suppressed fire in ' + rm.label); }
-      if (rm.breach && rm.health > 30 && chance(0.4 * dt)) { rm.breach = false; logEvent('good', t.name + ' sealed breach in ' + rm.label); }
-      rm.health = clamp(rm.health + rate * dt, 0, 100);
-      t.progress = rm.health;
-      if (rm.health >= 99 && !rm.fire && !rm.breach) { t.target = null; t.progress = 0; }
+      // working: ~18s per tech to fully repair from zero; techs also fight hazards
+      const rate = (5.5 * rm.repairTechs * engFactor * S.crewSkill) * (S.brownout ? 0.6 : 1);
+      if (rm.fire && chance(0.35 * rm.repairTechs * dt)) { rm.fire = false; logEvent('good', 'Repair crew suppressed fire in ' + rm.label); }
+      if (rm.breach && rm.health > 25 && chance(0.3 * rm.repairTechs * dt)) { rm.breach = false; logEvent('good', 'Repair crew sealed breach in ' + rm.label); }
+      if (rm.health < 100 || rm.fire || rm.breach) { rm.health = clamp(rm.health + rate * dt, 0, 100); }
     });
 
     // injured recover faster with medical dept AND a manned med bay
@@ -777,26 +783,26 @@
     });
     $('crewCount').textContent = aliveCrew() + ' / 28 · ' + S.crewIdle + ' IDLE';
 
-    // repair teams
-    let active = 0;
-    S.repair.forEach((t, i) => {
-      const ref = R.repair[i];
-      if (t.target) {
-        active++;
-        const rm = S.rooms.find(r => r.key === t.target);
-        ref.row.classList.remove('idle');
-        ref.task.innerHTML = 'Repairing: <b>' + rm.label + '</b>';
-        ref.pct.textContent = Math.round(t.progress) + '%';
-        ref.pct.style.color = colorFor(t.progress) === 'red' ? 'var(--red)' : colorFor(t.progress) === 'amber' ? 'var(--amber)' : 'var(--green)';
-        setSeg(ref.bar, t.progress / 100, colorFor(t.progress));
-      } else {
-        ref.row.classList.add('idle');
-        ref.task.innerHTML = 'Standing by';
-        ref.pct.textContent = '—';
-        setSeg(ref.bar, 0, '');
-      }
-    });
-    $('repairActive').textContent = active + ' / 3 ACTIVE';
+    // repair crew (tech pool + active jobs)
+    $('repairPool').textContent = S.repairPool + ' / ' + TOTAL_TECHS + ' IDLE';
+    const jobs = S.rooms.filter(r => r.repairTechs > 0);
+    let rhtml = '<div class="repair-pool"><span class="rp-label">IDLE TECHS</span>' + techIcons(S.repairPool) +
+      (S.repairPool === 0 ? '<span class="rp-none">none</span>' : '') + '</div>';
+    if (jobs.length === 0) {
+      rhtml += '<div class="repair-empty">No active repairs. Click a compartment on the schematic to send techs.</div>';
+    } else {
+      jobs.forEach(rm => {
+        const done = rm.health >= 99 && !rm.fire && !rm.breach;
+        const state = rm.repairState === 'enroute'
+          ? '<span class="rj-state enroute">EN ROUTE ' + Math.ceil(rm.repairEta) + 's</span>'
+          : done ? '<span class="rj-state done">ON STATION</span>'
+            : '<span class="rj-state">REPAIRING ' + Math.round(rm.health) + '%</span>';
+        rhtml += '<div class="repair-job"><div class="rj-top"><span class="rj-name">' + rm.label + '</span>' +
+          '<button class="rj-release" data-release="' + rm.key + '">release</button></div>' +
+          '<div class="rj-mid">' + techIcons(rm.repairTechs) + state + '</div></div>';
+      });
+    }
+    R.repairBody.innerHTML = rhtml;
 
     // casualties
     R.casK.textContent = S.killed; R.casI.textContent = S.injured; R.casM.textContent = S.missing;
@@ -820,8 +826,7 @@
       else if (rm.med || rm.key === 'bridge') { statTxt = rm.crew + ' / ' + rm.crewMax; }
       else { statTxt = Math.round(rm.health) + '%'; }
       ref.stat.textContent = statTxt;
-      const repairing = S.repair.some(t => t.target === rm.key);
-      ref.badge.textContent = rm.fire ? '🔥' : rm.breach ? '✷' : rm.sealed ? '🔒' : repairing ? '🛠' : '';
+      ref.badge.textContent = rm.fire ? '🔥' : rm.breach ? '✷' : rm.sealed ? '🔒' : rm.repairTechs > 0 ? '🛠' : '';
       // station pips: filled = manned, hollow = empty station
       let pips = '';
       for (let i = 0; i < rm.stations; i++) { pips += '<i class="pip' + (i < rm.crew ? ' on' : '') + '"></i>'; }
@@ -935,8 +940,15 @@
           '<div class="rm-pwrrow"><button class="pbtn" data-act="pow-">−</button>' +
           '<div class="rm-bar"><i></i></div><span class="rm-pwrn"></span>' +
           '<button class="pbtn" data-act="pow+">+</button></div></div>' : '') +
+      '<div class="rm-sec"><div class="rm-sec-h">REPAIR CREW</div>' +
+        '<div class="rm-stationrow"><div class="rm-techs"></div>' +
+          '<div class="rm-crewctl"><button class="pbtn" data-act="rtech-">−</button>' +
+          '<span class="rm-rtechn"></span>' +
+          '<button class="pbtn" data-act="rtech+">+</button></div></div>' +
+        '<div class="rm-rstate"></div>' +
+        '<button class="rm-fn rm-release" data-act="release">RELEASE CREW TO POOL</button>' +
+      '</div>' +
       '<div class="rm-sec"><div class="rm-sec-h">FUNCTIONS</div><div class="rm-fns">' +
-        '<button class="rm-fn" data-act="repair">🛠 DISPATCH REPAIR TEAM</button>' +
         '<button class="rm-fn" data-act="seal">🔒 SEAL BULKHEAD</button>' +
         '<button class="rm-fn" data-act="vent">🌀 VENT ATMOSPHERE</button>' +
       '</div></div>';
@@ -947,7 +959,10 @@
       chip: panel.querySelector('.rm-chip'), sub: panel.querySelector('.rm-sub'),
       pips, crewn: panel.querySelector('.rm-crewn'), eff: panel.querySelector('.rm-eff'),
       idleN: panel.querySelector('.rm-idleN'), powBar: panel.querySelector('.rm-bar i'),
-      powN: panel.querySelector('.rm-pwrn'), repair: panel.querySelector('[data-act="repair"]'),
+      powN: panel.querySelector('.rm-pwrn'),
+      techs: panel.querySelector('.rm-techs'), rtechn: panel.querySelector('.rm-rtechn'),
+      rstate: panel.querySelector('.rm-rstate'), rtechPlus: panel.querySelector('[data-act="rtech+"]'),
+      rtechMinus: panel.querySelector('[data-act="rtech-"]'), release: panel.querySelector('[data-act="release"]'),
       seal: panel.querySelector('[data-act="seal"]'), vent: panel.querySelector('[data-act="vent"]'),
     };
     updateModal(rm);
@@ -973,9 +988,19 @@
       m.powBar.style.width = (clamp(sy.power / max, 0, 1) * 100).toFixed(0) + '%';
       m.powN.textContent = Math.round(sy.power) + (rm.sys === 'reactor' ? ' MW' : '%');
     }
-    const repairing = S.repair.some(t => t.target === rm.key);
-    m.repair.disabled = repairing;
-    m.repair.textContent = repairing ? '🛠 REPAIR UNDERWAY' : '🛠 DISPATCH REPAIR TEAM';
+    // repair crew controls
+    m.techs.innerHTML = rm.repairTechs > 0 ? techIcons(rm.repairTechs) : '<span class="rp-none">none assigned</span>';
+    m.rtechn.textContent = rm.repairTechs;
+    m.rtechPlus.disabled = S.repairPool <= 0;
+    m.rtechMinus.disabled = rm.repairTechs <= 0;
+    const done = rm.health >= 99 && !rm.fire && !rm.breach;
+    let rs;
+    if (rm.repairTechs === 0) { rs = (S.repairPool > 0 ? S.repairPool + ' techs idle in the pool — press + to send them here' : 'No idle techs — release some from another job'); }
+    else if (rm.repairState === 'enroute') { rs = '<b class="warnt">EN ROUTE</b> — arriving in ' + Math.ceil(rm.repairEta) + 's'; }
+    else if (done) { rs = '<b style="color:var(--green)">ON STATION</b> — standing by (release if needed elsewhere)'; }
+    else { rs = '<b style="color:var(--cyan)">REPAIRING</b> — structure ' + Math.round(rm.health) + '%'; }
+    m.rstate.innerHTML = rs;
+    m.release.style.display = rm.repairTechs > 0 ? 'block' : 'none';
     m.seal.classList.toggle('on', rm.sealed);
     m.seal.textContent = rm.sealed ? '🔒 OPEN BULKHEAD' : '🔒 SEAL BULKHEAD';
     m.vent.disabled = !rm.fire;
@@ -1036,7 +1061,7 @@
         ctx.save();
         ctx.strokeStyle = 'rgba(90,180,255,' + (0.10 + sf * 0.30 + (under ? 0.06 * Math.sin(S.t * 8) : 0)) + ')';
         ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.ellipse(cx, cy, L * 0.60, h * 0.44, 0, 0, TAU); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(cx, cy, unit * 6.6, unit * 2.7, 0, 0, TAU); ctx.stroke();
         ctx.restore();
       }
     }
@@ -1075,7 +1100,7 @@
       if (b.t >= 1) {
         // impact on the shield perimeter
         const ia = Math.atan2(py - cy, px - cx);
-        flashes.push({ x: cx + Math.cos(ia) * L * 0.6, y: cy + Math.sin(ia) * h * 0.44, life: 0.35 });
+        flashes.push({ x: cx + Math.cos(ia) * unit * 6.6, y: cy + Math.sin(ia) * unit * 2.7, life: 0.35 });
         bolts.splice(i, 1);
       }
     }
@@ -1099,84 +1124,88 @@
     ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r);
     ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
-  function drawPod(ctx, x, y, u, type, top, t) {
-    const w = u * 1.7, h = u * 1.25, x0 = x - w / 2, y0 = y - h / 2;
-    if (!type) {
-      ctx.strokeStyle = 'rgba(140,170,210,0.45)'; ctx.lineWidth = Math.max(1, u * 0.16);
-      ctx.strokeRect(x - u * 0.45, y - u * 0.38, u * 0.9, u * 0.76);
-      return;
-    }
+  const CARGO_PALETTE = ['#b1462f', '#3f7fb0', '#c98a3a', '#bdb6aa', '#3f9e74', '#8a6fae'];
+  // a container/module sitting on top of the hull, drawn per loadout type
+  function drawPod(ctx, px, hullTop, slotW, u, type, idx, t) {
+    const cw = Math.min(slotW * 0.9, u * 1.5), ch = u * 1.25, x0 = px - cw / 2, y0 = hullTop - ch;
+    if (!type) { ctx.fillStyle = '#2f3a48'; ctx.fillRect(px - cw * 0.4, hullTop - u * 0.26, cw * 0.8, u * 0.26); return; }
     if (type === 'cargo') {
-      const cols = 4, rows = 3;
-      for (let c = 0; c < cols; c++) { for (let r = 0; r < rows; r++) {
-        ctx.fillStyle = (c + r) % 2 ? '#9a6a3e' : '#7d5230';
-        ctx.fillRect(x0 + c * w / cols, y0 + r * h / rows, w / cols - 1, h / rows - 1);
-      } }
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
+      ctx.fillStyle = CARGO_PALETTE[idx % CARGO_PALETTE.length]; ctx.fillRect(x0, y0, cw, ch);
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1;
+      for (let r = 1; r < 4; r++) { const rx = x0 + cw * r / 4; ctx.beginPath(); ctx.moveTo(rx, y0 + 1); ctx.lineTo(rx, y0 + ch - 1); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(x0, y0 + ch * 0.44, cw, u * 0.1);
+      ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.strokeRect(x0 + 0.5, y0 + 0.5, cw - 1, ch - 1);
     } else if (type === 'passenger') {
-      ctx.fillStyle = '#33485e'; roundRect(ctx, x0, y0, w, h, u * 0.3); ctx.fill();
+      ctx.fillStyle = '#33485e'; roundRect(ctx, x0, y0, cw, ch, u * 0.18); ctx.fill();
       ctx.strokeStyle = '#5fb6ff'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = 'rgba(150,220,255,' + (0.55 + 0.4 * Math.sin(t * 3 + x)) + ')';
-      for (let i = 0; i < 4; i++) { ctx.fillRect(x0 + u * 0.22 + i * (w - u * 0.4) / 4, y - u * 0.13, (w - u * 0.5) / 4, u * 0.28); }
+      ctx.fillStyle = 'rgba(150,220,255,' + (0.5 + 0.4 * Math.sin(t * 3 + px)) + ')';
+      for (let r = 0; r < 2; r++) { for (let c = 0; c < 3; c++) { ctx.fillRect(x0 + cw * 0.16 + c * cw * 0.26, y0 + ch * 0.22 + r * ch * 0.34, cw * 0.17, ch * 0.2); } }
     } else if (type === 'military') {
-      ctx.fillStyle = '#33414f'; ctx.fillRect(x0, y0, w, h);
-      ctx.fillStyle = '#c0563a'; ctx.fillRect(x0, y + h * 0.16, w, u * 0.22);
-      ctx.strokeStyle = '#7a8ba0'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
-      ctx.fillStyle = '#222c3a'; ctx.fillRect(x - u * 0.16, top ? y0 - u * 0.45 : y0 + h, u * 0.32, u * 0.45);
+      ctx.fillStyle = '#39434f'; ctx.fillRect(x0, y0, cw, ch);
+      ctx.fillStyle = '#c0563a'; ctx.fillRect(x0, y0 + ch * 0.34, cw, u * 0.16);
+      ctx.strokeStyle = '#7a8ba0'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, cw, ch);
+      ctx.fillStyle = '#1c242f'; ctx.fillRect(px - u * 0.13, y0 - u * 0.4, u * 0.26, u * 0.4);
     } else if (type === 'shield') {
-      ctx.fillStyle = '#25405c'; roundRect(ctx, x0, y0, w, h, u * 0.3); ctx.fill();
+      ctx.fillStyle = '#25405c'; roundRect(ctx, x0, y0, cw, ch, u * 0.18); ctx.fill();
       ctx.strokeStyle = '#4fb0ff'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.strokeStyle = 'rgba(90,180,255,' + (0.4 + 0.3 * Math.sin(t * 4 + x)) + ')';
-      ctx.beginPath(); ctx.arc(x, y, u * 0.5, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = 'rgba(90,180,255,' + (0.4 + 0.3 * Math.sin(t * 4 + px)) + ')';
+      ctx.beginPath(); ctx.arc(px, y0 + ch * 0.45, u * 0.5, Math.PI, 0); ctx.stroke();
     }
+  }
+  function drawEngines(ctx, hx0, cy, u, t) {
+    ctx.fillStyle = '#2b3340'; roundRect(ctx, hx0 - u * 1.7, cy - u * 1.45, u * 2.0, u * 2.9, u * 0.35); ctx.fill();
+    ctx.strokeStyle = '#46566c'; ctx.lineWidth = 1; ctx.stroke();
+    const eg = 0.5 + 0.4 * Math.sin(t * 9);
+    for (let k = -1; k <= 1; k++) {
+      const ey = cy + k * u * 0.92;
+      ctx.fillStyle = '#11161f'; roundRect(ctx, hx0 - u * 2.0, ey - u * 0.3, u * 0.55, u * 0.6, u * 0.18); ctx.fill();
+      const g = ctx.createRadialGradient(hx0 - u * 2.1, ey, 0, hx0 - u * 2.1, ey, u * 1.4);
+      g.addColorStop(0, 'rgba(120,190,255,' + eg + ')'); g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx0 - u * 2.2, ey, u * 1.3, 0, TAU); ctx.fill();
+    }
+  }
+  function drawBridge(ctx, hx1, cy, u, t) {
+    const bx = hx1 - u * 0.2, bw = u * 1.9, bh = u * 1.7;
+    const bg = ctx.createLinearGradient(0, cy - bh, 0, cy + bh);
+    bg.addColorStop(0, '#9aa6b4'); bg.addColorStop(1, '#3f4a58');
+    ctx.fillStyle = bg; roundRect(ctx, bx, cy - bh / 2, bw, bh, u * 0.3); ctx.fill();
+    ctx.strokeStyle = '#b9c4d0'; ctx.lineWidth = 1; ctx.stroke();
+    // forward nose taper
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(bx + bw - 1, cy - bh * 0.34); ctx.lineTo(bx + bw + u * 1.7, cy); ctx.lineTo(bx + bw - 1, cy + bh * 0.34); ctx.closePath(); ctx.fill(); ctx.stroke();
+    // raised bridge tower
+    ctx.fillStyle = '#828e9c'; roundRect(ctx, bx + u * 0.45, cy - bh / 2 - u * 0.9, u * 1.0, u * 1.0, u * 0.18); ctx.fill();
+    ctx.strokeStyle = '#aab4c0'; ctx.stroke();
+    // blue trim + windows
+    ctx.fillStyle = '#3fa7ff'; ctx.fillRect(bx, cy - bh * 0.16, bw + u * 1.3, u * 0.13);
+    ctx.fillStyle = 'rgba(150,220,255,' + (0.6 + 0.4 * Math.sin(t * 3)) + ')';
+    for (let i = 0; i < 3; i++) { ctx.fillRect(bx + u * 0.55 + i * u * 0.38, cy - bh / 2 - u * 0.55, u * 0.24, u * 0.4); }
+    // nose light
+    ctx.fillStyle = (Math.sin(t * 4) > 0) ? '#ff7a7a' : 'rgba(255,120,120,0.3)';
+    ctx.beginPath(); ctx.arc(bx + bw + u * 1.55, cy, u * 0.16, 0, TAU); ctx.fill();
   }
   function drawShip(ctx, cx, cy, u, loadout, t, opts) {
     opts = opts || {}; loadout = loadout || [];
     const hull = opts.hull == null ? 100 : opts.hull, fires = opts.fires || 0;
-    const xEng = cx - u * 4.5, xCmd = cx + u * 4.0;
-    // spine
-    ctx.strokeStyle = '#3a475e'; ctx.lineWidth = Math.max(2, u * 0.5);
-    ctx.beginPath(); ctx.moveTo(xEng, cy); ctx.lineTo(xCmd, cy); ctx.stroke();
-    ctx.strokeStyle = '#62799a'; ctx.lineWidth = Math.max(1, u * 0.16);
-    ctx.beginPath(); ctx.moveTo(xEng, cy); ctx.lineTo(xCmd, cy); ctx.stroke();
-    // hardpoint pods (pairs top/bottom along the spine)
-    const n = loadout.length || 6, pairs = Math.ceil(n / 2);
-    const startX = xEng + u * 1.7, endX = xCmd - u * 2.0;
-    for (let i = 0; i < n; i++) {
-      const pair = Math.floor(i / 2), top = (i % 2) === 0;
-      const px = pairs > 1 ? startX + (endX - startX) * (pair / (pairs - 1)) : (startX + endX) / 2;
-      const py = cy + (top ? -1 : 1) * u * 1.45;
-      ctx.strokeStyle = '#caa24a'; ctx.lineWidth = Math.max(1.5, u * 0.2);
-      ctx.beginPath(); ctx.moveTo(px, cy); ctx.lineTo(px, py + (top ? u * 0.55 : -u * 0.55)); ctx.stroke();
-      drawPod(ctx, px, py, u, loadout[i], top, t);
-    }
-    // engines (rear)
-    ctx.fillStyle = '#2a3344'; roundRect(ctx, xEng - u * 1.3, cy - u * 1.6, u * 1.8, u * 3.2, u * 0.4); ctx.fill();
-    ctx.strokeStyle = '#46566c'; ctx.lineWidth = 1; ctx.stroke();
-    const eg = 0.5 + 0.4 * Math.sin(t * 9);
-    for (let k = -1; k <= 1; k++) {
-      const ey = cy + k * u * 1.0;
-      ctx.fillStyle = '#161e2b'; ctx.fillRect(xEng - u * 1.7, ey - u * 0.32, u * 0.55, u * 0.64);
-      const g = ctx.createRadialGradient(xEng - u * 1.9, ey, 0, xEng - u * 1.9, ey, u * 1.5);
-      g.addColorStop(0, 'rgba(120,190,255,' + eg + ')'); g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(xEng - u * 2.0, ey, u * 1.4, 0, TAU); ctx.fill();
-    }
-    // command module (front)
-    const cw = u * 3.0, ch = u * 2.3;
-    const cg = ctx.createLinearGradient(0, cy - ch / 2, 0, cy + ch / 2);
-    cg.addColorStop(0, '#5a6a7e'); cg.addColorStop(1, '#27313e');
-    ctx.fillStyle = cg; roundRect(ctx, xCmd - u * 0.3, cy - ch / 2, cw, ch, u * 0.9); ctx.fill();
-    ctx.strokeStyle = '#7d8ea2'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = '#3fa7ff'; ctx.fillRect(xCmd - u * 0.3, cy - ch / 2 + u * 0.35, cw, u * 0.16);
-    ctx.fillStyle = 'rgba(150,220,255,' + (0.6 + 0.4 * Math.sin(t * 3)) + ')';
-    for (let i = 0; i < 3; i++) { ctx.fillRect(xCmd + cw - u * 1.3, cy - u * 0.7 + i * u * 0.55, u * 0.5, u * 0.24); }
-    // nose running light
-    ctx.fillStyle = (Math.sin(t * 4) > 0) ? '#ff7a7a' : 'rgba(255,120,120,0.3)';
-    ctx.beginPath(); ctx.arc(xCmd + cw - u * 0.2, cy, u * 0.18, 0, TAU); ctx.fill();
+    const hh = u * 1.05, top = cy - hh, bot = cy + hh;
+    const hx0 = cx - u * 3.8, hx1 = cx + u * 3.4;
+    drawEngines(ctx, hx0, cy, u, t);
+    // hull body
+    const hg = ctx.createLinearGradient(0, top, 0, bot);
+    hg.addColorStop(0, '#aab4c0'); hg.addColorStop(0.45, '#7a8696'); hg.addColorStop(1, '#3f4956');
+    ctx.fillStyle = hg; roundRect(ctx, hx0, top, hx1 - hx0, hh * 2, u * 0.32); ctx.fill();
+    ctx.strokeStyle = '#b9c4d0'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = 'rgba(38,50,66,0.4)'; ctx.lineWidth = 1;
+    for (let i = 1; i < 8; i++) { const px = hx0 + (hx1 - hx0) * i / 8; ctx.beginPath(); ctx.moveTo(px, top + 2); ctx.lineTo(px, bot - 2); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(38,50,66,0.45)'; ctx.fillRect(hx0 + u * 0.2, cy + hh * 0.4, hx1 - hx0 - u * 0.4, u * 0.16);
+    ctx.fillStyle = '#2c3542'; ctx.fillRect(cx - u * 1.2, bot - 1, u * 0.5, u * 0.7); ctx.fillRect(cx + u * 0.9, bot - 1, u * 0.5, u * 0.7);
+    // container row on top of the hull
+    const n = loadout.length || 6, cx0 = hx0 + u * 0.5, cx1 = hx1 - u * 0.5, slotW = (cx1 - cx0) / n;
+    for (let i = 0; i < n; i++) { drawPod(ctx, cx0 + slotW * (i + 0.5), top, slotW, u, loadout[i], i, t); }
+    drawBridge(ctx, hx1, cy, u, t);
     // damage fire/smoke
     const burn = fires + (hull < 60 ? 1 : 0) + (hull < 35 ? 1 : 0);
     for (let i = 0; i < burn; i++) {
-      const fx = startX + (endX - startX) * ((i * 0.37) % 1), fy = cy + (i % 2 ? 1 : -1) * u * 0.6;
+      const fx = cx0 + (cx1 - cx0) * ((i * 0.37) % 1), fy = cy + (i % 2 ? 1 : -1) * u * 0.5;
       const fl = 0.5 + 0.5 * Math.sin(t * 18 + i * 2);
       ctx.fillStyle = 'rgba(120,130,150,0.4)'; ctx.beginPath(); ctx.arc(fx, fy - u * 0.6, u * 0.4 + fl * u * 0.2, 0, TAU); ctx.fill();
       ctx.fillStyle = 'rgba(255,' + (120 + fl * 80 | 0) + ',40,' + (0.6 + fl * 0.3) + ')';

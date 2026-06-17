@@ -52,9 +52,13 @@ Open `index.html` in any modern browser. No build step, no dependencies.
     manned station runs at 100%; an empty one drops to ~50% — so pulling gunners
     over to fight a fire really does weaken your guns.
   - **Reroute power** to that compartment's system right from the inspector.
-  - **Functions:** *Dispatch Repair Team*, *Seal Bulkhead* (contains fire/breach
-    damage but locks the crew inside), *Vent Atmosphere* (instantly kills a fire
-    and auto-evacuates the crew — you lose their manning).
+  - **Repair crew:** a shared pool of repair technicians. Assign techs to a
+    compartment (− / +); they go **EN ROUTE** (travel time), then **REPAIRING**
+    (more techs = faster), then **ON STATION** when done. **Release** them back to
+    the pool to redeploy. When the pool is empty, the assign button greys out.
+  - **Functions:** *Seal Bulkhead* (contains fire/breach damage but locks the
+    crew inside) and *Vent Atmosphere* (instantly kills a fire and
+    auto-evacuates the crew — you lose their manning).
   - Tiles show station pips (manned/empty) and badges for fire/breach/sealed/repair.
 
 ### What manning each station does
