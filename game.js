@@ -23,7 +23,8 @@
   const CARGO_FAIL = 30;            // lose if cargo integrity drops below this
   const SEGMENTS = 14;              // segments per bar
   const TOTAL_TECHS = 6;            // pool of reassignable repair technicians
-  const TRAVEL_TIME = 4;            // sim-seconds for techs to reach a compartment
+  const TOTAL_SECURITY = 4;         // pool of security personnel (saboteurs, boarders)
+  const TRAVEL_TIME = 4;            // sim-seconds for crew to reach a compartment
   const THREAT_LABEL = ['STANDBY', 'LOW', 'GUARDED', 'ELEVATED', 'SEVERE', 'HORDE'];
 
   // power systems (reactor is the generator; the rest draw from it)
@@ -183,6 +184,8 @@
       ...d, status: 'normal', health: 100, fire: false, breach: false, sealed: false,
       crew: d.stations, crewMax: d.stations,
       repairTechs: 0, repairState: 'idle', repairEta: 0, // idle | enroute | working
+      securityTechs: 0, secState: 'idle', secEta: 0, sweep: 0,
+      leak: 0, boarders: false, juryCd: 0,
     }));
     const depts = {};
     DEPT_DEFS.forEach(d => { depts[d.key] = { ...d, count: Math.min(d.max, d.max + crewBonus), health: rand(88, 100), morale: rand(78, 96) }; });
@@ -207,7 +210,8 @@
       reserve: 0, brownout: false,
       captain: { name: 'LT. K. DRAVEN', role: 'CAPTAIN', health: 100, morale: 'High' },
       crewIdle: 3, openRoom: null,
-      repairPool: TOTAL_TECHS,
+      repairPool: TOTAL_TECHS, securityPool: TOTAL_SECURITY,
+      sabotage: null, field: null, radiation: 0, eventTimer: INTRO + rand(8, 14),
       killed: 0, injured: 0, missing: 0,
       pax: Array.from({ length: paxCount }, () => 'safe'),
       paxMorale: 92,
@@ -244,6 +248,7 @@
   }
   const colorFor = pct => (pct >= 66 ? '' : pct >= 33 ? 'amber' : 'red');
   function techIcons(n) { let s = '<span class="techicons">'; for (let i = 0; i < n; i++) { s += '<i class="techic">⛏</i>'; } return s + '</span>'; }
+  function secIcons(n) { let s = '<span class="techicons">'; for (let i = 0; i < n; i++) { s += '<i class="secic">🛡</i>'; } return s + '</span>'; }
 
   // (re)build the cargo manifest + passenger grid to match the current mission
   function buildCargo() {
@@ -305,7 +310,9 @@
     R.repairBody = $('repairBody');
     R.repairBody.addEventListener('click', e => {
       const b = e.target.closest('[data-release]');
-      if (b) { releaseRoom(b.getAttribute('data-release')); }
+      if (b) { releaseRoom(b.getAttribute('data-release')); return; }
+      const s = e.target.closest('[data-srelease]');
+      if (s) { releaseSecurity(s.getAttribute('data-srelease')); }
     });
 
     // casualties
@@ -410,6 +417,10 @@
       else if (act === 'rtech+') { assignTech(key, +1); }
       else if (act === 'rtech-') { assignTech(key, -1); }
       else if (act === 'release') { releaseRoom(key); }
+      else if (act === 'jury') { juryRig(key); }
+      else if (act === 'sec+') { assignSecurity(key, +1); }
+      else if (act === 'sec-') { assignSecurity(key, -1); }
+      else if (act === 'secrelease') { releaseSecurity(key); }
       else if (act === 'pow+' && rm.sys) { adjustPower(rm.sys, rm.sys === 'reactor' ? 3 : 5); }
       else if (act === 'pow-' && rm.sys) { adjustPower(rm.sys, rm.sys === 'reactor' ? -3 : -5); }
       if (S.openRoom) { updateModal(roomByKey(S.openRoom)); }
@@ -436,6 +447,7 @@
       else if (key === 'weapons') { e *= S.bonus.weapon; }
       else if (key === 'engines') { e *= S.bonus.engine; }
     }
+    if (S.radiation > 0 && (key === 'shields' || key === 'sensors')) { e *= 0.7; } // ion surge scrambles them
     return clamp(e, 0, 2.5);
   }
   function usedPower() {
@@ -507,6 +519,35 @@
       logEvent('info', 'Repair crew released from ' + rm.label);
     }
   }
+  function assignSecurity(roomKey, d) {
+    if (S.over) { return; }
+    const rm = roomByKey(roomKey);
+    if (d > 0) {
+      if (S.securityPool <= 0) { return; }
+      S.securityPool--; rm.securityTechs++;
+      if (rm.secState === 'idle') { rm.secState = 'enroute'; rm.secEta = TRAVEL_TIME; rm.sweep = 0; }
+      if (rm.securityTechs === 1) { logEvent('info', 'Security detail dispatched to ' + rm.label + ' (en route)'); comms('info', 'SECURITY → ' + rm.label); }
+    } else {
+      if (rm.securityTechs <= 0) { return; }
+      rm.securityTechs--; S.securityPool++;
+      if (rm.securityTechs === 0) { rm.secState = 'idle'; rm.secEta = 0; rm.sweep = 0; }
+    }
+  }
+  function releaseSecurity(roomKey) {
+    const rm = roomByKey(roomKey);
+    if (rm.securityTechs > 0) {
+      S.securityPool += rm.securityTechs; rm.securityTechs = 0; rm.secState = 'idle'; rm.secEta = 0; rm.sweep = 0;
+      logEvent('info', 'Security detail released from ' + rm.label);
+    }
+  }
+  function juryRig(roomKey) {
+    if (S.over) { return; }
+    const rm = roomByKey(roomKey);
+    if (rm.juryCd > 0 || (rm.health >= 80 && rm.leak <= 0)) { return; }
+    rm.health = clamp(Math.max(rm.health, rm.health + 45), 0, 80); // fast stopgap, never full
+    rm.leak = 0; rm.juryCd = 22;
+    logEvent('good', 'Jury-rigged ' + rm.label + ' — temporary patch holding'); comms('warn', 'JURY-RIG — ' + rm.label);
+  }
   function triggerAction(key) {
     if (S.over || S.actions[key] > 0) { return; }
     const def = ACTION_DEFS.find(a => a.key === key);
@@ -562,6 +603,11 @@
     // cooldowns & buffs
     for (const k in S.actions) { if (S.actions[k] > 0) { S.actions[k] = Math.max(0, S.actions[k] - dt); } }
     for (const k in S.buffs) { S.buffs[k] -= dt; if (S.buffs[k] <= 0) { delete S.buffs[k]; } }
+    // per-room leaks drain health; jury-rig cooldowns tick down
+    S.rooms.forEach(rm => {
+      if (rm.juryCd > 0) { rm.juryCd = Math.max(0, rm.juryCd - dt); }
+      if (rm.leak > 0) { rm.health = clamp(rm.health - rm.leak * dt, 0, 100); }
+    });
 
     // power balance
     const used = usedPower();
@@ -681,9 +727,64 @@
       }
       // working: ~18s per tech to fully repair from zero; techs also fight hazards
       const rate = (5.5 * rm.repairTechs * engFactor * S.crewSkill) * (S.brownout ? 0.6 : 1);
+      if (rm.leak > 0) { rm.leak = Math.max(0, rm.leak - 1.6 * dt); if (rm.leak === 0) { logEvent('good', 'Repair crew sealed the leak in ' + rm.label); } }
       if (rm.fire && chance(0.35 * rm.repairTechs * dt)) { rm.fire = false; logEvent('good', 'Repair crew suppressed fire in ' + rm.label); }
       if (rm.breach && rm.health > 25 && chance(0.3 * rm.repairTechs * dt)) { rm.breach = false; logEvent('good', 'Repair crew sealed breach in ' + rm.label); }
       if (rm.health < 100 || rm.fire || rm.breach) { rm.health = clamp(rm.health + rate * dt, 0, 100); }
+    });
+
+    // ---- security crew (sweep for saboteurs, repel boarders) ----
+    S.rooms.forEach(rm => {
+      if (rm.securityTechs <= 0) { return; }
+      if (rm.secState === 'enroute') {
+        rm.secEta -= dt;
+        if (rm.secEta <= 0) { rm.secState = 'working'; logEvent('good', 'Security detail sweeping ' + rm.label); }
+        return;
+      }
+      // sweeping: catch a saboteur hiding here, or repel boarders here
+      if (S.sabotage && !S.sabotage.caught && S.sabotage.room === rm.key) {
+        rm.sweep += rm.securityTechs * dt;
+        if (rm.sweep >= 6) { S.sabotage.caught = true; logEvent('good', 'Saboteur apprehended in ' + rm.label + '!'); comms('good', 'SABOTEUR CAUGHT — ' + rm.label); }
+      } else if (rm.boarders) {
+        rm.sweep += rm.securityTechs * dt;
+        if (rm.sweep >= 5) { rm.boarders = false; rm.sweep = 0; logEvent('good', 'Boarders repelled in ' + rm.label); comms('good', 'DECK SECURED — ' + rm.label); }
+      } else { rm.sweep = 0; } // nothing here — just standing guard
+    });
+
+    // ---- incident scheduler: trouble strikes unpredictably (even with no raiders) ----
+    if (S.t > INTRO) {
+      S.eventTimer -= dt;
+      if (S.eventTimer <= 0) {
+        S.eventTimer = clamp(26 - S.danger * 3 - (S.t - INTRO) * 0.02, 11, 28) * rand(0.8, 1.2);
+        triggerIncident();
+      }
+    }
+    // active space hazard: debris field
+    if (S.field) {
+      if (S.field.warn > 0) { S.field.warn -= dt; }
+      else {
+        S.field.dur -= dt; S.field.hitT -= dt;
+        if (S.field.hitT <= 0) { S.field.hitT = rand(1.0, 2.2); debrisImpact(); }
+        if (S.field.dur <= 0) { S.field = null; logEvent('good', 'Cleared the debris field'); comms('good', 'DEBRIS FIELD CLEARED'); }
+      }
+    }
+    // active ion surge
+    if (S.radiation > 0) {
+      S.radiation -= dt;
+      S.paxMorale = clamp(S.paxMorale - 1.2 * dt, 0, 100);
+      if (S.radiation <= 0) { logEvent('good', 'Ion surge has passed'); comms('good', 'ION SURGE CLEARED'); }
+    }
+    // active sabotage: periodic tampering until the saboteur is caught
+    if (S.sabotage && !S.sabotage.caught) {
+      S.sabotage.tamperT -= dt;
+      if (S.sabotage.tamperT <= 0) { S.sabotage.tamperT = rand(7, 12); sabotageStrike(); }
+    }
+    // boarders harass the compartments they hold
+    S.rooms.forEach(rm => {
+      if (rm.boarders) {
+        rm.health = clamp(rm.health - 1.1 * dt, 0, 100);
+        if (rm.crew > 0 && chance(0.04 * dt)) { hurtRoom(rm, 'boarders'); }
+      }
     });
 
     // injured recover faster with medical dept AND a manned med bay
@@ -691,15 +792,6 @@
     if (S.injured > 0 && chance(0.04 * S.depts.medical.count / S.depts.medical.max * medMan * S.crewSkill * dt * 4)) {
       S.injured--; logEvent('good', 'Crew member recovered in Med Bay');
     }
-
-    // ---- random hazards (only while under fire) ----
-    if (S.attackers > 0) {
-      S.hazardTimer -= dt;
-      if (S.hazardTimer <= 0) { S.hazardTimer = rand(6, 13) / Math.max(0.5, S.pressure); spawnHazard(); }
-    }
-
-    // ---- crew count from rooms; departments lose people on death ----
-    S.killed += 0; // updated in hurtRoom
 
     // ---- win / lose ----
     if (S.hull <= 0) { endGame(false, 'HULL FAILURE', 'The Wayfarer broke apart under fire.'); }
@@ -726,7 +818,11 @@
     S.hull = clamp(S.hull - leak * 0.12 * S.bonus.hull, 0, 100);
     logEvent('bad', rm.label + ' hit (' + Math.round(leak) + ' dmg)'); comms('bad', rm.label + ' HIT');
     if (leak > 16 && chance(0.5)) { rm.fire = true; logEvent('bad', 'Fire started in ' + rm.label); }
-    if (S.hull < 45 && leak > 20 && chance(0.35)) { rm.breach = true; logEvent('bad', 'HULL BREACH — ' + rm.label); }
+    if (S.hull < 45 && leak > 20 && chance(0.35)) {
+      rm.breach = true; logEvent('bad', 'HULL BREACH — ' + rm.label);
+      // a breach under heavy fire can let boarders aboard — security must repel them
+      if (S.danger >= 2 && !rm.boarders && chance(0.5)) { rm.boarders = true; logEvent('bad', 'Boarders coming through the breach — ' + rm.label); comms('bad', 'BOARDERS — ' + rm.label); }
+    }
     if (rm.crew > 0 && chance(0.3)) { hurtRoom(rm, 'impact'); }
   }
 
@@ -743,14 +839,63 @@
     }
   }
 
-  function spawnHazard() {
-    const kinds = [
-      () => { const r = pick(S.rooms.filter(x => !x.fire)); if (r) { r.fire = true; logEvent('bad', 'Fire detected — ' + r.label); comms('bad', 'FIRE — ' + r.label); } },
-      () => { logEvent('warn', 'Coolant leak detected — Engine Room'); comms('warn', 'COOLANT LEAK'); const r = S.rooms.find(x => x.key === 'engines'); r.health = clamp(r.health - 12, 0, 100); },
-      () => { logEvent('warn', 'Incoming missile swarm detected'); comms('bad', 'MISSILE SWARM INBOUND'); S.combatTimer = 0; },
-      () => { const r = pick(S.rooms); if (S.hull < 55) { r.breach = true; logEvent('bad', 'Decompression — ' + r.label); } else { logEvent('warn', 'Micro-fracture — ' + r.label); r.health = clamp(r.health - 8, 0, 100); } },
-    ];
-    pick(kinds)();
+  // ---- incidents: the unpredictable things that go wrong ----
+  function activeTrouble() {
+    return S.rooms.filter(r => r.fire || r.breach || r.leak > 0 || r.boarders).length +
+      (S.field ? 1 : 0) + (S.radiation > 0 ? 1 : 0) + (S.sabotage && !S.sabotage.caught ? 1 : 0);
+  }
+  function triggerIncident() {
+    if (activeTrouble() >= 3) { return; } // easy mode: never pile on too much at once
+    const pool = ['failure', 'failure', 'hazard'];
+    if (!S.sabotage && S.pax.length > 0) { pool.push('sabotage'); } // a stowaway needs passengers aboard
+    const kind = pick(pool);
+    if (kind === 'failure') { startFailure(); }
+    else if (kind === 'hazard') { startHazard(); }
+    else { startSabotage(); }
+  }
+  function startFailure() {
+    const cands = S.rooms.filter(r => r.sys && r.leak <= 0 && r.health > 40);
+    const rm = pick(cands.length ? cands : S.rooms.filter(r => r.sys));
+    if (!rm) { return; }
+    if (chance(0.5)) {
+      rm.leak = 2.0; logEvent('warn', 'Coolant leak — ' + rm.label + ' losing integrity'); comms('warn', 'COOLANT LEAK — ' + rm.label);
+    } else {
+      rm.health = clamp(rm.health - 20, 0, 100); rm.leak = 1.0;
+      logEvent('bad', 'Power surge — ' + rm.label + ' damaged'); comms('bad', 'POWER SURGE — ' + rm.label);
+    }
+  }
+  function startHazard() {
+    if (chance(0.55)) {
+      S.field = { warn: 5, dur: 13, hitT: 0 };
+      logEvent('warn', 'Debris field ahead — impacts imminent'); comms('bad', 'DEBRIS FIELD AHEAD');
+    } else {
+      S.radiation = 15;
+      logEvent('warn', 'Ion surge — shields and sensors disrupted'); comms('warn', 'ION SURGE');
+    }
+  }
+  function debrisImpact() {
+    let dmg = rand(10, 22);
+    const absorbed = Math.min(S.shieldPool, dmg); S.shieldPool -= absorbed; const leak = dmg - absorbed;
+    if (absorbed > 0) { comms('warn', 'SHIELDS DEFLECT DEBRIS ' + Math.round(absorbed)); }
+    if (leak <= 0) { return; }
+    const rm = pick(S.rooms);
+    rm.health = clamp(rm.health - leak * 0.9, 0, 100);
+    S.hull = clamp(S.hull - leak * 0.1 * S.bonus.hull, 0, 100);
+    logEvent('bad', 'Debris strike — ' + rm.label); comms('bad', 'IMPACT — ' + rm.label);
+    if (leak > 14 && chance(0.4)) { rm.fire = true; }
+  }
+  function startSabotage() {
+    const cands = S.rooms.filter(r => !r.cargoBay);
+    const rm = pick(cands);
+    S.sabotage = { room: rm.key, tamperT: rand(5, 9), caught: false };
+    logEvent('bad', 'Sabotage detected aboard — source unknown'); comms('bad', '⚠ SABOTAGE ABOARD');
+  }
+  function sabotageStrike() {
+    const home = roomByKey(S.sabotage.room);
+    const target = chance(0.65) ? home : pick(S.rooms); // mostly near the saboteur — a clue
+    if (chance(0.5)) { target.fire = true; }
+    else { target.health = clamp(target.health - 16, 0, 100); target.leak = Math.max(target.leak, 1.4); }
+    logEvent('bad', 'Systems tampered with — ' + target.label); comms('bad', 'TAMPERING — ' + target.label);
   }
 
   // ---------------------------------------------------------------- render
@@ -784,24 +929,35 @@
     $('crewCount').textContent = aliveCrew() + ' / 28 · ' + S.crewIdle + ' IDLE';
 
     // repair crew (tech pool + active jobs)
-    $('repairPool').textContent = S.repairPool + ' / ' + TOTAL_TECHS + ' IDLE';
-    const jobs = S.rooms.filter(r => r.repairTechs > 0);
-    let rhtml = '<div class="repair-pool"><span class="rp-label">IDLE TECHS</span>' + techIcons(S.repairPool) +
-      (S.repairPool === 0 ? '<span class="rp-none">none</span>' : '') + '</div>';
-    if (jobs.length === 0) {
-      rhtml += '<div class="repair-empty">No active repairs. Click a compartment on the schematic to send techs.</div>';
-    } else {
-      jobs.forEach(rm => {
-        const done = rm.health >= 99.9 && !rm.fire && !rm.breach;
-        const state = rm.repairState === 'enroute'
-          ? '<span class="rj-state enroute">EN ROUTE ' + Math.ceil(rm.repairEta) + 's</span>'
-          : done ? '<span class="rj-state done">ON STATION</span>'
-            : '<span class="rj-state">REPAIRING ' + Math.round(rm.health) + '%</span>';
-        rhtml += '<div class="repair-job"><div class="rj-top"><span class="rj-name">' + rm.label + '</span>' +
-          '<button class="rj-release" data-release="' + rm.key + '">release</button></div>' +
-          '<div class="rj-mid">' + techIcons(rm.repairTechs) + state + '</div></div>';
-      });
+    $('repairPool').textContent = 'REPAIR ' + S.repairPool + ' · SEC ' + S.securityPool;
+    const repJobs = S.rooms.filter(r => r.repairTechs > 0);
+    const secJobs = S.rooms.filter(r => r.securityTechs > 0);
+    let rhtml = '<div class="repair-pool"><span class="rp-label">IDLE</span>' +
+      techIcons(S.repairPool) + secIcons(S.securityPool) +
+      (S.repairPool + S.securityPool === 0 ? '<span class="rp-none">none</span>' : '') + '</div>';
+    if (repJobs.length === 0 && secJobs.length === 0) {
+      rhtml += '<div class="repair-empty">No crews deployed. Click a compartment to send repair techs or security.</div>';
     }
+    repJobs.forEach(rm => {
+      const done = rm.health >= 99.9 && !rm.fire && !rm.breach && rm.leak <= 0;
+      const state = rm.repairState === 'enroute'
+        ? '<span class="rj-state enroute">EN ROUTE ' + Math.ceil(rm.repairEta) + 's</span>'
+        : done ? '<span class="rj-state done">ON STATION</span>'
+          : '<span class="rj-state">REPAIRING ' + Math.round(rm.health) + '%</span>';
+      rhtml += '<div class="repair-job"><div class="rj-top"><span class="rj-name">' + rm.label + '</span>' +
+        '<button class="rj-release" data-release="' + rm.key + '">release</button></div>' +
+        '<div class="rj-mid">' + techIcons(rm.repairTechs) + state + '</div></div>';
+    });
+    secJobs.forEach(rm => {
+      const busy = (S.sabotage && !S.sabotage.caught && S.sabotage.room === rm.key) || rm.boarders;
+      const state = rm.secState === 'enroute'
+        ? '<span class="rj-state enroute">EN ROUTE ' + Math.ceil(rm.secEta) + 's</span>'
+        : busy ? '<span class="rj-state sweep">⚔ ENGAGING</span>'
+          : '<span class="rj-state done">SWEPT — CLEAR</span>';
+      rhtml += '<div class="repair-job sec"><div class="rj-top"><span class="rj-name">' + rm.label + '</span>' +
+        '<button class="rj-release" data-srelease="' + rm.key + '">release</button></div>' +
+        '<div class="rj-mid">' + secIcons(rm.securityTechs) + state + '</div></div>';
+    });
     R.repairBody.innerHTML = rhtml;
 
     // casualties
@@ -819,6 +975,7 @@
       let cls = 'room ' + rm.status;
       if (rm.fire) { cls += ' fire'; }
       if (rm.breach) { cls += ' breach'; }
+      if (rm.boarders) { cls += ' critical'; }
       ref.el.className = cls;
       let statTxt;
       if (rm.cargoBay) { statTxt = S.cargo.length ? Math.round(cargoIntegrity()) + '%' : 'EMPTY'; }
@@ -826,7 +983,7 @@
       else if (rm.med || rm.key === 'bridge') { statTxt = rm.crew + ' / ' + rm.crewMax; }
       else { statTxt = Math.round(rm.health) + '%'; }
       ref.stat.textContent = statTxt;
-      ref.badge.textContent = rm.fire ? '🔥' : rm.breach ? '✷' : rm.sealed ? '🔒' : rm.repairTechs > 0 ? '🛠' : '';
+      ref.badge.textContent = rm.boarders ? '⚔' : rm.fire ? '🔥' : rm.breach ? '✷' : rm.leak > 0 ? '💧' : rm.securityTechs > 0 ? '🛡' : rm.sealed ? '🔒' : rm.repairTechs > 0 ? '🛠' : '';
       // station pips: filled = manned, hollow = empty station
       let pips = '';
       for (let i = 0; i < rm.stations; i++) { pips += '<i class="pip' + (i < rm.crew ? ' on' : '') + '"></i>'; }
@@ -875,11 +1032,16 @@
     $('reserveTxt').textContent = (S.reserve < 0 ? 'OVER ' : '') + Math.round(Math.abs(S.reserve)) + ' / ' + S.sys.reactor.max + ' MW';
     document.querySelector('.reserve-row').classList.toggle('over', S.reserve < 0);
 
-    // active hazards (derived live from ship state)
+    // active hazards (symptoms only — the player works out the response)
     const haz = [];
+    if (S.sabotage && !S.sabotage.caught) { haz.push({ cls: 'breach', ico: '⚠', name: 'SABOTAGE ABOARD', desc: 'Systems being tampered with — source unknown' }); }
+    if (S.field) { haz.push({ cls: '', ico: '☄', name: S.field.warn > 0 ? 'DEBRIS FIELD — IMPACTS IMMINENT' : 'DEBRIS FIELD — TAKING HITS', desc: S.field.warn > 0 ? 'Impacts in ' + Math.ceil(S.field.warn) + 's' : 'Hull under bombardment' }); }
+    if (S.radiation > 0) { haz.push({ cls: 'warn', ico: '☢', name: 'ION SURGE', desc: 'Shields & sensors disrupted (' + Math.ceil(S.radiation) + 's)' }); }
     S.rooms.forEach(rm => {
-      if (rm.fire) { haz.push({ cls: '', ico: '🔥', name: 'FIRE — ' + rm.label, desc: 'Spread risk · suppress now' }); }
+      if (rm.boarders) { haz.push({ cls: 'breach', ico: '⚔', name: 'BOARDERS — ' + rm.label, desc: 'Hostiles aboard, taking the deck' }); }
+      else if (rm.fire) { haz.push({ cls: '', ico: '🔥', name: 'FIRE — ' + rm.label, desc: 'Spreading · structure falling' }); }
       else if (rm.breach) { haz.push({ cls: 'breach', ico: '✷', name: 'HULL BREACH — ' + rm.label, desc: 'Decompression risk' }); }
+      else if (rm.leak > 0) { haz.push({ cls: 'warn', ico: '💧', name: 'LEAK — ' + rm.label, desc: 'Integrity bleeding at ' + Math.round(rm.health) + '%' }); }
       else if (rm.status === 'critical') { haz.push({ cls: '', ico: '⚠', name: rm.label + ' CRITICAL', desc: Math.round(rm.health) + '% integrity' }); }
     });
     if (sysEff('life') < 0.6) { haz.push({ cls: 'warn', ico: '❂', name: 'LIFE SUPPORT STRAINED', desc: 'Crew at risk if it fails' }); }
@@ -946,7 +1108,16 @@
           '<span class="rm-rtechn"></span>' +
           '<button class="pbtn" data-act="rtech+">+</button></div></div>' +
         '<div class="rm-rstate"></div>' +
-        '<button class="rm-fn rm-release" data-act="release">RELEASE CREW TO POOL</button>' +
+        '<div class="rm-fns"><button class="rm-fn rm-release" data-act="release">RELEASE CREW</button>' +
+        '<button class="rm-fn" data-act="jury">🔧 JURY-RIG (FAST PATCH)</button></div>' +
+      '</div>' +
+      '<div class="rm-sec"><div class="rm-sec-h">SECURITY DETAIL</div>' +
+        '<div class="rm-stationrow"><div class="rm-sectechs"></div>' +
+          '<div class="rm-crewctl"><button class="pbtn" data-act="sec-">−</button>' +
+          '<span class="rm-sectechn"></span>' +
+          '<button class="pbtn" data-act="sec+">+</button></div></div>' +
+        '<div class="rm-secstate"></div>' +
+        '<button class="rm-fn rm-release" data-act="secrelease">RELEASE SECURITY</button>' +
       '</div>' +
       '<div class="rm-sec"><div class="rm-sec-h">FUNCTIONS</div><div class="rm-fns">' +
         '<button class="rm-fn" data-act="seal">🔒 SEAL BULKHEAD</button>' +
@@ -963,6 +1134,10 @@
       techs: panel.querySelector('.rm-techs'), rtechn: panel.querySelector('.rm-rtechn'),
       rstate: panel.querySelector('.rm-rstate'), rtechPlus: panel.querySelector('[data-act="rtech+"]'),
       rtechMinus: panel.querySelector('[data-act="rtech-"]'), release: panel.querySelector('[data-act="release"]'),
+      jury: panel.querySelector('[data-act="jury"]'),
+      sectechs: panel.querySelector('.rm-sectechs'), sectechn: panel.querySelector('.rm-sectechn'),
+      secstate: panel.querySelector('.rm-secstate'), secPlus: panel.querySelector('[data-act="sec+"]'),
+      secMinus: panel.querySelector('[data-act="sec-"]'), secrelease: panel.querySelector('[data-act="secrelease"]'),
       seal: panel.querySelector('[data-act="seal"]'), vent: panel.querySelector('[data-act="vent"]'),
     };
     updateModal(rm);
@@ -993,14 +1168,31 @@
     m.rtechn.textContent = rm.repairTechs;
     m.rtechPlus.disabled = S.repairPool <= 0;
     m.rtechMinus.disabled = rm.repairTechs <= 0;
-    const done = rm.health >= 99.9 && !rm.fire && !rm.breach;
+    const done = rm.health >= 99.9 && !rm.fire && !rm.breach && rm.leak <= 0;
     let rs;
     if (rm.repairTechs === 0) { rs = (S.repairPool > 0 ? S.repairPool + ' techs idle in the pool — press + to send them here' : 'No idle techs — release some from another job'); }
     else if (rm.repairState === 'enroute') { rs = '<b class="warnt">EN ROUTE</b> — arriving in ' + Math.ceil(rm.repairEta) + 's'; }
     else if (done) { rs = '<b style="color:var(--green)">ON STATION</b> — fully repaired, standing by for new damage'; }
+    else if (rm.leak > 0) { rs = '<b style="color:var(--amber)">SEALING LEAK</b> & repairing — ' + (Math.floor(rm.health * 10) / 10) + '%'; }
     else { rs = '<b style="color:var(--cyan)">REPAIRING</b> — structure ' + (Math.floor(rm.health * 10) / 10) + '%'; }
     m.rstate.innerHTML = rs;
-    m.release.style.display = rm.repairTechs > 0 ? 'block' : 'none';
+    m.release.style.display = rm.repairTechs > 0 ? '' : 'none';
+    m.jury.disabled = rm.juryCd > 0 || (rm.health >= 80 && rm.leak <= 0);
+    m.jury.textContent = rm.juryCd > 0 ? '🔧 JURY-RIG (READY ' + Math.ceil(rm.juryCd) + 's)' : '🔧 JURY-RIG (FAST PATCH)';
+    // security controls
+    m.sectechs.innerHTML = rm.securityTechs > 0 ? secIcons(rm.securityTechs) : '<span class="rp-none">none assigned</span>';
+    m.sectechn.textContent = rm.securityTechs;
+    m.secPlus.disabled = S.securityPool <= 0;
+    m.secMinus.disabled = rm.securityTechs <= 0;
+    const threatHere = (S.sabotage && !S.sabotage.caught && S.sabotage.room === rm.key) || rm.boarders;
+    let ss;
+    if (rm.securityTechs === 0) { ss = (S.securityPool > 0 ? S.securityPool + ' security idle — send them to sweep a compartment' : 'No security available'); }
+    else if (rm.secState === 'enroute') { ss = '<b class="warnt">EN ROUTE</b> — arriving in ' + Math.ceil(rm.secEta) + 's'; }
+    else if (rm.boarders) { ss = '<b style="color:var(--red)">REPELLING BOARDERS</b>'; }
+    else if (threatHere) { ss = '<b style="color:var(--red)">INTRUDER CORNERED — sweeping</b>'; }
+    else { ss = '<b style="color:var(--green)">SWEPT — clear here</b>'; }
+    m.secstate.innerHTML = ss;
+    m.secrelease.style.display = rm.securityTechs > 0 ? '' : 'none';
     m.seal.classList.toggle('on', rm.sealed);
     m.seal.textContent = rm.sealed ? '🔒 OPEN BULKHEAD' : '🔒 SEAL BULKHEAD';
     m.vent.disabled = !rm.fire;

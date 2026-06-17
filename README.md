@@ -54,11 +54,34 @@ Open `index.html` in any modern browser. No build step, no dependencies.
   - **Reroute power** to that compartment's system right from the inspector.
   - **Repair crew:** a shared pool of repair technicians. Assign techs to a
     compartment (− / +); they go **EN ROUTE** (travel time), then **REPAIRING**
-    (more techs = faster), then **ON STATION** when done. **Release** them back to
-    the pool to redeploy. When the pool is empty, the assign button greys out.
+    (more techs = faster), then **ON STATION** when fully repaired (and they
+    stay, auto-working if it takes new damage). **Release** them back to the pool.
+    **Jury-rig** is a fast temporary patch that buys time until the crew finishes.
+  - **Security detail:** a separate pool. Send security to **sweep a compartment**
+    for a saboteur, or to **repel boarders** if raiders breach the hull.
   - **Functions:** *Seal Bulkhead* (contains fire/breach damage but locks the
     crew inside) and *Vent Atmosphere* (instantly kills a fire and
     auto-evacuates the crew — you lose their manning).
+
+## What can go wrong (the fun part)
+
+The voyage is never quiet for long. Trouble strikes unpredictably — even with no
+raiders in sight — and the game **never tells you the fix**: you read the
+symptoms and work it out.
+
+- **Raider attacks** — pirates/aliens; absorb with shields, thin them with
+  weapons, evade with engines.
+- **System failures** — coolant leaks and power surges that bleed a system's
+  integrity. Repair crew seal them; jury-rig buys time.
+- **Space hazards** — debris fields (brace by pumping shields before impact) and
+  ion surges (scramble shields/sensors until they pass).
+- **Sabotage** — a stowaway tampers with systems from a hidden compartment.
+  The tampering clusters near them — deduce where and send security to sweep.
+- **Boarders** — a breach under heavy fire can let hostiles aboard; security
+  clears the deck.
+
+The same small toolkit solves all of it: route power, dispatch repair crew,
+sweep with security, seal/vent, jury-rig, and the emergency actions.
   - Tiles show station pips (manned/empty) and badges for fire/breach/sealed/repair.
 
 ### What manning each station does
