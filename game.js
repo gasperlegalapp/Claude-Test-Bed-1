@@ -301,10 +301,10 @@
       milPods: cfg.milPods || 0,
       hull: 100,
       shields: { fore: { hp: 0, max: 0, down: 0 }, port: { hp: 0, max: 0, down: 0 }, stbd: { hp: 0, max: 0, down: 0 }, aft: { hp: 0, max: 0, down: 0 } },
-      shieldAlloc: { fore: 3, port: 3, stbd: 3, aft: 3 },
+      shieldAlloc: { fore: 25, port: 25, stbd: 25, aft: 25 },
       contacts: [], _cid: 0,
       mounts: WEAPON_MOUNTS.reduce((o, mt) => { const w = (cfg.weapons || {})[mt.key] || mt.def; o[mt.key] = { weapon: w, ammo: WEAPON_DEFS[w] ? WEAPON_DEFS[w].ammo : 0, cd: 0 }; return o; }, {}),
-      fireAtWill: true, targetMode: 'closest', focusId: null,
+      fireAtWill: false, targetMode: 'closest', focusId: null,
       pressure: 0,
       threat: 0,
       attackers: 0,
@@ -782,8 +782,24 @@
     $('tacTargeting').querySelectorAll('[data-mode]').forEach(b => {
       b.onclick = () => { if (!S) { return; } const m = b.getAttribute('data-mode'); if (m === 'clearfocus') { S.focusId = null; } else { S.targetMode = m; } };
     });
+    // shield quadrants — built ONCE with persistent +/- buttons; only values
+    // update each frame (rebuilding innerHTML every frame would eat the clicks)
+    const sg = $('tacShields'); sg.innerHTML = ''; R.shq = {};
+    SHIELD_SIDES.forEach(side => {
+      const el = document.createElement('div'); el.className = 'shq';
+      el.innerHTML = '<div class="shq-h"><b>' + side.toUpperCase() + '</b><span class="shq-lbl"></span></div>' +
+        '<div class="seg-mini"><i></i></div>' +
+        '<div class="shq-alloc"><button data-alloc="' + side + ':-">−</button><span class="shq-pct"></span><button data-alloc="' + side + ':+">+</button></div>';
+      sg.appendChild(el);
+      R.shq[side] = { el: el, bar: el.querySelector('.seg-mini i'), lbl: el.querySelector('.shq-lbl'), pct: el.querySelector('.shq-pct') };
+    });
+    sg.querySelectorAll('[data-alloc]').forEach(b => {
+      const a = b.getAttribute('data-alloc').split(':');
+      b.onclick = () => adjustAlloc(a[0], a[1] === '+' ? 1 : -1);
+    });
+    // contacts: click-to-lock via delegation on the (persistent) container
+    R.contactEls = {}; R.contactSig = null;
     $('tacContacts').addEventListener('click', e => { const c = e.target.closest('[data-cid]'); if (c && S) { S.focusId = +c.getAttribute('data-cid'); } });
-    $('tacShields').addEventListener('click', e => { const b = e.target.closest('[data-alloc]'); if (b) { const a = b.getAttribute('data-alloc').split(':'); adjustAlloc(a[0], a[1] === '+' ? 1 : -1); } });
   }
 
   // ---- station render helpers ----
@@ -814,26 +830,38 @@
   }
   function renderTactical() {
     $('tacThreat').textContent = 'THREAT ' + THREAT_LABEL[clamp(Math.round(S.threat), 0, 5)];
-    // contacts (click to lock)
-    if (!S.contacts.length) {
-      let extra = '';
-      S.rooms.forEach(r => { if (r.boarders) { extra += contactCard('🚪', 'BOARDERS — ' + r.label, '', 'Aboard', 'Repel with security', true); } });
-      $('tacContacts').innerHTML = extra || '<div class="contact-empty">✓ No contacts — sky is clear</div>';
-    } else {
-      $('tacContacts').innerHTML = S.contacts.slice().sort((a, b) => a.dist - b.dist).map(c => {
-        const hpf = clamp(c.hp / c.maxHp, 0, 1) * 100;
-        const ico = c.size === 'L' ? '🛰' : c.size === 'M' ? '⚔' : '▸';
-        return '<div class="contact danger' + (S.focusId === c.id ? ' focus' : '') + '" data-cid="' + c.id + '">' +
-          '<span class="ct-ico">' + ico + '</span><div class="ct-info"><b>' + c.name + ' <span class="ct-size">' + c.size + '</span>' + (S.focusId === c.id ? ' 🔒' : '') + '</b>' +
-          '<span class="ct-dist">' + c.dist.toFixed(1) + ' km · hits ' + c.facing.toUpperCase() + '</span>' +
-          '<div class="ct-hp"><i style="width:' + hpf + '%"></i></div>' +
-          '<span class="ct-timer">fires in ' + Math.max(0, Math.ceil(c.fireCd)) + 's</span></div></div>';
-      }).join('');
+    // contacts: rebuild markup only when the set changes (so clicks survive);
+    // update HP/timer/lock on the persistent elements every frame
+    const boarders = S.rooms.filter(r => r.boarders);
+    const sig = S.contacts.map(c => c.id).join(',') + '|' + boarders.map(r => r.key).join(',');
+    if (sig !== R.contactSig) {
+      R.contactSig = sig; R.contactEls = {};
+      const cont = $('tacContacts');
+      if (!S.contacts.length && !boarders.length) {
+        cont.innerHTML = '<div class="contact-empty">✓ No contacts — sky is clear</div>';
+      } else {
+        cont.innerHTML = boarders.map(r => '<div class="contact danger"><span class="ct-ico">🚪</span><div class="ct-info"><b>BOARDERS — ' + r.label + '</b><span>Aboard · repel with a security detail</span></div></div>').join('') +
+          S.contacts.slice().sort((a, b) => a.dist - b.dist).map(c => {
+            const ico = c.size === 'L' ? '🛰' : c.size === 'M' ? '⚔' : '▸';
+            return '<div class="contact danger" data-cid="' + c.id + '"><span class="ct-ico">' + ico + '</span>' +
+              '<div class="ct-info"><b>' + c.name + ' <span class="ct-size">' + c.size + '</span><span class="ct-lock"></span></b>' +
+              '<span class="ct-dist"></span><div class="ct-hp"><i></i></div><span class="ct-timer"></span></div></div>';
+          }).join('');
+        S.contacts.forEach(c => { R.contactEls[c.id] = cont.querySelector('[data-cid="' + c.id + '"]'); });
+      }
     }
+    S.contacts.forEach(c => {
+      const el = R.contactEls[c.id]; if (!el) { return; }
+      el.classList.toggle('focus', S.focusId === c.id);
+      el.querySelector('.ct-lock').textContent = S.focusId === c.id ? ' 🔒 LOCKED' : '';
+      el.querySelector('.ct-dist').textContent = c.dist.toFixed(1) + ' km · hits ' + c.facing.toUpperCase();
+      el.querySelector('.ct-hp i').style.width = (clamp(c.hp / c.maxHp, 0, 1) * 100) + '%';
+      el.querySelector('.ct-timer').textContent = 'fires in ' + Math.max(0, Math.ceil(c.fireCd)) + 's';
+    });
     // targeting state
-    if (R.tacFire) { R.tacFire.classList.toggle('on', S.fireAtWill); R.tacFire.textContent = S.fireAtWill ? '▶ FIRING AT WILL' : '⏸ HOLD FIRE'; }
+    if (R.tacFire) { R.tacFire.classList.toggle('on', S.fireAtWill); R.tacFire.textContent = S.fireAtWill ? '▶ FIRING AT WILL' : '⏸ HOLD FIRE — click to authorize'; }
     document.querySelectorAll('#tacTargeting [data-mode]').forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === S.targetMode));
-    // weapon mounts
+    // weapon mounts (display only — safe to rebuild)
     const wpEff = sysEff('weapons');
     $('tacWeapons').innerHTML = WEAPON_MOUNTS.map(mt => {
       const m = S.mounts[mt.key], w = m.weapon ? WEAPON_DEFS[m.weapon] : null;
@@ -841,22 +869,22 @@
       const needsPower = (w.kind === 'energy' || w.kind === 'rail');
       const lowPower = needsPower && wpEff < (w.kind === 'rail' ? 0.45 : 0.25);
       const noAmmo = w.ammo !== Infinity && m.ammo <= 0;
-      const status = noAmmo ? '<span class="bad">NO AMMO</span>' : lowPower ? '<span class="warn">LOW POWER</span>' : m.cd > 0.3 ? '<span class="warn">RELOAD</span>' : '<span style="color:var(--green)">READY</span>';
+      const status = !S.fireAtWill ? '<span class="warn">HOLD</span>' : noAmmo ? '<span class="bad">NO AMMO</span>' : lowPower ? '<span class="warn">LOW POWER</span>' : m.cd > 0.3 ? '<span class="warn">RELOAD</span>' : '<span style="color:var(--green)">READY</span>';
       const ammoTxt = w.ammo === Infinity ? '∞' : m.ammo + ' rds';
       return '<div class="wpn' + (noAmmo || lowPower ? ' off' : '') + '"><div class="wpn-top"><b>' + w.name + '</b>' + status + '</div>' +
         '<div class="wpn-sub">' + mt.label + ' · MOUNT T' + mt.type + ' · ' + w.kind.toUpperCase() + '</div>' +
         '<div class="wpn-stats"><span>AMMO ' + ammoTxt + '</span><span>PWR ' + w.power + '</span><span>DMG ' + w.dmg + '</span></div></div>';
     }).join('');
-    // shield quadrants
-    const allocSum = SHIELD_SIDES.reduce((a, s) => a + S.shieldAlloc[s], 0) || 1;
-    $('tacShields').innerHTML = SHIELD_SIDES.map(side => {
-      const sh = S.shields[side], f = sh.max > 0 ? clamp(sh.hp / sh.max, 0, 1) * 100 : 0;
-      const cls = sh.down > 0 ? 'down' : f < 30 ? 'low' : '';
-      const lbl = sh.down > 0 ? 'DOWN ' + Math.ceil(sh.down) + 's' : Math.round(sh.hp) + ' / ' + Math.round(sh.max);
-      return '<div class="shq ' + cls + '"><div class="shq-h"><b>' + side.toUpperCase() + '</b><span>' + lbl + '</span></div>' +
-        '<div class="seg-mini"><i class="' + (sh.down > 0 ? 'bad' : f < 30 ? 'warn' : '') + '" style="width:' + f + '%"></i></div>' +
-        '<div class="shq-alloc"><button data-alloc="' + side + ':-">−</button><span>' + Math.round(S.shieldAlloc[side] / allocSum * 100) + '%</span><button data-alloc="' + side + ':+">+</button></div></div>';
-    }).join('');
+    // shield quadrants — update persistent elements only
+    SHIELD_SIDES.forEach(side => {
+      const sh = S.shields[side], ref = R.shq[side]; if (!ref) { return; }
+      const f = sh.max > 0 ? clamp(sh.hp / sh.max, 0, 1) * 100 : 0;
+      ref.el.className = 'shq ' + (sh.down > 0 ? 'down' : f < 30 ? 'low' : '');
+      ref.lbl.textContent = sh.down > 0 ? 'DOWN ' + Math.ceil(sh.down) + 's' : Math.round(sh.hp) + ' / ' + Math.round(sh.max);
+      ref.bar.className = sh.down > 0 ? 'bad' : f < 30 ? 'warn' : '';
+      ref.bar.style.width = f + '%';
+      ref.pct.textContent = Math.round(S.shieldAlloc[side]) + '%';
+    });
   }
   function renderHelm() {
     const eta = Math.max(0, Math.ceil(S.duration - S.t));
@@ -1210,9 +1238,14 @@
     logEvent('good', c.name + ' destroyed (' + S.attackers + ' remaining)'); comms('good', c.name + ' DESTROYED');
     if (S.attackers === 0) { logEvent('good', 'Sky clear — all contacts down'); comms('good', 'ALL CONTACTS CLEAR'); }
   }
+  // shield power is balanced on two axes — fore/aft and port/stbd. Boosting one
+  // facing pulls the same amount from its opposite (each axis stays at 50%).
+  const SHIELD_OPP = { fore: 'aft', aft: 'fore', port: 'stbd', stbd: 'port' };
   function adjustAlloc(side, d) {
     if (!S || S.over) { return; }
-    S.shieldAlloc[side] = clamp(S.shieldAlloc[side] + d, 1, 8);
+    const opp = SHIELD_OPP[side], pair = S.shieldAlloc[side] + S.shieldAlloc[opp];
+    const v = clamp(S.shieldAlloc[side] + d * 5, 0, pair);
+    S.shieldAlloc[side] = v; S.shieldAlloc[opp] = pair - v;
   }
   function shieldTotal() { return SHIELD_SIDES.reduce((a, s) => a + S.shields[s].hp, 0); }
   function shieldMaxTotal() { return SHIELD_SIDES.reduce((a, s) => a + S.shields[s].max, 0); }
