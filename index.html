@@ -150,6 +150,20 @@
     </div>
   </header>
 
+  <!-- STATION TABS -->
+  <nav class="station-tabs" id="stationTabs">
+    <button data-station="captain" class="active">CAPTAIN<kbd>F1</kbd></button>
+    <button data-station="tactical">TACTICAL<kbd>F2</kbd></button>
+    <button data-station="helm">HELM<kbd>F3</kbd></button>
+    <button data-station="engineering">ENGINEERING<kbd>F4</kbd></button>
+    <button data-station="operations">OPERATIONS<kbd>F5</kbd></button>
+    <button data-station="executive">EXECUTIVE<kbd>F6</kbd></button>
+  </nav>
+
+  <div class="stations" id="stations">
+
+  <!-- ============ CAPTAIN ============ -->
+  <section class="station" data-station="captain">
   <!-- BODY -->
   <main class="layout">
 
@@ -262,6 +276,91 @@
       </div>
     </section>
   </main>
+  </section><!-- /captain -->
+
+  <!-- ============ TACTICAL ============ -->
+  <section class="station hidden" data-station="tactical">
+    <div class="stn-grid stn-tactical">
+      <div class="panel grow"><div class="panel-h">TACTICAL CONTACTS <span class="ph-r" id="tacThreat"></span></div>
+        <div id="tacContacts" class="contact-list"></div>
+        <div class="panel-h">SHIELD STATUS</div>
+        <div id="tacShield" class="tac-shield"></div>
+      </div>
+      <div class="panel"><div class="panel-h">TACTICAL COMMANDS</div>
+        <div id="tacCommands" class="stn-actions"></div>
+        <div class="panel-h">WEAPONS</div>
+        <div id="tacWeapons" class="tac-weapons"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HELM ============ -->
+  <section class="station hidden" data-station="helm">
+    <div class="stn-grid stn-helm">
+      <div class="panel grow"><div class="panel-h">NAVIGATION <span class="ph-r" id="helmDest"></span></div>
+        <div id="helmReadout" class="helm-readout"></div>
+      </div>
+      <div class="panel"><div class="panel-h">FLIGHT POSTURE</div>
+        <div id="helmPostures" class="posture-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ENGINEERING ============ -->
+  <section class="station hidden" data-station="engineering">
+    <div class="stn-grid stn-eng">
+      <div class="panel"><div class="panel-h">POWER DISTRIBUTION <span class="ph-r" id="engReactor"></span></div>
+        <div id="engPower" class="eng-power"></div>
+        <div class="panel-h">REACTOR</div>
+        <div id="engReactorStat" class="eng-reactor"></div>
+      </div>
+      <div class="panel"><div class="panel-h">SYSTEMS STATUS</div>
+        <div id="engSystems" class="eng-systems"></div>
+      </div>
+      <div class="panel"><div class="panel-h alarm">ACTIVE ISSUES</div>
+        <div id="engIssues" class="eng-issues"></div>
+        <div class="panel-h">ENGINEERING ACTIONS</div>
+        <div id="engActions" class="stn-actions"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ OPERATIONS ============ -->
+  <section class="station hidden" data-station="operations">
+    <div class="stn-grid stn-ops">
+      <div class="panel"><div class="panel-h">CARGO MANIFEST <span class="ph-r" id="opsCargoVal"></span></div>
+        <div id="opsCargo" class="ops-cargo"></div>
+      </div>
+      <div class="panel"><div class="panel-h">PASSENGERS <span class="ph-r" id="opsPaxTot"></span></div>
+        <div id="opsPax" class="ops-pax"></div>
+        <div class="panel-h">POD HARDPOINTS</div>
+        <div id="opsPods" class="ops-pods"></div>
+      </div>
+      <div class="panel"><div class="panel-h">OPERATIONS COMMANDS</div>
+        <div id="opsCommands" class="stn-actions"></div>
+        <div class="panel-h">OPERATIONAL STATUS</div>
+        <div id="opsStatus" class="ops-status"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ EXECUTIVE ============ -->
+  <section class="station hidden" data-station="executive">
+    <div class="exec-wrap">
+      <div class="exec-head">EXECUTIVE COMMAND<span class="exec-sub">IRREVERSIBLE DECISIONS</span></div>
+      <div id="execGrid" class="exec-grid"></div>
+      <div id="execConfirm" class="exec-confirm hidden">
+        <div class="exec-confirm-title" id="execConfirmTitle"></div>
+        <div class="exec-confirm-body" id="execConfirmBody"></div>
+        <div class="exec-confirm-btns">
+          <button id="execCancel" class="exec-btn-cancel">CANCEL</button>
+          <button id="execGo" class="exec-btn-go">CONFIRM ORDER</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </div><!-- /stations -->
 
   <!-- ROOM INSPECTOR -->
   <div id="roomModal" class="overlay modal hidden">

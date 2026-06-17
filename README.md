@@ -116,6 +116,16 @@ for the pure figure-it-out experience. The setting is remembered between runs.
   compartment.
 - **Emergency Actions:** Prioritize Shields, Emergency Power, Damage Control
   (suppress fires & seal breaches), Evacuate Passengers. Each has a cooldown.
+- **Command stations (tabs / `F1`–`F6`):** the bridge is split into stations so
+  you command rather than just monitor:
+  - **Captain** — the full overview: schematic, crew, hazards, log.
+  - **Tactical** — contacts with timers, shield status, weapon readout, combat orders.
+  - **Helm** — destination ETA, engine/heat readout, and **flight postures**
+    (Steady / Evasive / Silent / Emergency Burn), each a real tradeoff.
+  - **Engineering** — power distribution, systems status, active faults, repair/power orders.
+  - **Operations** — cargo manifest, passengers, pod hardpoints, ops orders.
+  - **Executive** — irreversible captain calls (jettison cargo, seal compartments,
+    overload reactor, broadcast distress, change destination, surrender) with confirmation.
 - **Top bar:** pause `❚❚` and fast-forward `▶▶`.
 
 ### Win / lose

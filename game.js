@@ -88,6 +88,23 @@
 
   const REPAIR_NAMES = ['ALPHA TEAM', 'BRAVO TEAM', 'CHARLIE TEAM'];
 
+  // Helm flight postures — each is a tradeoff, read by the sim
+  const POSTURE_DEFS = [
+    { key: 'steady',  name: 'STEADY BURN',     desc: 'Balanced. Stable systems, steady arrival.' },
+    { key: 'evasive', name: 'EVASIVE PATTERN', desc: '+25% to dodge incoming fire, but repairs are slower and passengers rattle.' },
+    { key: 'silent',  name: 'SILENT RUNNING',  desc: 'Raiders find you less often, but shields & sensors run weak.' },
+    { key: 'burn',    name: 'EMERGENCY BURN',  desc: 'Arrive sooner, but reactor heat climbs fast and cargo takes a beating.' },
+  ];
+  // Executive (captain-level) orders — irreversible, heavy. Each returns a result.
+  const EXEC_DEFS = [
+    { key: 'jettison', name: 'JETTISON CARGO',     ico: '📦', danger: true,  desc: 'Dump all freight to lighten the ship and break missile locks.', confirm: 'All cargo is jettisoned. Contract cargo value is lost, but the ship lightens and incoming missiles lose their lock.' },
+    { key: 'seal',     name: 'SEAL COMPARTMENTS',  ico: '🔒', danger: false, desc: 'Seal every burning or breached compartment to contain the damage.', confirm: 'All damaged compartments are sealed. Fires and breaches stop spreading, but crew inside are locked in.' },
+    { key: 'overload', name: 'OVERLOAD REACTOR',   ico: '⚛', danger: true,  desc: 'Force maximum output for a burst of power. Risks reactor damage.', confirm: 'Reactor forced to maximum. +30 MW and a big shield surge for 25s — but reactor heat spikes and the core may be damaged.' },
+    { key: 'distress', name: 'BROADCAST DISTRESS', ico: '📡', danger: false, desc: 'Call for help. May ease the assault — or draw more attention.', confirm: 'A distress call goes out. It may thin the current raiders — but it also broadcasts your position.' },
+    { key: 'divert',   name: 'CHANGE DESTINATION', ico: '⛯', danger: false, desc: 'Divert to the nearest port. Arrive much sooner at a reduced payout.', confirm: 'Divert to the nearest port. You arrive far sooner, but the contract bonus is cut.' },
+    { key: 'surrender',name: 'SURRENDER',          ico: '🏳', danger: true,  desc: 'Stand down. Pirates take the cargo; crew and passengers likely survive.', confirm: 'You surrender. Raiders strip the cargo and leave. The run ends here — crew and passengers survive, but you forfeit the contract.' },
+  ];
+
   // ================================================================ META LAYER
   // Modules you bolt onto the ship's hardpoints. Each shapes the run.
   const MODULES = {
@@ -182,6 +199,8 @@
   // ---------------------------------------------------------------- state
   let S = null;
   let screen = 'intro';
+  let station = 'captain';   // active command station (mission view)
+  let execPending = null;    // executive order awaiting confirmation
   function newState(cfg) {
     cfg = cfg || {};
     const bonus = cfg.bonus || { weapon: 1, shield: 1, engine: 1, hull: 1, pdef: 0, reactorCap: 153 };
@@ -260,7 +279,7 @@
       crewIdle: startIdle, crewCap: crewBudget, openRoom: null,
       repairPool: TOTAL_TECHS, securityPool: TOTAL_SECURITY,
       sabotage: null, field: null, radiation: 0, eventTimer: INTRO + rand(8, 14),
-      nudged: {}, coach: null,
+      nudged: {}, coach: null, posture: 'steady', heat: 20,
       killed: 0, injured: 0, missing: 0,
       pax: Array.from({ length: paxCount }, () => 'safe'),
       paxMorale: 92,
@@ -450,6 +469,15 @@
     $('btnFast').onclick = toggleFast;
     $('coachDismiss').onclick = () => { if (S) { S.coach = null; } };
 
+    // station tabs + hotkeys
+    document.querySelectorAll('#stationTabs button').forEach(b => { b.onclick = () => setStation(b.getAttribute('data-station')); });
+    window.addEventListener('keydown', e => {
+      if (screen !== 'mission') { return; }
+      const map = { F1: 'captain', F2: 'tactical', F3: 'helm', F4: 'engineering', F5: 'operations', F6: 'executive' };
+      if (map[e.key]) { e.preventDefault(); setStation(map[e.key]); }
+    });
+    buildStations();
+
     // room inspector: one delegated handler (innerHTML is rebuilt each frame)
     const modal = $('roomModal');
     modal.addEventListener('click', e => {
@@ -501,6 +529,7 @@
       else if (key === 'engines') { e *= S.bonus.engine; }
     }
     if (S.radiation > 0 && (key === 'shields' || key === 'sensors')) { e *= 0.7; } // ion surge scrambles them
+    if (S.posture === 'silent' && (key === 'shields' || key === 'sensors')) { e *= 0.7; } // running dark
     return clamp(e, 0, 2.5);
   }
   function usedPower() {
@@ -636,6 +665,160 @@
     $('btnFast').classList.toggle('on', S.speed === 2);
   }
 
+  // ---------------------------------------------------------------- command stations
+  function setStation(name) {
+    station = name;
+    document.querySelectorAll('#stationTabs button').forEach(b => b.classList.toggle('active', b.getAttribute('data-station') === name));
+    document.querySelectorAll('#stations .station').forEach(s => s.classList.toggle('hidden', s.getAttribute('data-station') !== name));
+    if (S && screen === 'mission') { renderStation(); }
+  }
+  function setPosture(key) {
+    if (!S || S.over || S.posture === key) { return; }
+    S.posture = key;
+    const def = POSTURE_DEFS.find(p => p.key === key);
+    logEvent('info', 'Helm posture: ' + def.name); comms('info', 'HELM — ' + def.name);
+  }
+  function execOrder(key) {
+    if (!S || S.over) { return; }
+    const def = EXEC_DEFS.find(d => d.key === key); if (!def) { return; }
+    execPending = key;
+    $('execConfirmTitle').textContent = 'EXECUTIVE ORDER: ' + def.name;
+    $('execConfirmBody').textContent = def.confirm;
+    $('execConfirm').classList.remove('hidden');
+  }
+  function execCommit() {
+    const key = execPending; execPending = null;
+    $('execConfirm').classList.add('hidden');
+    if (!S || S.over || !key) { return; }
+    if (key === 'jettison') {
+      S.cargo = []; S.cargoValue = 0; buildCargo(); S.attackers = Math.max(0, S.attackers - 2);
+      logEvent('bad', 'Cargo jettisoned — holds blown clear'); comms('bad', '⚠ CARGO JETTISONED');
+    } else if (key === 'seal') {
+      let n = 0; S.rooms.forEach(r => { if ((r.fire || r.breach) && !r.sealed) { r.sealed = true; n++; } });
+      logEvent('good', 'Sealed ' + n + ' compartment(s) — damage contained'); comms('warn', 'COMPARTMENTS SEALED');
+    } else if (key === 'overload') {
+      S.buffs.power = 25; S.sys.reactor.power = S.sys.reactor.max; S.shieldPool += 60; S.heat = clamp(S.heat + 35, 0, 100);
+      logEvent('good', 'REACTOR OVERLOAD — power surging'); comms('bad', '⚛ REACTOR OVERLOAD');
+    } else if (key === 'distress') {
+      S.attackers = Math.max(0, Math.round(S.attackers * 0.5));
+      logEvent('info', 'Distress beacon broadcast'); comms('warn', '📡 DISTRESS BEACON');
+    } else if (key === 'divert') {
+      S.divert = true; S.duration = Math.min(S.duration, S.t + 25);
+      logEvent('warn', 'Diverting to nearest port — payout reduced'); comms('warn', 'DIVERTING TO NEAREST PORT');
+    } else if (key === 'surrender') {
+      endGame(false, 'SURRENDERED', 'You stood down. Raiders stripped the hold and withdrew — crew and passengers survived, but the contract is forfeit.');
+    }
+  }
+  function buildStations() {
+    const eg = $('execGrid'); eg.innerHTML = '';
+    EXEC_DEFS.forEach(d => {
+      const b = document.createElement('button');
+      b.className = 'exec-card' + (d.danger ? ' danger' : '');
+      b.innerHTML = '<span class="ec-ico">' + d.ico + '</span><b>' + d.name + '</b><span class="ec-desc">' + d.desc + '</span>';
+      b.onclick = () => execOrder(d.key);
+      eg.appendChild(b);
+    });
+    $('execCancel').onclick = () => { execPending = null; $('execConfirm').classList.add('hidden'); };
+    $('execGo').onclick = execCommit;
+    const hp = $('helmPostures'); hp.innerHTML = ''; R.postures = {};
+    POSTURE_DEFS.forEach(p => {
+      const b = document.createElement('button');
+      b.className = 'posture'; b.innerHTML = '<b>' + p.name + '</b><span>' + p.desc + '</span>';
+      b.onclick = () => setPosture(p.key);
+      hp.appendChild(b); R.postures[p.key] = b;
+    });
+    R.cmd = [];
+    const mk = (containerId, key, name) => {
+      const def = ACTION_DEFS.find(a => a.key === key);
+      const b = document.createElement('button');
+      b.className = 'stn-act'; b.innerHTML = '<b>' + name + '</b><span class="sa-sub">' + def.sub + '</span><span class="sa-cd"></span>';
+      b.onclick = () => triggerAction(key);
+      $(containerId).appendChild(b); R.cmd.push({ btn: b, key: key, cd: b.querySelector('.sa-cd') });
+    };
+    mk('tacCommands', 'shields', 'PRIORITIZE SHIELDS'); mk('tacCommands', 'power', 'EMERGENCY POWER');
+    mk('engActions', 'power', 'EMERGENCY POWER'); mk('engActions', 'damage', 'DAMAGE CONTROL');
+    mk('opsCommands', 'evac', 'EVACUATE PASSENGERS'); mk('opsCommands', 'damage', 'DAMAGE CONTROL');
+  }
+
+  // ---- station render helpers ----
+  const statRow = (l, v) => '<div class="stat-row"><span>' + l + '</span><b>' + v + '</b></div>';
+  function busRow(label, pct, mw) {
+    return '<div class="bus"><span class="bus-l">' + label + '</span><div class="seg-mini"><i style="width:' + (clamp(pct, 0, 150) / 150 * 100) + '%"></i></div><b>' + mw + ' MW</b></div>';
+  }
+  function sysRowEng(r) {
+    const cls = r.health < 33 ? 'bad' : r.health < 75 ? 'warn' : '';
+    return '<div class="sys-row"><span class="sys-n">' + r.label + '</span><div class="seg-mini"><i class="' + cls + '" style="width:' + clamp(r.health, 0, 100) + '%"></i></div><b class="' + cls + '">' + Math.round(r.health) + '%</b></div>';
+  }
+  function issueRow(r) {
+    const what = r.fire ? 'FIRE' : r.breach ? 'BREACH' : r.leak > 0 ? 'COOLANT LEAK' : r.status.toUpperCase();
+    return '<div class="issue-row ' + (r.fire || r.breach ? 'bad' : 'warn') + '"><b>' + r.label + '</b><span>' + what + ' · ' + Math.round(r.health) + '%</span></div>';
+  }
+  function contactCard(ico, name, dist, action, timer, danger) {
+    return '<div class="contact' + (danger ? ' danger' : '') + '"><span class="ct-ico">' + ico + '</span><div class="ct-info"><b>' + name + '</b>' +
+      (dist ? '<span class="ct-dist">' + dist + '</span>' : '') + '<span>' + action + '</span><span class="ct-timer">' + timer + '</span></div></div>';
+  }
+
+  function renderStation() {
+    if (!S) { return; }
+    if (R.cmd) { R.cmd.forEach(c => { const t = S.actions[c.key] || 0; c.btn.classList.toggle('cooling', t > 0); c.cd.textContent = t > 0 ? Math.ceil(t) + 's' : 'READY'; }); }
+    if (station === 'tactical') { renderTactical(); }
+    else if (station === 'helm') { renderHelm(); }
+    else if (station === 'engineering') { renderEngineering(); }
+    else if (station === 'operations') { renderOperations(); }
+  }
+  function renderTactical() {
+    $('tacThreat').textContent = 'THREAT ' + THREAT_LABEL[clamp(Math.round(S.threat), 0, 5)];
+    let html = '';
+    if (S.attackers > 0) {
+      html += contactCard('⚔', 'RAIDER WING ×' + S.attackers, (1.0 + S.threat * 0.4).toFixed(1) + ' km', 'Closing — laser & missile', 'Next volley ' + Math.max(0, Math.ceil(S.combatTimer)) + 's', true);
+    }
+    S.rooms.forEach(r => { if (r.boarders) { html += contactCard('🚪', 'BOARDERS', '0.0 km', 'Aboard at ' + r.label, 'Repel with security', true); } });
+    if (S.field) { html += contactCard('☄', 'DEBRIS FIELD', '', S.field.warn > 0 ? 'Impacts imminent' : 'Bombarding hull', S.field.warn > 0 ? 'Impact in ' + Math.ceil(S.field.warn) + 's' : 'Taking hits', true); }
+    $('tacContacts').innerHTML = html || '<div class="contact-empty">✓ No contacts — sky is clear</div>';
+    const shMax = 120 * sysEff('shields'); const sf = shMax > 0 ? clamp(S.shieldPool / shMax, 0, 1) : 0;
+    $('tacShield').innerHTML = '<div class="seg-mini big"><i style="width:' + (sf * 100) + '%"></i></div>' +
+      statRow('SHIELD POOL', Math.round(S.shieldPool) + ' / ' + Math.round(shMax)) + statRow('SHIELD OUTPUT', Math.round(sysEff('shields') * 100) + '%');
+    $('tacWeapons').innerHTML = statRow('WEAPON OUTPUT', Math.round(sysEff('weapons') * 100) + '%') +
+      statRow('SENSOR LOCK', Math.round(sysEff('sensors') * 100) + '%') +
+      statRow('TURRET PODS', Math.round(bayCond('turret') * 100) + '%');
+  }
+  function renderHelm() {
+    const eta = Math.max(0, Math.ceil(S.duration - S.t));
+    $('helmDest').textContent = (S.contract ? S.contract.to : 'PORT').toUpperCase() + ' · ' + eta + 's';
+    $('helmReadout').innerHTML =
+      statRow('DESTINATION', S.contract ? S.contract.to : 'Port') + statRow('ARRIVAL IN', eta + 's') +
+      statRow('ENGINE OUTPUT', Math.round(sysEff('engines') * 100) + '%') +
+      statRow('REACTOR HEAT', Math.round(S.heat) + '%' + (S.heat > 85 ? ' ⚠' : '')) +
+      statRow('THREAT LEVEL', THREAT_LABEL[clamp(Math.round(S.threat), 0, 5)]) +
+      statRow('RAIDERS ON SCOPE', S.attackers);
+    if (R.postures) { Object.keys(R.postures).forEach(k => R.postures[k].classList.toggle('active', S.posture === k)); }
+  }
+  function renderEngineering() {
+    $('engReactor').textContent = Math.round(S.sys.reactor.power) + ' / ' + S.sys.reactor.max + ' MW';
+    let ph = '';
+    SYS_DEFS.forEach(d => { if (d.key === 'reactor') { return; } ph += busRow(d.label, S.sys[d.key].power, Math.round(d.base * S.sys[d.key].power / 100)); });
+    $('engPower').innerHTML = ph + '<div class="bus res"><span class="bus-l">RESERVE</span><b class="' + (S.reserve < 0 ? 'bad' : '') + '">' + Math.round(S.reserve) + ' MW</b></div>';
+    $('engReactorStat').innerHTML = statRow('HEAT', Math.round(S.heat) + '%') +
+      statRow('STATUS', S.heat > 85 ? '<span class="bad">UNSTABLE</span>' : S.brownout ? '<span class="warnt">BROWNOUT</span>' : '<span style="color:var(--green)">STABLE</span>');
+    $('engSystems').innerHTML = S.rooms.filter(r => r.sys).map(sysRowEng).join('');
+    const issues = S.rooms.filter(r => r.fire || r.breach || r.leak > 0 || r.status !== 'normal');
+    $('engIssues').innerHTML = issues.length ? issues.slice(0, 6).map(issueRow).join('') : '<div class="contact-empty">✓ All systems nominal</div>';
+  }
+  function renderOperations() {
+    $('opsCargoVal').textContent = fmt(S.cargoValue) + ' CR';
+    if (!S.cargo.length) { $('opsCargo').innerHTML = '<div class="contact-empty">No cargo aboard</div>'; }
+    else {
+      const holds = S.rooms.filter(r => r.bayRole === 'cargo');
+      const cond = holds.length ? Math.round(holds.reduce((a, b) => a + b.health, 0) / holds.length) : 100;
+      $('opsCargo').innerHTML = S.cargo.map(c => '<div class="ops-cargo-row"><div class="ocr-info"><b>' + c.name + '</b><span>' + fmt(c.value) + ' CR</span></div><div class="ocr-cond ' + (cond < 50 ? 'bad' : cond < 80 ? 'warn' : '') + '">' + cond + '%</div></div>').join('');
+    }
+    const alive = S.pax.filter(p => p !== 'dead').length, panic = S.pax.filter(p => p === 'panic').length;
+    $('opsPaxTot').textContent = alive + ' ABOARD';
+    $('opsPax').innerHTML = statRow('CALM', (alive - panic)) + statRow('PANICKING', panic) + statRow('MORALE', Math.round(S.paxMorale) + '%');
+    $('opsPods').innerHTML = S.rooms.filter(r => r.hardpoint).map(r => '<div class="ops-pod ' + (r.bayRole === 'empty' ? 'empty' : '') + '"><b>' + r.label + '</b><span>' + (r.bayRole === 'empty' ? 'NOT IN USE' : Math.round(r.health) + '%') + '</span></div>').join('');
+    $('opsStatus').innerHTML = statRow('LIFE SUPPORT', Math.round(sysEff('life') * 100) + '%') + statRow('HULL', Math.round(S.hull) + '%') + statRow('POWER', S.brownout ? '<span class="bad">BROWNOUT</span>' : '<span style="color:var(--green)">NOMINAL</span>');
+  }
+
   // ---------------------------------------------------------------- logs
   function clockStr() {
     const s = S.clock % 86400;
@@ -668,17 +851,30 @@
   // ---------------------------------------------------------------- simulation
   function sim(dt) {
     if (!S.running || S.over) { return; }
-    S.t += dt; S.clock += dt; S.cycle += dt * 0.0007;
+    // EMERGENCY BURN closes the distance faster — the run effectively ends sooner
+    const burnAdvance = S.posture === 'burn' ? dt * 0.8 : 0;
+    S.t += dt + burnAdvance; S.clock += dt; S.cycle += dt * 0.0007;
 
     // cooldowns & buffs
     for (const k in S.actions) { if (S.actions[k] > 0) { S.actions[k] = Math.max(0, S.actions[k] - dt); } }
     for (const k in S.buffs) { S.buffs[k] -= dt; if (S.buffs[k] <= 0) { delete S.buffs[k]; } }
     if (S.coach) { S.coach.ttl -= dt; if (S.coach.ttl <= 0) { S.coach = null; } }
+    // reactor heat: rises with overclock and emergency burn, bleeds off otherwise;
+    // a glowing-hot core slowly cooks the reactor compartment
+    const heatLoad = (S.sys.reactor.power - 105) * 0.06 + (S.posture === 'burn' ? 4.5 : 0) - 2.2;
+    S.heat = clamp(S.heat + heatLoad * dt, 0, 100);
+    if (S.heat > 92 && chance(0.15 * dt)) {
+      const rc = roomBySys('reactor'); if (rc) { rc.health = clamp(rc.health - 4, 0, 100); }
+      logEvent('warn', 'Reactor overheating — core stress damage');
+    }
     // per-room leaks drain health; jury-rig cooldowns tick down
     S.rooms.forEach(rm => {
       if (rm.juryCd > 0) { rm.juryCd = Math.max(0, rm.juryCd - dt); }
       if (rm.leak > 0) { rm.health = clamp(rm.health - rm.leak * dt, 0, 100); }
     });
+    // posture side-effects: evasive rattles passengers, burn jostles cargo loose
+    if (S.posture === 'evasive') { S.paxMorale = clamp(S.paxMorale - 1.0 * dt, 0, 100); }
+    if (S.posture === 'burn') { S.rooms.forEach(rm => { if (rm.bayRole === 'cargo') { rm.health = clamp(rm.health - 1.4 * dt, 0, 100); } }); }
 
     // power balance
     const used = usedPower();
@@ -706,10 +902,10 @@
         // if you clear each one early, the tempo eventually outpaces your guns
         // and raiders pile up, dragging threat toward 5 (horde).
         const intensity = S.t - INTRO;
-        const dmul = 0.6 + S.danger * 0.25;
+        const dmul = (0.6 + S.danger * 0.25) * (S.posture === 'silent' ? 0.55 : 1); // silent running draws fewer raiders
         const size = Math.max(1, Math.round((2 + intensity * 0.02 + S.threat * 0.6 + rand(0, 2)) * dmul));
         S.attackers = Math.min(18 + S.danger * 4, S.attackers + size);
-        S.batchTimer = clamp(18 - intensity * 0.04 - S.threat * 1.5 - S.danger * 1.5, 4, 18) * rand(0.85, 1.15);
+        S.batchTimer = clamp(18 - intensity * 0.04 - S.threat * 1.5 - S.danger * 1.5, 4, 18) * rand(0.85, 1.15) * (S.posture === 'silent' ? 1.5 : 1);
         logEvent('bad', size + ' raiders closing to attack range'); comms('bad', 'HOSTILE CONTACTS ×' + size); coach('raiders');
       }
     }
@@ -801,7 +997,8 @@
       // working: ~18s per tech to fully repair from zero; techs also fight hazards.
       // Station crew already on hand help — a well-manned room is repaired faster.
       const manAssist = 0.8 + 0.4 * mannedFrac(rm);
-      const rate = (5.5 * rm.repairTechs * engFactor * S.crewSkill * manAssist) * (S.brownout ? 0.6 : 1);
+      const postureFx = S.posture === 'evasive' ? 0.7 : 1; // hard maneuvering hampers repair work
+      const rate = (5.5 * rm.repairTechs * engFactor * S.crewSkill * manAssist * postureFx) * (S.brownout ? 0.6 : 1);
       if (rm.leak > 0) { rm.leak = Math.max(0, rm.leak - 1.6 * dt); if (rm.leak === 0) { logEvent('good', 'Repair crew sealed the leak in ' + rm.label); } }
       if (rm.fire && chance(0.35 * rm.repairTechs * dt)) { rm.fire = false; logEvent('good', 'Repair crew suppressed fire in ' + rm.label); }
       if (rm.breach && rm.health > 25 && chance(0.3 * rm.repairTechs * dt)) { rm.breach = false; logEvent('good', 'Repair crew sealed breach in ' + rm.label); }
@@ -876,7 +1073,7 @@
   }
 
   function volley() {
-    const evasion = sysEff('engines') * 0.35;
+    const evasion = sysEff('engines') * 0.35 + (S.posture === 'evasive' ? 0.25 : 0);
     const pointDef = sysEff('sensors') * 0.3 + sysEff('weapons') * 0.15 + (S.pods ? S.pods.pdef * bayCond('turret') : 0);
     if (chance(evasion)) { comms('info', 'EVASIVE MANEUVER — VOLLEY MISSED'); return; }
     let dmg = rand(18, 34) * S.pressure;
@@ -1717,6 +1914,7 @@
     comms('info', 'DEPARTING ZHEN-9 → ' + contract.to.toUpperCase()); comms('good', 'ALL SYSTEMS NOMINAL'); comms('warn', 'ROUTE DANGER: ' + DANGER_LABEL[contract.danger]);
     if (!R.captain) { buildUI(); } else { buildCargo(); buildPax(); }
     buildPods();
+    setStation('captain');
     showScreen('mission');
     last = performance.now(); simAcc = 0;
   }
@@ -1726,8 +1924,8 @@
     S.over = true; S.running = false;
     const ci = cargoIntegrity(), paxAlive = S.pax.filter(p => p !== 'dead').length, c = S.contract;
     const lines = [];
-    const fee = Math.round(c.reward * (win ? 1 : 0.25));
-    let pay = fee; lines.push(['Contract fee' + (win ? '' : ' (partial)'), fee]);
+    const fee = Math.round(c.reward * (win ? (S.divert ? 0.5 : 1) : 0.25));
+    let pay = fee; lines.push(['Contract fee' + (S.divert && win ? ' (diverted)' : win ? '' : ' (partial)'), fee]);
     if (S.cargo.length) { const cb = Math.round(S.cargoValue * ci / 100 * 0.05); pay += cb; lines.push(['Cargo delivered (' + Math.round(ci) + '%)', cb]); }
     if (S.pax.length) { const pb = paxAlive * 450; pay += pb; lines.push(['Passenger fares (' + paxAlive + ')', pb]); }
     if (S.milPods && win) { const mb = S.milPods * 9000; pay += mb; lines.push(['Military escort bonus', mb]); }
@@ -1758,6 +1956,7 @@
       while (simAcc >= 0.1) { sim(0.1); simAcc -= 0.1; }
       drawExt(realDt * (S.running ? S.speed : 0.3));
       render();
+      renderStation();
     } else if (screen === 'home') { drawPreviewScene($('homeShip'), realDt); }
     else if (screen === 'outfit') { drawPreviewScene($('outfitShip'), realDt); }
     requestAnimationFrame(frame);
