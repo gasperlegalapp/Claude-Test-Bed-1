@@ -105,6 +105,29 @@
     { key: 'surrender',name: 'SURRENDER',          ico: '🏳', danger: true,  desc: 'Stand down. Pirates take the cargo; crew and passengers likely survive.', confirm: 'You surrender. Raiders strip the cargo and leave. The run ends here — crew and passengers survive, but you forfeit the contract.' },
   ];
 
+  // ---- weapons: four fixed combat mounts, each a mount TYPE (1 small .. 3 big) ----
+  const WEAPON_MOUNTS = [
+    { key: 'front', label: 'FORWARD',   type: 2, def: 'laser' },
+    { key: 'port',  label: 'PORT WING', type: 3, def: 'railgun' },
+    { key: 'stbd',  label: 'STBD WING', type: 3, def: 'missile' },
+    { key: 'rear',  label: 'DORSAL',    type: 1, def: 'autocannon' },
+  ];
+  // mount = minimum mount type the weapon needs; energy/rail need power, ballistic/missile use rounds
+  const WEAPON_DEFS = {
+    autocannon: { name: 'AUTOCANNON',  kind: 'ballistic', mount: 1, dmg: 7,  rof: 0.55, ammo: 140,      power: 6,  desc: 'Rapid ballistic. Cheap rounds, low power.' },
+    flak:       { name: 'FLAK BATTERY',kind: 'ballistic', mount: 1, dmg: 5,  rof: 0.4,  ammo: 180,      power: 8,  desc: 'High rate of fire, shreds light targets.' },
+    laser:      { name: 'PULSE LASER', kind: 'energy',    mount: 2, dmg: 11, rof: 0.7,  ammo: Infinity, power: 18, desc: 'Infinite ammo — but a heavy power draw.' },
+    missile:    { name: 'MISSILE RACK',kind: 'missile',   mount: 2, dmg: 30, rof: 2.4,  ammo: 28,       power: 5,  desc: 'Hard-hitting tracking rounds. Very limited.' },
+    railgun:    { name: 'RAILGUN',     kind: 'rail',      mount: 3, dmg: 52, rof: 2.6,  ammo: 34,       power: 30, desc: 'Massive damage. Limited rounds AND huge power.' },
+    heavylaser: { name: 'HEAVY LASER', kind: 'energy',    mount: 3, dmg: 22, rof: 1.1,  ammo: Infinity, power: 34, desc: 'Big energy gun, enormous power draw.' },
+  };
+  const SHIELD_SIDES = ['fore', 'port', 'stbd', 'aft'];
+  const CONTACT_KINDS = {
+    fighter: { name: 'FIGHTER',       hp: 14, dmg: [5, 11],  speed: 0.16, size: 'S' },
+    cutter:  { name: 'RAIDER CUTTER', hp: 32, dmg: [11, 20], speed: 0.10, size: 'M' },
+    gunship: { name: 'GUNSHIP',       hp: 64, dmg: [18, 32], speed: 0.06, size: 'L' },
+  };
+
   // ================================================================ META LAYER
   // Modules you bolt onto the ship's hardpoints. Each shapes the run.
   const MODULES = {
@@ -135,6 +158,7 @@
       crewTier: 0,
       inventory: { cargo: 3, passenger: 1, military: 1, shield: 0 },
       loadout: ['cargo', 'cargo', 'passenger', 'military', null, null],
+      weapons: { front: 'laser', port: 'railgun', stbd: 'missile', rear: 'autocannon' },
       contractId: null, contracts: null,
       seenIntro: false,
       coachTips: true,
@@ -165,6 +189,12 @@
       need[m] = (need[m] || 0) + 1;
       if (need[m] > (META.inventory[m] || 0)) { need[m]--; return null; }
       return m;
+    });
+    // weapon mounts: ensure each holds a weapon that fits its mount type
+    if (!META.weapons || typeof META.weapons !== 'object') { META.weapons = {}; }
+    WEAPON_MOUNTS.forEach(mt => {
+      const w = META.weapons[mt.key];
+      if (!w || !WEAPON_DEFS[w] || WEAPON_DEFS[w].mount > mt.type) { META.weapons[mt.key] = mt.def; }
     });
   }
   function loadoutCounts() {
@@ -270,7 +300,11 @@
       cargoValue: cargo.reduce((a, c) => a + c.value, 0),
       milPods: cfg.milPods || 0,
       hull: 100,
-      shieldPool: 0,
+      shields: { fore: { hp: 0, max: 0, down: 0 }, port: { hp: 0, max: 0, down: 0 }, stbd: { hp: 0, max: 0, down: 0 }, aft: { hp: 0, max: 0, down: 0 } },
+      shieldAlloc: { fore: 3, port: 3, stbd: 3, aft: 3 },
+      contacts: [], _cid: 0,
+      mounts: WEAPON_MOUNTS.reduce((o, mt) => { const w = (cfg.weapons || {})[mt.key] || mt.def; o[mt.key] = { weapon: w, ammo: WEAPON_DEFS[w] ? WEAPON_DEFS[w].ammo : 0, cd: 0 }; return o; }, {}),
+      fireAtWill: true, targetMode: 'closest', focusId: null,
       pressure: 0,
       threat: 0,
       attackers: 0,
@@ -697,7 +731,8 @@
       let n = 0; S.rooms.forEach(r => { if ((r.fire || r.breach) && !r.sealed) { r.sealed = true; n++; } });
       logEvent('good', 'Sealed ' + n + ' compartment(s) — damage contained'); comms('warn', 'COMPARTMENTS SEALED');
     } else if (key === 'overload') {
-      S.buffs.power = 25; S.sys.reactor.power = S.sys.reactor.max; S.shieldPool += 60; S.heat = clamp(S.heat + 35, 0, 100);
+      S.buffs.power = 25; S.sys.reactor.power = S.sys.reactor.max; S.heat = clamp(S.heat + 35, 0, 100);
+      SHIELD_SIDES.forEach(s => { S.shields[s].down = 0; S.shields[s].hp = Math.min(S.shields[s].max || 40, S.shields[s].hp + 40); });
       logEvent('good', 'REACTOR OVERLOAD — power surging'); comms('bad', '⚛ REACTOR OVERLOAD');
     } else if (key === 'distress') {
       S.attackers = Math.max(0, Math.round(S.attackers * 0.5));
@@ -738,6 +773,17 @@
     mk('tacCommands', 'shields', 'PRIORITIZE SHIELDS'); mk('tacCommands', 'power', 'EMERGENCY POWER');
     mk('engActions', 'power', 'EMERGENCY POWER'); mk('engActions', 'damage', 'DAMAGE CONTROL');
     mk('opsCommands', 'evac', 'EVACUATE PASSENGERS'); mk('opsCommands', 'damage', 'DAMAGE CONTROL');
+    // tactical targeting controls
+    $('tacTargeting').innerHTML = '<button id="tacFire" class="tac-fire"></button>' +
+      '<div class="tac-modes">' + ['closest', 'strongest', 'weakest'].map(m => '<button data-mode="' + m + '">' + m.toUpperCase() + '</button>').join('') +
+      '<button data-mode="clearfocus">CLEAR LOCK</button></div>';
+    R.tacFire = $('tacFire');
+    R.tacFire.onclick = () => { if (S && !S.over) { S.fireAtWill = !S.fireAtWill; } };
+    $('tacTargeting').querySelectorAll('[data-mode]').forEach(b => {
+      b.onclick = () => { if (!S) { return; } const m = b.getAttribute('data-mode'); if (m === 'clearfocus') { S.focusId = null; } else { S.targetMode = m; } };
+    });
+    $('tacContacts').addEventListener('click', e => { const c = e.target.closest('[data-cid]'); if (c && S) { S.focusId = +c.getAttribute('data-cid'); } });
+    $('tacShields').addEventListener('click', e => { const b = e.target.closest('[data-alloc]'); if (b) { const a = b.getAttribute('data-alloc').split(':'); adjustAlloc(a[0], a[1] === '+' ? 1 : -1); } });
   }
 
   // ---- station render helpers ----
@@ -768,19 +814,49 @@
   }
   function renderTactical() {
     $('tacThreat').textContent = 'THREAT ' + THREAT_LABEL[clamp(Math.round(S.threat), 0, 5)];
-    let html = '';
-    if (S.attackers > 0) {
-      html += contactCard('⚔', 'RAIDER WING ×' + S.attackers, (1.0 + S.threat * 0.4).toFixed(1) + ' km', 'Closing — laser & missile', 'Next volley ' + Math.max(0, Math.ceil(S.combatTimer)) + 's', true);
+    // contacts (click to lock)
+    if (!S.contacts.length) {
+      let extra = '';
+      S.rooms.forEach(r => { if (r.boarders) { extra += contactCard('🚪', 'BOARDERS — ' + r.label, '', 'Aboard', 'Repel with security', true); } });
+      $('tacContacts').innerHTML = extra || '<div class="contact-empty">✓ No contacts — sky is clear</div>';
+    } else {
+      $('tacContacts').innerHTML = S.contacts.slice().sort((a, b) => a.dist - b.dist).map(c => {
+        const hpf = clamp(c.hp / c.maxHp, 0, 1) * 100;
+        const ico = c.size === 'L' ? '🛰' : c.size === 'M' ? '⚔' : '▸';
+        return '<div class="contact danger' + (S.focusId === c.id ? ' focus' : '') + '" data-cid="' + c.id + '">' +
+          '<span class="ct-ico">' + ico + '</span><div class="ct-info"><b>' + c.name + ' <span class="ct-size">' + c.size + '</span>' + (S.focusId === c.id ? ' 🔒' : '') + '</b>' +
+          '<span class="ct-dist">' + c.dist.toFixed(1) + ' km · hits ' + c.facing.toUpperCase() + '</span>' +
+          '<div class="ct-hp"><i style="width:' + hpf + '%"></i></div>' +
+          '<span class="ct-timer">fires in ' + Math.max(0, Math.ceil(c.fireCd)) + 's</span></div></div>';
+      }).join('');
     }
-    S.rooms.forEach(r => { if (r.boarders) { html += contactCard('🚪', 'BOARDERS', '0.0 km', 'Aboard at ' + r.label, 'Repel with security', true); } });
-    if (S.field) { html += contactCard('☄', 'DEBRIS FIELD', '', S.field.warn > 0 ? 'Impacts imminent' : 'Bombarding hull', S.field.warn > 0 ? 'Impact in ' + Math.ceil(S.field.warn) + 's' : 'Taking hits', true); }
-    $('tacContacts').innerHTML = html || '<div class="contact-empty">✓ No contacts — sky is clear</div>';
-    const shMax = 120 * sysEff('shields'); const sf = shMax > 0 ? clamp(S.shieldPool / shMax, 0, 1) : 0;
-    $('tacShield').innerHTML = '<div class="seg-mini big"><i style="width:' + (sf * 100) + '%"></i></div>' +
-      statRow('SHIELD POOL', Math.round(S.shieldPool) + ' / ' + Math.round(shMax)) + statRow('SHIELD OUTPUT', Math.round(sysEff('shields') * 100) + '%');
-    $('tacWeapons').innerHTML = statRow('WEAPON OUTPUT', Math.round(sysEff('weapons') * 100) + '%') +
-      statRow('SENSOR LOCK', Math.round(sysEff('sensors') * 100) + '%') +
-      statRow('TURRET PODS', Math.round(bayCond('turret') * 100) + '%');
+    // targeting state
+    if (R.tacFire) { R.tacFire.classList.toggle('on', S.fireAtWill); R.tacFire.textContent = S.fireAtWill ? '▶ FIRING AT WILL' : '⏸ HOLD FIRE'; }
+    document.querySelectorAll('#tacTargeting [data-mode]').forEach(b => b.classList.toggle('active', b.getAttribute('data-mode') === S.targetMode));
+    // weapon mounts
+    const wpEff = sysEff('weapons');
+    $('tacWeapons').innerHTML = WEAPON_MOUNTS.map(mt => {
+      const m = S.mounts[mt.key], w = m.weapon ? WEAPON_DEFS[m.weapon] : null;
+      if (!w) { return '<div class="wpn empty"><div class="wpn-top"><b>' + mt.label + '</b><span>EMPTY · T' + mt.type + '</span></div></div>'; }
+      const needsPower = (w.kind === 'energy' || w.kind === 'rail');
+      const lowPower = needsPower && wpEff < (w.kind === 'rail' ? 0.45 : 0.25);
+      const noAmmo = w.ammo !== Infinity && m.ammo <= 0;
+      const status = noAmmo ? '<span class="bad">NO AMMO</span>' : lowPower ? '<span class="warn">LOW POWER</span>' : m.cd > 0.3 ? '<span class="warn">RELOAD</span>' : '<span style="color:var(--green)">READY</span>';
+      const ammoTxt = w.ammo === Infinity ? '∞' : m.ammo + ' rds';
+      return '<div class="wpn' + (noAmmo || lowPower ? ' off' : '') + '"><div class="wpn-top"><b>' + w.name + '</b>' + status + '</div>' +
+        '<div class="wpn-sub">' + mt.label + ' · MOUNT T' + mt.type + ' · ' + w.kind.toUpperCase() + '</div>' +
+        '<div class="wpn-stats"><span>AMMO ' + ammoTxt + '</span><span>PWR ' + w.power + '</span><span>DMG ' + w.dmg + '</span></div></div>';
+    }).join('');
+    // shield quadrants
+    const allocSum = SHIELD_SIDES.reduce((a, s) => a + S.shieldAlloc[s], 0) || 1;
+    $('tacShields').innerHTML = SHIELD_SIDES.map(side => {
+      const sh = S.shields[side], f = sh.max > 0 ? clamp(sh.hp / sh.max, 0, 1) * 100 : 0;
+      const cls = sh.down > 0 ? 'down' : f < 30 ? 'low' : '';
+      const lbl = sh.down > 0 ? 'DOWN ' + Math.ceil(sh.down) + 's' : Math.round(sh.hp) + ' / ' + Math.round(sh.max);
+      return '<div class="shq ' + cls + '"><div class="shq-h"><b>' + side.toUpperCase() + '</b><span>' + lbl + '</span></div>' +
+        '<div class="seg-mini"><i class="' + (sh.down > 0 ? 'bad' : f < 30 ? 'warn' : '') + '" style="width:' + f + '%"></i></div>' +
+        '<div class="shq-alloc"><button data-alloc="' + side + ':-">−</button><span>' + Math.round(S.shieldAlloc[side] / allocSum * 100) + '%</span><button data-alloc="' + side + ':+">+</button></div></div>';
+    }).join('');
   }
   function renderHelm() {
     const eta = Math.max(0, Math.ceil(S.duration - S.t));
@@ -886,51 +962,43 @@
       logEvent('warn', 'Reactor temperature rising — overclock stress');
     }
 
-    // ---- shields regen ----
+    // ---- shields regen (four facings, fed by allocated power) ----
     const shEff = sysEff('shields');
-    const shieldMax = 120 * shEff;
-    S.shieldPool = clamp(S.shieldPool + (12 * shEff) * dt, 0, shieldMax);
+    const shCap = 175 * shEff;                          // total capacity split across facings
+    const allocSum = SHIELD_SIDES.reduce((a, s) => a + S.shieldAlloc[s], 0) || 1;
+    SHIELD_SIDES.forEach(side => {
+      const sh = S.shields[side], share = S.shieldAlloc[side] / allocSum;
+      sh.max = shCap * share;
+      if (sh.down > 0) { sh.down = Math.max(0, sh.down - dt); if (sh.down === 0) { logEvent('good', side.toUpperCase() + ' shield back online'); } }
+      else { sh.hp = clamp(sh.hp + 18 * shEff * share * dt, 0, sh.max); }
+    });
 
-    // ---- threat & raider batches ----
-    // Calm intro, then contacts arrive in batches. A batch that lands while
-    // raiders are still alive stacks the pressure and pushes threat up toward 5
-    // (endless horde). Clear the sky and threat eases back down.
+    // ---- raider batches: individual contacts with HP, distance and a facing ----
     if (S.t > INTRO) {
       S.batchTimer -= dt;
       if (S.batchTimer <= 0) {
-        // batches get bigger and more frequent the longer the run goes — so even
-        // if you clear each one early, the tempo eventually outpaces your guns
-        // and raiders pile up, dragging threat toward 5 (horde).
         const intensity = S.t - INTRO;
         const dmul = (0.6 + S.danger * 0.25) * (S.posture === 'silent' ? 0.55 : 1); // silent running draws fewer raiders
         const size = Math.max(1, Math.round((2 + intensity * 0.02 + S.threat * 0.6 + rand(0, 2)) * dmul));
-        S.attackers = Math.min(18 + S.danger * 4, S.attackers + size);
+        const cap = 14 + S.danger * 3;
+        let added = 0;
+        for (let i = 0; i < size && S.contacts.length < cap; i++) { S.contacts.push(makeContact()); added++; }
+        S.attackers = S.contacts.length;
         S.batchTimer = clamp(18 - intensity * 0.04 - S.threat * 1.5 - S.danger * 1.5, 4, 18) * rand(0.85, 1.15) * (S.posture === 'silent' ? 1.5 : 1);
-        logEvent('bad', size + ' raiders closing to attack range'); comms('bad', 'HOSTILE CONTACTS ×' + size); coach('raiders');
+        if (added) { logEvent('bad', added + ' raiders closing to attack range'); comms('bad', 'HOSTILE CONTACTS ×' + added); coach('raiders'); }
       }
     }
-    // threat tracks the live raider backlog: rises fast as they pile up, eases
-    // down (more slowly) when you thin them out. Clear the sky and it settles.
     const threatTarget = clamp(S.attackers / 3.2, 0, 5);
     S.threat = clamp(S.threat + (threatTarget - S.threat) * (threatTarget > S.threat ? 0.5 : 0.15) * dt, 0, 5);
     S.pressure = S.attackers > 0 ? clamp(0.4 + S.threat * 0.28 + S.attackers * 0.03, 0.35, 2.4) : 0;
 
-    // ---- combat volleys ----
-    if (S.attackers > 0) {
-      S.combatTimer -= dt;
-      if (S.combatTimer <= 0) { S.combatTimer = rand(1.5, 2.6) / Math.max(0.4, S.pressure); volley(); }
-    }
-    // weapons whittle down attackers (power + tactical crew + bridge coordination)
-    const cmd = 0.8 + 0.2 * mannedFrac(roomByKey('bridge'));
-    const wpEff = sysEff('weapons') * (0.6 + 0.4 * S.depts.tactical.count / S.depts.tactical.max);
-    if (S.attackers > 0) {
-      S.killProg += wpEff * 0.3 * cmd * S.crewSkill * dt;
-      while (S.killProg >= 1 && S.attackers > 0) {
-        S.killProg -= 1; S.attackers--;
-        logEvent('good', 'Raider destroyed (' + S.attackers + ' remaining)'); comms('good', 'RAIDER DESTROYED');
-      }
-      if (S.attackers === 0) { logEvent('good', 'Sky clear — all contacts down'); comms('good', 'ALL CONTACTS CLEAR'); }
-    }
+    // ---- contacts close in and fire on their facing; your guns fire back ----
+    S.contacts.forEach(c => {
+      c.dist = Math.max(0.4, c.dist - c.speed * dt);
+      c.fireCd -= dt;
+      if (c.fireCd <= 0) { c.fireCd = rand(2.0, 3.8) / Math.max(0.4, S.pressure); enemyFire(c); }
+    });
+    updateWeapons(dt);
 
     // ---- fires & breaches damage rooms (sealing contains them; crew fight them) ----
     const lifeEff = sysEff('life');
@@ -1072,19 +1140,29 @@
     else if (S.t >= S.duration) { endGame(true, 'CONTRACT COMPLETE', 'You brought the Wayfarer in to ' + (S.contract ? S.contract.to : 'port') + '.'); }
   }
 
-  function volley() {
+  // ---- combat: contacts, enemy fire, your guns, directional shields ----
+  function makeContact() {
+    const r = Math.random();
+    const key = r < 0.5 ? 'fighter' : r < 0.82 ? 'cutter' : 'gunship';
+    const k = CONTACT_KINDS[key];
+    const hp = Math.round(k.hp * (1 + S.danger * 0.08));
+    S._cid++;
+    return { id: S._cid, kind: key, name: k.name, hp: hp, maxHp: hp, dist: rand(2.6, 4.2), facing: pick(SHIELD_SIDES), fireCd: rand(1.5, 3.5), dmgMin: k.dmg[0], dmgMax: k.dmg[1], size: k.size, speed: k.speed };
+  }
+  function enemyFire(c) {
     const evasion = sysEff('engines') * 0.35 + (S.posture === 'evasive' ? 0.25 : 0);
-    const pointDef = sysEff('sensors') * 0.3 + sysEff('weapons') * 0.15 + (S.pods ? S.pods.pdef * bayCond('turret') : 0);
-    if (chance(evasion)) { comms('info', 'EVASIVE MANEUVER — VOLLEY MISSED'); return; }
-    let dmg = rand(18, 34) * S.pressure;
+    if (chance(evasion)) { comms('info', 'EVASIVE — ' + c.name + ' MISSED'); return; }
+    let dmg = rand(c.dmgMin, c.dmgMax) * (0.7 + S.danger * 0.12);
+    const pointDef = sysEff('sensors') * 0.25 + sysEff('weapons') * 0.1 + (S.pods ? S.pods.pdef * bayCond('turret') : 0);
     if (chance(pointDef)) { dmg *= 0.4; comms('good', 'POINT DEFENSE ENGAGED'); }
-    // shields absorb
-    const absorbed = Math.min(S.shieldPool, dmg);
-    S.shieldPool -= absorbed;
-    let leak = dmg - absorbed;
-    if (absorbed > 0) { comms('warn', 'SHIELDS ABSORB ' + Math.round(absorbed)); }
+    damageShip(c.facing, dmg);
+  }
+  function damageShip(facing, dmg) {
+    const sh = S.shields[facing];
+    const absorbed = Math.min(sh.hp, dmg); sh.hp -= absorbed; let leak = dmg - absorbed;
+    if (absorbed > 0) { comms('warn', '[' + facing.toUpperCase() + '] SHIELD ABSORB ' + Math.round(absorbed)); }
+    if (sh.hp <= 0 && absorbed > 0 && sh.down <= 0) { sh.down = 7; logEvent('warn', facing.toUpperCase() + ' shield collapsed — emitter overloaded'); comms('bad', facing.toUpperCase() + ' SHIELD DOWN'); }
     if (leak <= 0) { return; }
-    // leak hits a random room
     const rm = pick(S.rooms);
     rm.health = clamp(rm.health - leak * 0.9, 0, 100);
     S.hull = clamp(S.hull - leak * 0.12 * S.bonus.hull, 0, 100);
@@ -1092,11 +1170,52 @@
     if (leak > 16 && chance(0.5)) { rm.fire = true; logEvent('bad', 'Fire started in ' + rm.label); }
     if (S.hull < 45 && leak > 20 && chance(0.35)) {
       rm.breach = true; logEvent('bad', 'HULL BREACH — ' + rm.label);
-      // a breach under heavy fire can let boarders aboard — security must repel them
       if (S.danger >= 2 && !rm.boarders && chance(0.5)) { rm.boarders = true; logEvent('bad', 'Boarders coming through the breach — ' + rm.label); comms('bad', 'BOARDERS — ' + rm.label); coach('boarders'); }
     }
     if (rm.crew > 0 && chance(0.3)) { hurtRoom(rm, 'impact'); }
   }
+  function chooseTarget() {
+    if (!S.contacts.length) { return null; }
+    if (S.focusId) { const f = S.contacts.find(c => c.id === S.focusId); if (f) { return f; } S.focusId = null; }
+    if (S.targetMode === 'strongest') { return S.contacts.reduce((a, b) => b.hp > a.hp ? b : a); }
+    if (S.targetMode === 'weakest') { return S.contacts.reduce((a, b) => b.hp < a.hp ? b : a); }
+    return S.contacts.reduce((a, b) => b.dist < a.dist ? b : a); // closest (default)
+  }
+  function updateWeapons(dt) {
+    if (!S.contacts.length) { return; }
+    const wpEff = sysEff('weapons');
+    const reload = Math.max(0.5, (0.8 + 0.2 * mannedFrac(roomByKey('bridge'))) * S.crewSkill); // crew/command speed reloads
+    for (const mt of WEAPON_MOUNTS) {
+      const m = S.mounts[mt.key]; if (!m.weapon) { continue; }
+      const w = WEAPON_DEFS[m.weapon];
+      if (m.cd > 0) { m.cd -= dt; continue; }
+      if (!S.fireAtWill) { continue; }
+      const needsPower = (w.kind === 'energy' || w.kind === 'rail');
+      const powerOk = !needsPower || wpEff >= (w.kind === 'rail' ? 0.45 : 0.25);
+      const ammoOk = w.ammo === Infinity || m.ammo > 0;
+      if (!powerOk || !ammoOk) { m.cd = 0.5; continue; }
+      const target = chooseTarget(); if (!target) { return; }
+      m.cd = w.rof / reload;
+      if (w.ammo !== Infinity) { m.ammo--; }
+      let dmg = w.dmg;
+      if (needsPower) { dmg *= clamp(wpEff, 0.3, 1.6); } // energy/rail scale with weapons power
+      const acc = clamp(0.55 + sysEff('sensors') * 0.4 - target.dist * 0.05, 0.25, 0.98);
+      if (chance(acc)) { target.hp -= dmg; if (target.hp <= 0) { killContact(target); } }
+    }
+  }
+  function killContact(c) {
+    const i = S.contacts.indexOf(c); if (i >= 0) { S.contacts.splice(i, 1); }
+    S.attackers = S.contacts.length;
+    if (S.focusId === c.id) { S.focusId = null; }
+    logEvent('good', c.name + ' destroyed (' + S.attackers + ' remaining)'); comms('good', c.name + ' DESTROYED');
+    if (S.attackers === 0) { logEvent('good', 'Sky clear — all contacts down'); comms('good', 'ALL CONTACTS CLEAR'); }
+  }
+  function adjustAlloc(side, d) {
+    if (!S || S.over) { return; }
+    S.shieldAlloc[side] = clamp(S.shieldAlloc[side] + d, 1, 8);
+  }
+  function shieldTotal() { return SHIELD_SIDES.reduce((a, s) => a + S.shields[s].hp, 0); }
+  function shieldMaxTotal() { return SHIELD_SIDES.reduce((a, s) => a + S.shields[s].max, 0); }
 
   function hurtRoom(rm, cause) {
     // kill or injure someone in the room; a manned med bay saves lives
@@ -1147,15 +1266,8 @@
     }
   }
   function debrisImpact() {
-    let dmg = rand(10, 22);
-    const absorbed = Math.min(S.shieldPool, dmg); S.shieldPool -= absorbed; const leak = dmg - absorbed;
-    if (absorbed > 0) { comms('warn', 'SHIELDS DEFLECT DEBRIS ' + Math.round(absorbed)); }
-    if (leak <= 0) { return; }
-    const rm = pick(S.rooms);
-    rm.health = clamp(rm.health - leak * 0.9, 0, 100);
-    S.hull = clamp(S.hull - leak * 0.1 * S.bonus.hull, 0, 100);
-    logEvent('bad', 'Debris strike — ' + rm.label); comms('bad', 'IMPACT — ' + rm.label);
-    if (leak > 14 && chance(0.4)) { rm.fire = true; }
+    // debris hits a random facing — pump shields on the side taking the beating
+    damageShip(pick(SHIELD_SIDES), rand(10, 22));
   }
   function startSabotage() {
     const cands = S.rooms.filter(r => !r.cargoBay);
@@ -1567,8 +1679,8 @@
 
     // shield bubble — a stippled pixel ring
     if (S) {
-      const shMax = 120 * sysEff('shields');
-      const sf = shMax > 0 ? clamp(S.shieldPool / shMax, 0, 1) : 0;
+      const shMax = shieldMaxTotal();
+      const sf = shMax > 0 ? clamp(shieldTotal() / shMax, 0, 1) : 0;
       if (sf > 0.04) {
         const rx = L * 0.62, ry = ph * 0.44, segs = 72;
         p.fillStyle = 'rgba(110,195,255,' + (0.3 + sf * 0.45) + ')';
@@ -1812,6 +1924,13 @@
       return '<div class="inv-row"><span class="iv-ico" style="color:' + m.color + '">' + m.ico + '</span>' +
         '<span class="iv-name">' + m.name + '</span><span class="iv-n"><b>' + (owned - used) + '</b> free / ' + owned + ' owned</span></div>';
     }).join('');
+    $('weaponMounts').innerHTML = WEAPON_MOUNTS.map(mt => {
+      const w = WEAPON_DEFS[META.weapons[mt.key]];
+      return '<div class="wm-slot" data-mount="' + mt.key + '"><div class="wm-top"><span class="wm-pos">' + mt.label + '</span><span class="wm-type">T' + mt.type + ' MOUNT ⟲</span></div>' +
+        '<div class="wm-name">' + w.name + '</div>' +
+        '<div class="wm-stats">' + w.kind.toUpperCase() + ' · ' + (w.ammo === Infinity ? '∞ ammo' : w.ammo + ' rds') + ' · ' + w.power + ' pwr · ' + w.dmg + ' dmg</div></div>';
+    }).join('');
+    $('weaponMounts').querySelectorAll('.wm-slot').forEach(el => { el.onclick = () => cycleWeapon(el.getAttribute('data-mount')); });
   }
   function cycleSlot(i) {
     const cur = META.loadout[i];
@@ -1819,6 +1938,12 @@
     const opts = [null, ...avail];
     let idx = opts.indexOf(cur); idx = (idx + 1) % opts.length;
     META.loadout[i] = opts[idx]; saveMeta(); renderOutfit();
+  }
+  function cycleWeapon(mountKey) {
+    const mt = WEAPON_MOUNTS.find(m => m.key === mountKey);
+    const fits = Object.keys(WEAPON_DEFS).filter(w => WEAPON_DEFS[w].mount <= mt.type);
+    let idx = fits.indexOf(META.weapons[mountKey]); idx = (idx + 1) % fits.length;
+    META.weapons[mountKey] = fits[idx]; saveMeta(); renderOutfit();
   }
   function shopRow(ico, name, desc, lvl, price, enabled, act, maxed) {
     return '<div class="shop-item' + (maxed ? ' maxed' : '') + '"><span class="si-ico">' + ico + '</span>' +
@@ -1905,6 +2030,7 @@
       paxCount: counts.passenger * MODULES.passenger.pax, bonus, pods,
       crewSkill: 0.85 + META.crewTier * 0.08, crewBonus: Math.floor(META.crewTier / 2),
       milPods: counts.military, contract, loadout: META.loadout.slice(),
+      weapons: Object.assign({}, META.weapons),
     };
     S = newState(cfg);
     S.loadout = META.loadout.slice();

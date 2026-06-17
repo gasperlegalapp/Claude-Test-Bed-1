@@ -31,7 +31,12 @@ It's a roguelite-ish hauler operation that persists between runs
    pirate danger; longer and more dangerous pays more.
 3. **OUTFIT** — bolt modules onto your hardpoints: **cargo**, **passenger**,
    **military** (+weapons/point-defense), **shield** pods. You can only install
-   what you own; more hardpoints = more capacity but more to defend.
+   what you own; more hardpoints = more capacity but more to defend. The
+   Outfitting Bay also has **four weapon mounts** (forward T2, port/starboard
+   T3, dorsal T1) — click one to swap its weapon. Bigger guns need a bigger
+   mount type: autocannons fit anywhere, railguns/heavy lasers need a T3.
+   Ballistic & missile weapons use **limited rounds**; lasers have **infinite
+   ammo but draw heavy power**; railguns need **both rounds and lots of power**.
 4. **SHIPYARD** — spend credits: buy modules, upgrade the ship (hardpoints,
    reactor, hull, shields, weapons, engines), and hire better crew.
 5. **LAUNCH** — fly the run (the command sim below). Your loadout sets the cargo,
@@ -119,7 +124,9 @@ for the pure figure-it-out experience. The setting is remembered between runs.
 - **Command stations (tabs / `F1`–`F6`):** the bridge is split into stations so
   you command rather than just monitor:
   - **Captain** — the full overview: schematic, crew, hazards, log.
-  - **Tactical** — contacts with timers, shield status, weapon readout, combat orders.
+  - **Tactical** — individual enemy contacts (HP, distance, facing, fire timer;
+    click to lock), **fire-at-will + target priority** (closest/strongest/weakest),
+    four **weapon mounts**, and **four-facing shields** with per-side power allocation.
   - **Helm** — destination ETA, engine/heat readout, and **flight postures**
     (Steady / Evasive / Silent / Emergency Burn), each a real tradeoff.
   - **Engineering** — power distribution, systems status, active faults, repair/power orders.
