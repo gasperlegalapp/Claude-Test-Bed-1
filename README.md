@@ -101,7 +101,13 @@ for the pure figure-it-out experience. The setting is remembered between runs.
 | Med Bay | Medical | Heals injured, prevents deaths |
 | Bridge | Command | Ship-wide coordination bonus |
 | Passenger Deck | Stewards | Calms passenger panic |
-| Pod bays (×3) | Varies by pod | The three mid-deck mounts become whatever pods you install — **cargo holds** (house freight; repair to protect it), **turret bays** (military pods → firepower), **shield pods** (aux shields), or open hardpoints |
+- **Pod hardpoints (strip below the deck grid):** one clickable section per
+  hardpoint, sized by pod type and matching what's bolted to the ship —
+  **cargo pods** (house freight; repair the pod to protect its cargo),
+  **turret pods** (military → firepower, gated on the pod's condition),
+  **shield pods** (aux shields, likewise), **passenger pods** (berths), or
+  empty mounts shown as **NOT IN USE**. Damaged pods are repaired like any
+  compartment.
 - **Emergency Actions:** Prioritize Shields, Emergency Power, Damage Control
   (suppress fires & seal breaches), Evacuate Passengers. Each has a cooldown.
 - **Top bar:** pause `❚❚` and fast-forward `▶▶`.

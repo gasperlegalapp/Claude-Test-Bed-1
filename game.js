@@ -44,15 +44,20 @@
     { key: 'reactor',  label: 'REACTOR',          gc: '2',     gr: '1 / 3', sys: 'reactor', stations: 2, fn: 'REACTOR CONTROL', fdesc: 'safe output & cooling' },
     { key: 'life',     label: 'LIFE SUPPORT',     gc: '3',     gr: '1',     sys: 'life',    stations: 2, fn: 'ATMOSPHERICS',    fdesc: 'keeps crew & passengers alive' },
     { key: 'pax',      label: 'PASSENGER DECK',   gc: '4 / 6', gr: '1',     sys: null,      stations: 2, fn: 'STEWARDS',       fdesc: 'calms passenger panic', pax: true },
-    { key: 'bridge',   label: 'BRIDGE',           gc: '6',     gr: '1 / 3', sys: null,      stations: 3, fn: 'COMMAND',        fdesc: 'ship-wide coordination bonus' },
-    { key: 'cargoA',   label: 'CARGO BAY A',      gc: '3',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects the cargo hold', cargoBay: true },
-    { key: 'cargoB',   label: 'CARGO BAY B',      gc: '4',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects the cargo hold', cargoBay: true },
-    { key: 'cargoC',   label: 'CARGO BAY C',      gc: '5',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects the cargo hold', cargoBay: true },
+    { key: 'bridge',   label: 'BRIDGE',           gc: '6',     gr: '1 / 4', sys: null,      stations: 3, fn: 'COMMAND',        fdesc: 'ship-wide coordination bonus' },
+    { key: 'shieldgen',label: 'SHIELD GENERATOR', gc: '3 / 6', gr: '2',     sys: 'shields', stations: 2, fn: 'SHIELD OPS',     fdesc: 'shield strength & regen' },
     { key: 'weapons',  label: 'WEAPONS DECK',     gc: '2',     gr: '3',     sys: 'weapons', stations: 2, fn: 'GUNNERY',        fdesc: 'raider kill rate' },
-    { key: 'shieldgen',label: 'SHIELD GENERATOR', gc: '3 / 5', gr: '3',     sys: 'shields', stations: 2, fn: 'SHIELD OPS',     fdesc: 'shield strength & regen' },
-    { key: 'sensors',  label: 'SENSORS ARRAY',    gc: '5',     gr: '3',     sys: 'sensors', stations: 1, fn: 'SENSOR OPS',     fdesc: 'point-defense accuracy' },
-    { key: 'medbay',   label: 'MED BAY',          gc: '6',     gr: '3',     sys: null,      stations: 2, fn: 'MEDICAL',        fdesc: 'heals injured, prevents deaths', med: true },
+    { key: 'sensors',  label: 'SENSORS ARRAY',    gc: '3',     gr: '3',     sys: 'sensors', stations: 1, fn: 'SENSOR OPS',     fdesc: 'point-defense accuracy' },
+    { key: 'medbay',   label: 'MED BAY',          gc: '4 / 6', gr: '3',     sys: null,      stations: 2, fn: 'MEDICAL',        fdesc: 'heals injured, prevents deaths', med: true },
   ];
+  // each hardpoint becomes its own pod compartment (built per mission from the
+  // loadout); these render in the pod strip below the deck grid, not in it.
+  const POD_DEFS = {
+    cargo:     { label: 'CARGO POD',     fn: 'CARGO HOLD', fdesc: 'houses freight — repair the pod to protect its cargo', role: 'cargo',     stations: 1, flex: 1.4 },
+    passenger: { label: 'PASSENGER POD', fn: 'BERTHS',     fdesc: 'passenger berths bolted to the hull',                  role: 'passenger', stations: 0, flex: 1.2 },
+    military:  { label: 'TURRET POD',    fn: 'GUNNERY',    fdesc: 'serves the guns — keep it intact for full firepower',  role: 'turret',    stations: 1, flex: 1.1 },
+    shield:    { label: 'SHIELD POD',    fn: 'EMITTERS',   fdesc: 'aux shield emitters — keep it intact for full shields', role: 'shield',    stations: 1, flex: 1.0 },
+  };
 
   const DEPT_DEFS = [
     { key: 'engineering', name: 'ENGINEERING', role: 'CHIEF ENGINEER',        max: 6, init: 'TM' },
@@ -186,8 +191,33 @@
       repairTechs: 0, repairState: 'idle', repairEta: 0, // idle | enroute | working
       securityTechs: 0, secState: 'idle', secEta: 0, sweep: 0,
       leak: 0, boarders: false, juryCd: 0,
-      inactive: false, bayRole: d.cargoBay ? 'cargo' : null,
+      inactive: false, bayRole: null,
     }));
+    // one pod compartment per hardpoint, typed from the loadout
+    const loadout = cfg.loadout || [];
+    const seen = {};
+    loadout.forEach((type, i) => {
+      const pd = type ? POD_DEFS[type] : null;
+      seen[type] = (seen[type] || 0) + 1;
+      const dupes = loadout.filter(x => x === type).length;
+      const suffix = (pd && dupes > 1) ? ' ' + String.fromCharCode(64 + seen[type]) : '';
+      rooms.push({
+        key: 'pod' + i, hardpoint: true, podIndex: i,
+        label: pd ? pd.label + suffix : 'HARDPOINT ' + (i + 1),
+        fn: pd ? pd.fn : 'EMPTY MOUNT',
+        fdesc: pd ? pd.fdesc : 'no pod installed on this mount',
+        bayRole: pd ? pd.role : 'empty',
+        cargoBay: type === 'cargo',
+        podType: type || null,
+        flex: pd ? pd.flex : 0.7,
+        sys: null, stations: pd ? pd.stations : 0,
+        status: 'normal', health: 100, fire: false, breach: false, sealed: false,
+        crew: pd ? pd.stations : 0, crewMax: pd ? pd.stations : 0,
+        repairTechs: 0, repairState: 'idle', repairEta: 0,
+        securityTechs: 0, secState: 'idle', secEta: 0, sweep: 0,
+        leak: 0, boarders: false, juryCd: 0, inactive: !pd,
+      });
+    });
     const depts = {};
     DEPT_DEFS.forEach(d => { depts[d.key] = { ...d, count: Math.min(d.max, d.max + crewBonus), health: rand(88, 100), morale: rand(78, 96) }; });
     const cargo = (cfg.cargo || []).map(c => ({ ...c, integrity: 100 }));
@@ -211,7 +241,7 @@
       attackers: 0,
       reserve: 0, brownout: false,
       captain: { name: 'LT. K. DRAVEN', role: 'CAPTAIN', health: 100, morale: 'High' },
-      crewIdle: 3, openRoom: null,
+      crewIdle: 3, crewCap: rooms.reduce((a, r) => a + r.crewMax, 0) + 3, openRoom: null,
       repairPool: TOTAL_TECHS, securityPool: TOTAL_SECURITY,
       sabotage: null, field: null, radiation: 0, eventTimer: INTRO + rand(8, 14),
       nudged: {}, coach: null,
@@ -332,7 +362,7 @@
     // schematic rooms
     R.rooms = {};
     const sc = $('schematic');
-    S.rooms.forEach(rm => {
+    S.rooms.filter(rm => !rm.hardpoint).forEach(rm => {
       const el = document.createElement('div');
       el.className = 'room ' + rm.status;
       el.style.gridColumn = rm.gc; el.style.gridRow = rm.gr;
@@ -954,7 +984,7 @@
       setSeg(ref.bar, st.health / 100, colorFor(st.health));
       crewTotal += st.count;
     });
-    $('crewCount').textContent = aliveCrew() + ' / 28 · ' + S.crewIdle + ' IDLE';
+    $('crewCount').textContent = aliveCrew() + ' / ' + S.crewCap + ' · ' + S.crewIdle + ' IDLE';
 
     // repair crew (tech pool + active jobs)
     $('repairPool').textContent = 'REPAIR ' + S.repairPool + ' · SEC ' + S.securityPool;
@@ -997,23 +1027,24 @@
       R.cargo[i].row.classList.toggle('atrisk', c.integrity < 70);
     });
 
-    // schematic rooms
+    // schematic rooms + pod hardpoints (same data, different markup base class)
     S.rooms.forEach(rm => {
-      const ref = R.rooms[rm.key];
-      let cls = 'room ' + rm.status;
+      const ref = R.rooms[rm.key]; if (!ref) { return; }
+      const base = ref.podbay ? 'podbay' : 'room';
+      let cls = base + ' ' + rm.status;
+      if (rm.bayRole === 'empty') { cls += ' empty'; }
       if (rm.fire) { cls += ' fire'; }
       if (rm.breach) { cls += ' breach'; }
       if (rm.boarders) { cls += ' critical'; }
       ref.el.className = cls;
       let statTxt;
-      if (rm.bayRole === 'empty') { statTxt = 'VACANT'; }
+      if (rm.bayRole === 'empty') { statTxt = 'NOT IN USE'; }
       else if (rm.bayRole === 'cargo') { statTxt = S.cargo.length ? Math.round(rm.health) + '%' : 'NO CARGO'; }
       else if (rm.pax) { statTxt = S.pax.length ? S.pax.filter(p => p !== 'dead').length + ' aboard' : 'EMPTY'; }
       else if (rm.med || rm.key === 'bridge') { statTxt = rm.crew + ' / ' + rm.crewMax; }
       else { statTxt = Math.round(rm.health) + '%'; }
       ref.stat.textContent = statTxt;
       ref.badge.textContent = rm.boarders ? '⚔' : rm.fire ? '🔥' : rm.breach ? '✷' : rm.leak > 0 ? '💧' : rm.securityTechs > 0 ? '🛡' : rm.sealed ? '🔒' : rm.repairTechs > 0 ? '🛠' : '';
-      // station pips: filled = manned, hollow = empty station
       let pips = '';
       for (let i = 0; i < rm.stations; i++) { pips += '<i class="pip' + (i < rm.crew ? ' on' : '') + '"></i>'; }
       ref.dots.innerHTML = pips;
@@ -1178,10 +1209,11 @@
     m.chip.textContent = statusTxt;
     m.chip.className = 'rm-chip ' + (rm.fire ? 'critical' : rm.breach ? 'breach' : rm.status);
     let metric;
-    if (rm.bayRole === 'empty') { metric = 'OPEN HARDPOINT — no pod installed'; }
-    else if (rm.bayRole === 'cargo') { metric = (S.cargo.length ? 'CARGO ' + Math.round(rm.health) + '%' : 'NO CARGO') + ' · hold structure'; }
-    else if (rm.bayRole === 'turret') { metric = 'GUNNERY POD · ' + Math.round(rm.health) + '% structure · firepower ' + Math.round(bayCond('turret') * 100) + '%'; }
+    if (rm.bayRole === 'empty') { metric = 'OPEN HARDPOINT — no pod installed on this mount'; }
+    else if (rm.bayRole === 'cargo') { metric = (S.cargo.length ? 'CARGO ' + Math.round(rm.health) + '%' : 'NO CARGO') + ' · pod structure'; }
+    else if (rm.bayRole === 'turret') { metric = 'TURRET POD · ' + Math.round(rm.health) + '% structure · firepower ' + Math.round(bayCond('turret') * 100) + '%'; }
     else if (rm.bayRole === 'shield') { metric = 'SHIELD POD · ' + Math.round(rm.health) + '% structure · output ' + Math.round(bayCond('shield') * 100) + '%'; }
+    else if (rm.bayRole === 'passenger') { metric = 'PASSENGER POD · ' + Math.round(rm.health) + '% structure'; }
     else if (rm.pax) { metric = (S.pax.length ? S.pax.filter(p => p !== 'dead').length + ' passengers' : 'NO PASSENGERS') + ' · ' + Math.round(rm.health) + '% structure'; }
     else { metric = 'STRUCTURE ' + Math.round(rm.health) + '%'; }
     m.sub.textContent = metric;
@@ -1600,35 +1632,22 @@
 
   // ---------------------------------------------------------------- launch / debrief
   // The three mid-deck mounts become whatever pods are installed: cargo holds,
-  // turret bays (military), or shield pods — padded with open hardpoints.
-  // Passengers ride the dedicated passenger deck, so they are not placed here.
-  function applyBayRoles(counts) {
-    const cells = ['cargoA', 'cargoB', 'cargoC'];
-    const have = { cargo: counts.cargo, turret: counts.military, shield: counts.shield };
-    const queue = [];
-    // one compartment per pod type present, then fill spare mounts with extras
-    ['cargo', 'turret', 'shield'].forEach(r => { if (have[r] > 0 && queue.length < cells.length) { queue.push(r); have[r]--; } });
-    ['cargo', 'turret', 'shield'].forEach(r => { while (have[r] > 0 && queue.length < cells.length) { queue.push(r); have[r]--; } });
-    while (queue.length < cells.length) { queue.push('empty'); }
-    const ROLE = {
-      cargo:  { label: 'CARGO HOLD',     fn: 'CARGO CONTROL', fdesc: 'houses freight — repair the hold to protect the cargo' },
-      turret: { label: 'TURRET BAY',     fn: 'GUNNERY POD',   fdesc: 'serves the military pods — keep it intact for full firepower' },
-      shield: { label: 'SHIELD POD',     fn: 'SHIELD POD',    fdesc: 'feeds the aux shield emitters — keep it intact for full shields' },
-      empty:  { label: 'OPEN HARDPOINT', fn: 'VACANT',        fdesc: 'no pod installed on this mount' },
-    };
-    const seen = {};
-    cells.forEach((key, i) => {
-      const role = queue[i], def = ROLE[role], rm = roomByKey(key);
-      seen[role] = (seen[role] || 0) + 1;
-      const sameType = queue.filter(r => r === role).length;
-      rm.bayRole = role;
-      rm.cargoBay = role === 'cargo';
-      rm.label = def.label + (sameType > 1 && role !== 'empty' ? ' ' + String.fromCharCode(64 + seen[role]) : '');
-      rm.fn = def.fn; rm.fdesc = def.fdesc;
-      if (role === 'empty') { // vacate the mount, return its hand to the idle pool
-        S.crewIdle += rm.crew; rm.crew = 0; rm.crewMax = 0; rm.stations = 0; rm.inactive = true;
-      }
-      if (R.rooms && R.rooms[key] && R.rooms[key].name) { R.rooms[key].name.textContent = rm.label; }
+  // Build the pod strip: one clickable section per hardpoint, sized by pod
+  // type, rebuilt each mission. Empty mounts read "NOT IN USE".
+  function buildPods() {
+    const strip = $('podStrip'); if (!strip) { return; }
+    strip.innerHTML = '';
+    S.rooms.filter(r => r.hardpoint).forEach(rm => {
+      const el = document.createElement('div');
+      el.className = 'podbay' + (rm.bayRole === 'empty' ? ' empty' : '');
+      el.style.flexGrow = rm.flex;
+      el.innerHTML = '<div class="pb-name"></div><div class="pb-stat"></div>' +
+        '<div class="crewdots"></div><div class="badge"></div>';
+      el.addEventListener('click', () => openRoom(rm.key));
+      strip.appendChild(el);
+      R.rooms[rm.key] = { el, podbay: true, stat: el.querySelector('.pb-stat'),
+        name: el.querySelector('.pb-name'), dots: el.querySelector('.crewdots'), badge: el.querySelector('.badge') };
+      R.rooms[rm.key].name.textContent = rm.label;
     });
   }
 
@@ -1660,16 +1679,16 @@
       duration: contract.duration, danger: contract.danger, cargo,
       paxCount: counts.passenger * MODULES.passenger.pax, bonus, pods,
       crewSkill: 0.85 + META.crewTier * 0.08, crewBonus: Math.floor(META.crewTier / 2),
-      milPods: counts.military, contract,
+      milPods: counts.military, contract, loadout: META.loadout.slice(),
     };
     S = newState(cfg);
     S.loadout = META.loadout.slice();
-    applyBayRoles(counts);
     logEvent('good', 'All systems nominal'); logEvent('info', 'Departed Zhen-9 — bound for ' + contract.to);
     logEvent('info', counts.cargo + ' cargo · ' + counts.passenger + ' passenger · ' + counts.military + ' military pods aboard');
     logEvent('warn', 'Route danger: ' + DANGER_LABEL[contract.danger] + ' — pirates likely');
     comms('info', 'DEPARTING ZHEN-9 → ' + contract.to.toUpperCase()); comms('good', 'ALL SYSTEMS NOMINAL'); comms('warn', 'ROUTE DANGER: ' + DANGER_LABEL[contract.danger]);
     if (!R.captain) { buildUI(); } else { buildCargo(); buildPax(); }
+    buildPods();
     showScreen('mission');
     last = performance.now(); simAcc = 0;
   }
