@@ -358,6 +358,44 @@ button:active { transform: translateY(0); }
 
 /* ---------------------------------------------------- room inspector modal */
 .overlay.modal { background: rgba(3, 6, 14, 0.7); backdrop-filter: blur(2px); }
+/* coach tip toast (overlaid on the schematic) */
+.col-center .panel.grow { position: relative; }
+.coach-toast {
+  position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+  width: min(440px, 84%); z-index: 40;
+  background: linear-gradient(180deg, rgba(18,34,60,0.98), rgba(10,20,38,0.98));
+  border: 1px solid rgba(90,170,255,0.6); border-radius: 10px;
+  padding: 12px 14px 13px; box-shadow: 0 10px 40px rgba(0,0,0,0.55), 0 0 24px rgba(40,120,220,0.3);
+  animation: coachIn 0.25s ease-out;
+}
+.coach-toast.hidden { display: none; }
+@keyframes coachIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.coach-tag { font-size: 10px; letter-spacing: 2px; color: var(--cyan); font-weight: 700; }
+.coach-title { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: #eaf3ff; margin: 3px 0 4px; }
+.coach-body { font-size: 12px; line-height: 1.5; color: var(--ink-dim); }
+.coach-x {
+  position: absolute; top: 8px; right: 9px; width: 22px; height: 22px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(120,160,220,0.3); border-radius: 5px;
+  color: var(--ink-dim); cursor: pointer; font-size: 12px; line-height: 1;
+}
+.coach-x:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+/* coach-tips toggle (home menu) */
+.coach-toggle {
+  display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 10px;
+  padding: 9px 11px; background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(120,160,220,0.25); border-radius: 7px; cursor: pointer; color: var(--ink);
+}
+.coach-toggle:hover { border-color: rgba(120,160,220,0.5); }
+.coach-toggle .ct-label { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; flex: 1; text-align: left; }
+.coach-toggle .ct-sw { width: 34px; height: 18px; border-radius: 9px; background: rgba(120,130,150,0.4); position: relative; transition: background 0.15s; }
+.coach-toggle .ct-sw i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #cdd6e6; transition: left 0.15s; }
+.coach-toggle.on .ct-sw { background: var(--cyan); }
+.coach-toggle.on .ct-sw i { left: 18px; }
+.coach-toggle .ct-state { font-size: 11px; font-weight: 700; min-width: 26px; text-align: right; color: var(--ink-dim); }
+.coach-toggle.on .ct-state { color: var(--cyan); }
+.coach-hint { font-size: 10.5px; line-height: 1.45; color: var(--ink-dim); margin-top: 7px; opacity: 0.85; }
+
 .modal-panel {
   width: min(440px, 92vw);
   max-height: 92vh; overflow-y: auto;

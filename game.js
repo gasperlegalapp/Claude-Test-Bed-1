@@ -113,6 +113,7 @@
       loadout: ['cargo', 'cargo', 'passenger', 'military', null, null],
       contractId: null, contracts: null,
       seenIntro: false,
+      coachTips: true,
       stats: { runs: 0, wins: 0, earned: 0 },
     };
   }
@@ -212,6 +213,7 @@
       crewIdle: 3, openRoom: null,
       repairPool: TOTAL_TECHS, securityPool: TOTAL_SECURITY,
       sabotage: null, field: null, radiation: 0, eventTimer: INTRO + rand(8, 14),
+      nudged: {}, coach: null,
       killed: 0, injured: 0, missing: 0,
       pax: Array.from({ length: paxCount }, () => 'safe'),
       paxMorale: 92,
@@ -399,6 +401,7 @@
     // top controls
     $('btnPause').onclick = togglePause;
     $('btnFast').onclick = toggleFast;
+    $('coachDismiss').onclick = () => { if (S) { S.coach = null; } };
 
     // room inspector: one delegated handler (innerHTML is rebuilt each frame)
     const modal = $('roomModal');
@@ -594,6 +597,20 @@
     S.comms.unshift({ t: clockStr(), kind, msg });
     if (S.comms.length > 14) { S.comms.pop(); }
   }
+  // first-time coaching nudges — one per incident type per run, only if enabled
+  const COACH_TIPS = {
+    raiders: ['HOSTILES INBOUND', 'Raiders are attacking. Shields soak the hits, weapons thin them out, and engines help you evade — route power to whatever you need most.'],
+    failure: ['SYSTEM FAILURE', 'A compartment is losing integrity. Send repair crew to fix it, or hit JURY-RIG in the compartment panel for a fast temporary patch.'],
+    debris: ['DEBRIS FIELD', 'Impacts are incoming. Pour power into SHIELDS now to soak the hits before they land.'],
+    ion: ['ION SURGE', 'Your shields and sensors are degraded until this passes. Ride it out — lean on repair crew and keep an eye on the hull.'],
+    sabotage: ['SABOTAGE ABOARD', 'A stowaway is tampering with systems. The damage clusters near where they hide — open a compartment and send a SECURITY DETAIL to sweep until you catch them.'],
+    boarders: ['BOARDERS', 'Hostiles have made it aboard. Open that compartment and send a SECURITY DETAIL to repel them.'],
+  };
+  function coach(type) {
+    if (!META.coachTips || S.nudged[type] || !COACH_TIPS[type]) { return; }
+    S.nudged[type] = true;
+    S.coach = { title: COACH_TIPS[type][0], body: COACH_TIPS[type][1], ttl: 13 };
+  }
 
   // ---------------------------------------------------------------- simulation
   function sim(dt) {
@@ -603,6 +620,7 @@
     // cooldowns & buffs
     for (const k in S.actions) { if (S.actions[k] > 0) { S.actions[k] = Math.max(0, S.actions[k] - dt); } }
     for (const k in S.buffs) { S.buffs[k] -= dt; if (S.buffs[k] <= 0) { delete S.buffs[k]; } }
+    if (S.coach) { S.coach.ttl -= dt; if (S.coach.ttl <= 0) { S.coach = null; } }
     // per-room leaks drain health; jury-rig cooldowns tick down
     S.rooms.forEach(rm => {
       if (rm.juryCd > 0) { rm.juryCd = Math.max(0, rm.juryCd - dt); }
@@ -639,7 +657,7 @@
         const size = Math.max(1, Math.round((2 + intensity * 0.02 + S.threat * 0.6 + rand(0, 2)) * dmul));
         S.attackers = Math.min(18 + S.danger * 4, S.attackers + size);
         S.batchTimer = clamp(18 - intensity * 0.04 - S.threat * 1.5 - S.danger * 1.5, 4, 18) * rand(0.85, 1.15);
-        logEvent('bad', size + ' raiders closing to attack range'); comms('bad', 'HOSTILE CONTACTS ×' + size);
+        logEvent('bad', size + ' raiders closing to attack range'); comms('bad', 'HOSTILE CONTACTS ×' + size); coach('raiders');
       }
     }
     // threat tracks the live raider backlog: rises fast as they pile up, eases
@@ -821,7 +839,7 @@
     if (S.hull < 45 && leak > 20 && chance(0.35)) {
       rm.breach = true; logEvent('bad', 'HULL BREACH — ' + rm.label);
       // a breach under heavy fire can let boarders aboard — security must repel them
-      if (S.danger >= 2 && !rm.boarders && chance(0.5)) { rm.boarders = true; logEvent('bad', 'Boarders coming through the breach — ' + rm.label); comms('bad', 'BOARDERS — ' + rm.label); }
+      if (S.danger >= 2 && !rm.boarders && chance(0.5)) { rm.boarders = true; logEvent('bad', 'Boarders coming through the breach — ' + rm.label); comms('bad', 'BOARDERS — ' + rm.label); coach('boarders'); }
     }
     if (rm.crew > 0 && chance(0.3)) { hurtRoom(rm, 'impact'); }
   }
@@ -863,14 +881,15 @@
       rm.health = clamp(rm.health - 20, 0, 100); rm.leak = 1.0;
       logEvent('bad', 'Power surge — ' + rm.label + ' damaged'); comms('bad', 'POWER SURGE — ' + rm.label);
     }
+    coach('failure');
   }
   function startHazard() {
     if (chance(0.55)) {
       S.field = { warn: 5, dur: 13, hitT: 0 };
-      logEvent('warn', 'Debris field ahead — impacts imminent'); comms('bad', 'DEBRIS FIELD AHEAD');
+      logEvent('warn', 'Debris field ahead — impacts imminent'); comms('bad', 'DEBRIS FIELD AHEAD'); coach('debris');
     } else {
       S.radiation = 15;
-      logEvent('warn', 'Ion surge — shields and sensors disrupted'); comms('warn', 'ION SURGE');
+      logEvent('warn', 'Ion surge — shields and sensors disrupted'); comms('warn', 'ION SURGE'); coach('ion');
     }
   }
   function debrisImpact() {
@@ -888,7 +907,7 @@
     const cands = S.rooms.filter(r => !r.cargoBay);
     const rm = pick(cands);
     S.sabotage = { room: rm.key, tamperT: rand(5, 9), caught: false };
-    logEvent('bad', 'Sabotage detected aboard — source unknown'); comms('bad', '⚠ SABOTAGE ABOARD');
+    logEvent('bad', 'Sabotage detected aboard — source unknown'); comms('bad', '⚠ SABOTAGE ABOARD'); coach('sabotage');
   }
   function sabotageStrike() {
     const home = roomByKey(S.sabotage.room);
@@ -901,6 +920,14 @@
   // ---------------------------------------------------------------- render
   function render() {
     if (!S) { return; }
+    // coach tip toast
+    const ct = $('coachToast');
+    if (S.coach) {
+      $('coachTitle').textContent = S.coach.title;
+      $('coachBody').textContent = S.coach.body;
+      ct.classList.remove('hidden');
+    } else { ct.classList.add('hidden'); }
+
     // top bar
     $('tbClock').textContent = clockStr();
     $('tbCycle').textContent = 'CYCLE ' + S.cycle.toFixed(2);
@@ -1445,6 +1472,12 @@
       '<div class="hs"><span>Runs completed</span><b>' + META.stats.wins + ' / ' + META.stats.runs + '</b></div>' +
       '<div class="hs"><span>Total earned</span><b>' + fmt(META.stats.earned) + ' ◎</b></div>';
     $('homeLaunch').disabled = !ct;
+    renderCoachToggle();
+  }
+  function renderCoachToggle() {
+    const btn = $('coachToggle'); if (!btn) { return; }
+    btn.classList.toggle('on', !!META.coachTips);
+    btn.querySelector('.ct-state').textContent = META.coachTips ? 'ON' : 'OFF';
   }
   function renderContracts() {
     updateCreditsUI();
@@ -1605,6 +1638,7 @@
     document.querySelectorAll('[data-screen]').forEach(b => { b.onclick = () => showScreen(b.getAttribute('data-screen')); });
     $('introBtn').onclick = () => { META.seenIntro = true; saveMeta(); showScreen('home'); };
     $('homeLaunch').onclick = launchMission;
+    $('coachToggle').onclick = () => { META.coachTips = !META.coachTips; saveMeta(); renderCoachToggle(); };
     $('debriefHome').onclick = () => { genContracts(); showScreen('home'); };
     if (META.seenIntro) { showScreen('home'); }
     else { screen = 'intro'; $('intro').classList.remove('hidden'); }

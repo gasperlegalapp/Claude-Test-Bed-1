@@ -82,6 +82,10 @@ symptoms and work it out.
 
 The same small toolkit solves all of it: route power, dispatch repair crew,
 sweep with security, seal/vent, jury-rig, and the emergency actions.
+
+**Coach tips** (toggle in the main menu, on by default): the first time each new
+kind of threat appears in a run, a short tip explains how to respond. Turn it off
+for the pure figure-it-out experience. The setting is remembered between runs.
   - Tiles show station pips (manned/empty) and badges for fire/breach/sealed/repair.
 
 ### What manning each station does

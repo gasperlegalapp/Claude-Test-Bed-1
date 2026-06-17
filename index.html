@@ -50,6 +50,12 @@
       <div class="panel">
         <div class="panel-h">OPERATION</div>
         <div id="homeStats" class="home-stats"></div>
+        <button id="coachToggle" class="coach-toggle" type="button">
+          <span class="ct-label">Coach tips</span>
+          <span class="ct-sw"><i></i></span>
+          <span class="ct-state">ON</span>
+        </button>
+        <div class="coach-hint">First time each new threat appears, a short tip explains how to respond.</div>
       </div>
       <div class="home-nav">
         <button class="navbtn" data-screen="contracts"><span class="nv-i">▤</span><b>CONTRACTS</b><span class="nv-s">Pick a route</span></button>
@@ -180,6 +186,12 @@
     <!-- ===== CENTER COLUMN ===== -->
     <section class="col col-center">
       <div class="panel grow">
+        <div id="coachToast" class="coach-toast hidden">
+          <button class="coach-x" id="coachDismiss" title="Dismiss">✕</button>
+          <div class="coach-tag">COACH TIP</div>
+          <div class="coach-title" id="coachTitle"></div>
+          <div class="coach-body" id="coachBody"></div>
+        </div>
         <div class="panel-h">▲ SHIP SCHEMATIC COMMAND VIEW
           <span class="legend">
             <i class="lg normal"></i>NORMAL
