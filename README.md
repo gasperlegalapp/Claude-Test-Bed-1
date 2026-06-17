@@ -13,8 +13,8 @@ you take from life support — and:
 
 - **Shields up, life support down** → the hull holds but crew suffocate.
 - **Life support up, shields down** → everyone breathes but the hull caves in.
-- **Ignore the cargo bays** → fires and breaches destroy your payload and you
-  fail the contract even if the ship survives.
+- **Ignore the cargo holds** → fires and breaches eat into their structure and
+  your payload degrades with them; repair the holds to bring the cargo back.
 
 So you constantly re-balance the reactor, dispatch repair teams, and spend
 emergency actions while raiders keep coming.
@@ -44,7 +44,7 @@ It's a roguelite-ish hauler operation that persists between runs
 Open `index.html` in any modern browser. No build step, no dependencies.
 
 - **Power management (right panel):** use `+ / −` on each system
-  (Reactor, Shields, Engines, Weapons, Sensors, Life Support, Cargo Bay).
+  (Reactor, Shields, Engines, Weapons, Sensors, Life Support).
   Watch **Power Reserve** — go negative and you brown out, weakening everything.
 - **Ship schematic (center):** click any compartment to open its **inspector**.
   Each compartment is a station you operate:
@@ -101,7 +101,7 @@ for the pure figure-it-out experience. The setting is remembered between runs.
 | Med Bay | Medical | Heals injured, prevents deaths |
 | Bridge | Command | Ship-wide coordination bonus |
 | Passenger Deck | Stewards | Calms passenger panic |
-| Cargo Bay A/B/C | Cargo Control | Protects that cargo |
+| Pod bays (×3) | Varies by pod | The three mid-deck mounts become whatever pods you install — **cargo holds** (house freight; repair to protect it), **turret bays** (military pods → firepower), **shield pods** (aux shields), or open hardpoints |
 - **Emergency Actions:** Prioritize Shields, Emergency Power, Damage Control
   (suppress fires & seal breaches), Evacuate Passengers. Each has a cooldown.
 - **Top bar:** pause `❚❚` and fast-forward `▶▶`.
@@ -130,7 +130,6 @@ sky. Keeping threat low is itself the moment-to-moment game.
 | Weapons | Destroy raiders | The raid never thins out |
 | Sensors | Point defense | Missiles hit harder |
 | Life Support | Keeps crew/passengers alive | Casualties, panic, deaths |
-| Cargo Bay | Cargo environmental control | Cargo integrity decays |
 
 ## Project layout
 
