@@ -792,7 +792,7 @@
       rhtml += '<div class="repair-empty">No active repairs. Click a compartment on the schematic to send techs.</div>';
     } else {
       jobs.forEach(rm => {
-        const done = rm.health >= 99 && !rm.fire && !rm.breach;
+        const done = rm.health >= 99.9 && !rm.fire && !rm.breach;
         const state = rm.repairState === 'enroute'
           ? '<span class="rj-state enroute">EN ROUTE ' + Math.ceil(rm.repairEta) + 's</span>'
           : done ? '<span class="rj-state done">ON STATION</span>'
@@ -993,12 +993,12 @@
     m.rtechn.textContent = rm.repairTechs;
     m.rtechPlus.disabled = S.repairPool <= 0;
     m.rtechMinus.disabled = rm.repairTechs <= 0;
-    const done = rm.health >= 99 && !rm.fire && !rm.breach;
+    const done = rm.health >= 99.9 && !rm.fire && !rm.breach;
     let rs;
     if (rm.repairTechs === 0) { rs = (S.repairPool > 0 ? S.repairPool + ' techs idle in the pool — press + to send them here' : 'No idle techs — release some from another job'); }
     else if (rm.repairState === 'enroute') { rs = '<b class="warnt">EN ROUTE</b> — arriving in ' + Math.ceil(rm.repairEta) + 's'; }
-    else if (done) { rs = '<b style="color:var(--green)">ON STATION</b> — standing by (release if needed elsewhere)'; }
-    else { rs = '<b style="color:var(--cyan)">REPAIRING</b> — structure ' + Math.round(rm.health) + '%'; }
+    else if (done) { rs = '<b style="color:var(--green)">ON STATION</b> — fully repaired, standing by for new damage'; }
+    else { rs = '<b style="color:var(--cyan)">REPAIRING</b> — structure ' + (Math.floor(rm.health * 10) / 10) + '%'; }
     m.rstate.innerHTML = rs;
     m.release.style.display = rm.repairTechs > 0 ? 'block' : 'none';
     m.seal.classList.toggle('on', rm.sealed);
@@ -1061,7 +1061,7 @@
         ctx.save();
         ctx.strokeStyle = 'rgba(90,180,255,' + (0.10 + sf * 0.30 + (under ? 0.06 * Math.sin(S.t * 8) : 0)) + ')';
         ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.ellipse(cx, cy, unit * 6.6, unit * 2.7, 0, 0, TAU); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(cx, cy, L * 0.60, h * 0.44, 0, 0, TAU); ctx.stroke();
         ctx.restore();
       }
     }
@@ -1100,7 +1100,7 @@
       if (b.t >= 1) {
         // impact on the shield perimeter
         const ia = Math.atan2(py - cy, px - cx);
-        flashes.push({ x: cx + Math.cos(ia) * unit * 6.6, y: cy + Math.sin(ia) * unit * 2.7, life: 0.35 });
+        flashes.push({ x: cx + Math.cos(ia) * L * 0.6, y: cy + Math.sin(ia) * h * 0.44, life: 0.35 });
         bolts.splice(i, 1);
       }
     }
@@ -1124,88 +1124,84 @@
     ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r);
     ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
-  const CARGO_PALETTE = ['#b1462f', '#3f7fb0', '#c98a3a', '#bdb6aa', '#3f9e74', '#8a6fae'];
-  // a container/module sitting on top of the hull, drawn per loadout type
-  function drawPod(ctx, px, hullTop, slotW, u, type, idx, t) {
-    const cw = Math.min(slotW * 0.9, u * 1.5), ch = u * 1.25, x0 = px - cw / 2, y0 = hullTop - ch;
-    if (!type) { ctx.fillStyle = '#2f3a48'; ctx.fillRect(px - cw * 0.4, hullTop - u * 0.26, cw * 0.8, u * 0.26); return; }
+  function drawPod(ctx, x, y, u, type, top, t) {
+    const w = u * 1.7, h = u * 1.25, x0 = x - w / 2, y0 = y - h / 2;
+    if (!type) {
+      ctx.strokeStyle = 'rgba(140,170,210,0.45)'; ctx.lineWidth = Math.max(1, u * 0.16);
+      ctx.strokeRect(x - u * 0.45, y - u * 0.38, u * 0.9, u * 0.76);
+      return;
+    }
     if (type === 'cargo') {
-      ctx.fillStyle = CARGO_PALETTE[idx % CARGO_PALETTE.length]; ctx.fillRect(x0, y0, cw, ch);
-      ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1;
-      for (let r = 1; r < 4; r++) { const rx = x0 + cw * r / 4; ctx.beginPath(); ctx.moveTo(rx, y0 + 1); ctx.lineTo(rx, y0 + ch - 1); ctx.stroke(); }
-      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(x0, y0 + ch * 0.44, cw, u * 0.1);
-      ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.strokeRect(x0 + 0.5, y0 + 0.5, cw - 1, ch - 1);
+      const cols = 4, rows = 3;
+      for (let c = 0; c < cols; c++) { for (let r = 0; r < rows; r++) {
+        ctx.fillStyle = (c + r) % 2 ? '#9a6a3e' : '#7d5230';
+        ctx.fillRect(x0 + c * w / cols, y0 + r * h / rows, w / cols - 1, h / rows - 1);
+      } }
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
     } else if (type === 'passenger') {
-      ctx.fillStyle = '#33485e'; roundRect(ctx, x0, y0, cw, ch, u * 0.18); ctx.fill();
+      ctx.fillStyle = '#33485e'; roundRect(ctx, x0, y0, w, h, u * 0.3); ctx.fill();
       ctx.strokeStyle = '#5fb6ff'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = 'rgba(150,220,255,' + (0.5 + 0.4 * Math.sin(t * 3 + px)) + ')';
-      for (let r = 0; r < 2; r++) { for (let c = 0; c < 3; c++) { ctx.fillRect(x0 + cw * 0.16 + c * cw * 0.26, y0 + ch * 0.22 + r * ch * 0.34, cw * 0.17, ch * 0.2); } }
+      ctx.fillStyle = 'rgba(150,220,255,' + (0.55 + 0.4 * Math.sin(t * 3 + x)) + ')';
+      for (let i = 0; i < 4; i++) { ctx.fillRect(x0 + u * 0.22 + i * (w - u * 0.4) / 4, y - u * 0.13, (w - u * 0.5) / 4, u * 0.28); }
     } else if (type === 'military') {
-      ctx.fillStyle = '#39434f'; ctx.fillRect(x0, y0, cw, ch);
-      ctx.fillStyle = '#c0563a'; ctx.fillRect(x0, y0 + ch * 0.34, cw, u * 0.16);
-      ctx.strokeStyle = '#7a8ba0'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, cw, ch);
-      ctx.fillStyle = '#1c242f'; ctx.fillRect(px - u * 0.13, y0 - u * 0.4, u * 0.26, u * 0.4);
+      ctx.fillStyle = '#33414f'; ctx.fillRect(x0, y0, w, h);
+      ctx.fillStyle = '#c0563a'; ctx.fillRect(x0, y + h * 0.16, w, u * 0.22);
+      ctx.strokeStyle = '#7a8ba0'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
+      ctx.fillStyle = '#222c3a'; ctx.fillRect(x - u * 0.16, top ? y0 - u * 0.45 : y0 + h, u * 0.32, u * 0.45);
     } else if (type === 'shield') {
-      ctx.fillStyle = '#25405c'; roundRect(ctx, x0, y0, cw, ch, u * 0.18); ctx.fill();
+      ctx.fillStyle = '#25405c'; roundRect(ctx, x0, y0, w, h, u * 0.3); ctx.fill();
       ctx.strokeStyle = '#4fb0ff'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.strokeStyle = 'rgba(90,180,255,' + (0.4 + 0.3 * Math.sin(t * 4 + px)) + ')';
-      ctx.beginPath(); ctx.arc(px, y0 + ch * 0.45, u * 0.5, Math.PI, 0); ctx.stroke();
+      ctx.strokeStyle = 'rgba(90,180,255,' + (0.4 + 0.3 * Math.sin(t * 4 + x)) + ')';
+      ctx.beginPath(); ctx.arc(x, y, u * 0.5, 0, TAU); ctx.stroke();
     }
-  }
-  function drawEngines(ctx, hx0, cy, u, t) {
-    ctx.fillStyle = '#2b3340'; roundRect(ctx, hx0 - u * 1.7, cy - u * 1.45, u * 2.0, u * 2.9, u * 0.35); ctx.fill();
-    ctx.strokeStyle = '#46566c'; ctx.lineWidth = 1; ctx.stroke();
-    const eg = 0.5 + 0.4 * Math.sin(t * 9);
-    for (let k = -1; k <= 1; k++) {
-      const ey = cy + k * u * 0.92;
-      ctx.fillStyle = '#11161f'; roundRect(ctx, hx0 - u * 2.0, ey - u * 0.3, u * 0.55, u * 0.6, u * 0.18); ctx.fill();
-      const g = ctx.createRadialGradient(hx0 - u * 2.1, ey, 0, hx0 - u * 2.1, ey, u * 1.4);
-      g.addColorStop(0, 'rgba(120,190,255,' + eg + ')'); g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx0 - u * 2.2, ey, u * 1.3, 0, TAU); ctx.fill();
-    }
-  }
-  function drawBridge(ctx, hx1, cy, u, t) {
-    const bx = hx1 - u * 0.2, bw = u * 1.9, bh = u * 1.7;
-    const bg = ctx.createLinearGradient(0, cy - bh, 0, cy + bh);
-    bg.addColorStop(0, '#9aa6b4'); bg.addColorStop(1, '#3f4a58');
-    ctx.fillStyle = bg; roundRect(ctx, bx, cy - bh / 2, bw, bh, u * 0.3); ctx.fill();
-    ctx.strokeStyle = '#b9c4d0'; ctx.lineWidth = 1; ctx.stroke();
-    // forward nose taper
-    ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(bx + bw - 1, cy - bh * 0.34); ctx.lineTo(bx + bw + u * 1.7, cy); ctx.lineTo(bx + bw - 1, cy + bh * 0.34); ctx.closePath(); ctx.fill(); ctx.stroke();
-    // raised bridge tower
-    ctx.fillStyle = '#828e9c'; roundRect(ctx, bx + u * 0.45, cy - bh / 2 - u * 0.9, u * 1.0, u * 1.0, u * 0.18); ctx.fill();
-    ctx.strokeStyle = '#aab4c0'; ctx.stroke();
-    // blue trim + windows
-    ctx.fillStyle = '#3fa7ff'; ctx.fillRect(bx, cy - bh * 0.16, bw + u * 1.3, u * 0.13);
-    ctx.fillStyle = 'rgba(150,220,255,' + (0.6 + 0.4 * Math.sin(t * 3)) + ')';
-    for (let i = 0; i < 3; i++) { ctx.fillRect(bx + u * 0.55 + i * u * 0.38, cy - bh / 2 - u * 0.55, u * 0.24, u * 0.4); }
-    // nose light
-    ctx.fillStyle = (Math.sin(t * 4) > 0) ? '#ff7a7a' : 'rgba(255,120,120,0.3)';
-    ctx.beginPath(); ctx.arc(bx + bw + u * 1.55, cy, u * 0.16, 0, TAU); ctx.fill();
   }
   function drawShip(ctx, cx, cy, u, loadout, t, opts) {
     opts = opts || {}; loadout = loadout || [];
     const hull = opts.hull == null ? 100 : opts.hull, fires = opts.fires || 0;
-    const hh = u * 1.05, top = cy - hh, bot = cy + hh;
-    const hx0 = cx - u * 3.8, hx1 = cx + u * 3.4;
-    drawEngines(ctx, hx0, cy, u, t);
-    // hull body
-    const hg = ctx.createLinearGradient(0, top, 0, bot);
-    hg.addColorStop(0, '#aab4c0'); hg.addColorStop(0.45, '#7a8696'); hg.addColorStop(1, '#3f4956');
-    ctx.fillStyle = hg; roundRect(ctx, hx0, top, hx1 - hx0, hh * 2, u * 0.32); ctx.fill();
-    ctx.strokeStyle = '#b9c4d0'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.strokeStyle = 'rgba(38,50,66,0.4)'; ctx.lineWidth = 1;
-    for (let i = 1; i < 8; i++) { const px = hx0 + (hx1 - hx0) * i / 8; ctx.beginPath(); ctx.moveTo(px, top + 2); ctx.lineTo(px, bot - 2); ctx.stroke(); }
-    ctx.fillStyle = 'rgba(38,50,66,0.45)'; ctx.fillRect(hx0 + u * 0.2, cy + hh * 0.4, hx1 - hx0 - u * 0.4, u * 0.16);
-    ctx.fillStyle = '#2c3542'; ctx.fillRect(cx - u * 1.2, bot - 1, u * 0.5, u * 0.7); ctx.fillRect(cx + u * 0.9, bot - 1, u * 0.5, u * 0.7);
-    // container row on top of the hull
-    const n = loadout.length || 6, cx0 = hx0 + u * 0.5, cx1 = hx1 - u * 0.5, slotW = (cx1 - cx0) / n;
-    for (let i = 0; i < n; i++) { drawPod(ctx, cx0 + slotW * (i + 0.5), top, slotW, u, loadout[i], i, t); }
-    drawBridge(ctx, hx1, cy, u, t);
+    const xEng = cx - u * 4.5, xCmd = cx + u * 4.0;
+    // spine
+    ctx.strokeStyle = '#3a475e'; ctx.lineWidth = Math.max(2, u * 0.5);
+    ctx.beginPath(); ctx.moveTo(xEng, cy); ctx.lineTo(xCmd, cy); ctx.stroke();
+    ctx.strokeStyle = '#62799a'; ctx.lineWidth = Math.max(1, u * 0.16);
+    ctx.beginPath(); ctx.moveTo(xEng, cy); ctx.lineTo(xCmd, cy); ctx.stroke();
+    // hardpoint pods (pairs top/bottom along the spine)
+    const n = loadout.length || 6, pairs = Math.ceil(n / 2);
+    const startX = xEng + u * 1.7, endX = xCmd - u * 2.0;
+    for (let i = 0; i < n; i++) {
+      const pair = Math.floor(i / 2), top = (i % 2) === 0;
+      const px = pairs > 1 ? startX + (endX - startX) * (pair / (pairs - 1)) : (startX + endX) / 2;
+      const py = cy + (top ? -1 : 1) * u * 1.45;
+      ctx.strokeStyle = '#caa24a'; ctx.lineWidth = Math.max(1.5, u * 0.2);
+      ctx.beginPath(); ctx.moveTo(px, cy); ctx.lineTo(px, py + (top ? u * 0.55 : -u * 0.55)); ctx.stroke();
+      drawPod(ctx, px, py, u, loadout[i], top, t);
+    }
+    // engines (rear)
+    ctx.fillStyle = '#2a3344'; roundRect(ctx, xEng - u * 1.3, cy - u * 1.6, u * 1.8, u * 3.2, u * 0.4); ctx.fill();
+    ctx.strokeStyle = '#46566c'; ctx.lineWidth = 1; ctx.stroke();
+    const eg = 0.5 + 0.4 * Math.sin(t * 9);
+    for (let k = -1; k <= 1; k++) {
+      const ey = cy + k * u * 1.0;
+      ctx.fillStyle = '#161e2b'; ctx.fillRect(xEng - u * 1.7, ey - u * 0.32, u * 0.55, u * 0.64);
+      const g = ctx.createRadialGradient(xEng - u * 1.9, ey, 0, xEng - u * 1.9, ey, u * 1.5);
+      g.addColorStop(0, 'rgba(120,190,255,' + eg + ')'); g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(xEng - u * 2.0, ey, u * 1.4, 0, TAU); ctx.fill();
+    }
+    // command module (front)
+    const cw = u * 3.0, ch = u * 2.3;
+    const cg = ctx.createLinearGradient(0, cy - ch / 2, 0, cy + ch / 2);
+    cg.addColorStop(0, '#5a6a7e'); cg.addColorStop(1, '#27313e');
+    ctx.fillStyle = cg; roundRect(ctx, xCmd - u * 0.3, cy - ch / 2, cw, ch, u * 0.9); ctx.fill();
+    ctx.strokeStyle = '#7d8ea2'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#3fa7ff'; ctx.fillRect(xCmd - u * 0.3, cy - ch / 2 + u * 0.35, cw, u * 0.16);
+    ctx.fillStyle = 'rgba(150,220,255,' + (0.6 + 0.4 * Math.sin(t * 3)) + ')';
+    for (let i = 0; i < 3; i++) { ctx.fillRect(xCmd + cw - u * 1.3, cy - u * 0.7 + i * u * 0.55, u * 0.5, u * 0.24); }
+    // nose running light
+    ctx.fillStyle = (Math.sin(t * 4) > 0) ? '#ff7a7a' : 'rgba(255,120,120,0.3)';
+    ctx.beginPath(); ctx.arc(xCmd + cw - u * 0.2, cy, u * 0.18, 0, TAU); ctx.fill();
     // damage fire/smoke
     const burn = fires + (hull < 60 ? 1 : 0) + (hull < 35 ? 1 : 0);
     for (let i = 0; i < burn; i++) {
-      const fx = cx0 + (cx1 - cx0) * ((i * 0.37) % 1), fy = cy + (i % 2 ? 1 : -1) * u * 0.5;
+      const fx = startX + (endX - startX) * ((i * 0.37) % 1), fy = cy + (i % 2 ? 1 : -1) * u * 0.6;
       const fl = 0.5 + 0.5 * Math.sin(t * 18 + i * 2);
       ctx.fillStyle = 'rgba(120,130,150,0.4)'; ctx.beginPath(); ctx.arc(fx, fy - u * 0.6, u * 0.4 + fl * u * 0.2, 0, TAU); ctx.fill();
       ctx.fillStyle = 'rgba(255,' + (120 + fl * 80 | 0) + ',40,' + (0.6 + fl * 0.3) + ')';
