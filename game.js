@@ -16,11 +16,14 @@
   const chance = p => Math.random() < p;
   const pick = arr => arr[(Math.random() * arr.length) | 0];
   const fmt = n => Math.round(n).toLocaleString('en-US');
+  const TAU = Math.PI * 2;
 
   // ---------------------------------------------------------------- config
-  const RAID_DURATION = 210;        // sim-seconds to survive
+  const RAID_DURATION = 240;        // sim-seconds to survive the run
+  const INTRO = 22;                 // calm sim-seconds before the first contact
   const CARGO_FAIL = 30;            // lose if cargo integrity drops below this
   const SEGMENTS = 14;              // segments per bar
+  const THREAT_LABEL = ['STANDBY', 'LOW', 'GUARDED', 'ELEVATED', 'SEVERE', 'HORDE'];
 
   // power systems (reactor is the generator; the rest draw from it)
   const SYS_DEFS = [
@@ -88,35 +91,28 @@
     const depts = {};
     DEPT_DEFS.forEach(d => { depts[d.key] = { ...d, count: d.max, health: rand(88, 100), morale: rand(70, 95) }; });
     const cargo = CARGO_DEFS.map(d => ({ ...d, integrity: 100 }));
-    // a couple of rooms start already hurt, matching the "mid-raid" feel
-    rooms.find(r => r.key === 'cargoA').fire = true;
-    rooms.find(r => r.key === 'cargoA').health = 72;
-    rooms.find(r => r.key === 'cargoA').status = 'damaged';
-    rooms.find(r => r.key === 'shieldgen').health = 45;
-    rooms.find(r => r.key === 'shieldgen').status = 'critical';
-    rooms.find(r => r.key === 'cargoC').health = 58;
-    rooms.find(r => r.key === 'cargoC').status = 'damaged';
 
     return {
       running: true, speed: 1, over: false,
       t: 0, clock: 22 * 3600 + 41 * 60 + 7, cycle: 1467.11,
       credits: 1247350,
       sys, rooms, depts, cargo,
-      hull: 72,
-      shieldPool: 60,                 // current absorbed-able shield HP
-      pressure: 1.0,                  // raid intensity (drops as you kill raiders)
-      attackers: 12,
+      hull: 100,
+      shieldPool: 0,                  // current absorbed-able shield HP (regens)
+      pressure: 0,                    // raid intensity (0 when sky is clear)
+      threat: 0,                      // 0..5 — rises as raider batches overlap
+      attackers: 0,
       reserve: 0, brownout: false,
-      captain: { name: 'LT. K. DRAVEN', role: 'CAPTAIN', health: 87, morale: 'High' },
+      captain: { name: 'LT. K. DRAVEN', role: 'CAPTAIN', health: 100, morale: 'High' },
       crewIdle: 3, openRoom: null,
-      killed: 4, injured: 10, missing: 0,
-      pax: Array.from({ length: 48 }, (_, i) => (i < 38 ? 'safe' : (i < 44 ? 'panic' : 'dead'))),
-      paxMorale: 68,
+      killed: 0, injured: 0, missing: 0,
+      pax: Array.from({ length: 48 }, () => 'safe'),
+      paxMorale: 92,
       repair: REPAIR_NAMES.map((n, i) => ({ name: n, target: null, progress: 0 })),
       actions: {}, // key -> cooldown remaining
       buffs: {},   // key -> time remaining
       events: [], comms: [],
-      combatTimer: 0, hazardTimer: rand(3, 6), killProg: 0, waveTimer: rand(12, 18),
+      combatTimer: 0, hazardTimer: 0, killProg: 0, batchTimer: INTRO + rand(3, 6),
       _commsScroll: 0,
     };
   }
@@ -307,7 +303,7 @@
       else if (act === 'repair') { dispatchRepair(key); }
       else if (act === 'pow+' && rm.sys) { adjustPower(rm.sys, rm.sys === 'reactor' ? 3 : 5); }
       else if (act === 'pow-' && rm.sys) { adjustPower(rm.sys, rm.sys === 'reactor' ? -3 : -5); }
-      renderModal();
+      if (S.openRoom) { updateModal(roomByKey(S.openRoom)); }
     });
     window.addEventListener('keydown', e => { if (e.key === 'Escape' && S.openRoom) { closeRoom(); } });
   }
@@ -368,8 +364,8 @@
     logEvent('good', 'Atmosphere vented in ' + rm.label + ' — fire out, crew evacuated');
     comms('good', 'VENTED ' + rm.label + ' — FIRE OUT');
   }
-  function openRoom(key) { S.openRoom = key; $('roomModal').classList.remove('hidden'); renderModal(); }
-  function closeRoom() { S.openRoom = null; $('roomModal').classList.add('hidden'); }
+  function openRoom(key) { S.openRoom = key; $('roomModal').classList.remove('hidden'); buildModal(roomByKey(key)); }
+  function closeRoom() { S.openRoom = null; R.modal = null; $('roomModal').classList.add('hidden'); }
 
   function dispatchRepair(roomKey) {
     if (S.over) { return; }
@@ -453,29 +449,44 @@
     const shieldMax = 120 * shEff;
     S.shieldPool = clamp(S.shieldPool + (12 * shEff) * dt, 0, shieldMax);
 
+    // ---- threat & raider batches ----
+    // Calm intro, then contacts arrive in batches. A batch that lands while
+    // raiders are still alive stacks the pressure and pushes threat up toward 5
+    // (endless horde). Clear the sky and threat eases back down.
+    if (S.t > INTRO) {
+      S.batchTimer -= dt;
+      if (S.batchTimer <= 0) {
+        // batches get bigger and more frequent the longer the run goes — so even
+        // if you clear each one early, the tempo eventually outpaces your guns
+        // and raiders pile up, dragging threat toward 5 (horde).
+        const intensity = S.t - INTRO;
+        const size = Math.round(2 + intensity * 0.02 + S.threat * 0.6 + rand(0, 2));
+        S.attackers = Math.min(26, S.attackers + size);
+        S.batchTimer = clamp(18 - intensity * 0.04 - S.threat * 1.5, 4, 18) * rand(0.85, 1.15);
+        logEvent('bad', size + ' raiders closing to attack range'); comms('bad', 'HOSTILE CONTACTS ×' + size);
+      }
+    }
+    // threat tracks the live raider backlog: rises fast as they pile up, eases
+    // down (more slowly) when you thin them out. Clear the sky and it settles.
+    const threatTarget = clamp(S.attackers / 3.2, 0, 5);
+    S.threat = clamp(S.threat + (threatTarget - S.threat) * (threatTarget > S.threat ? 0.5 : 0.15) * dt, 0, 5);
+    S.pressure = S.attackers > 0 ? clamp(0.4 + S.threat * 0.28 + S.attackers * 0.03, 0.35, 2.4) : 0;
+
     // ---- combat volleys ----
-    S.combatTimer -= dt;
-    if (S.combatTimer <= 0 && S.attackers > 0) {
-      S.combatTimer = rand(1.6, 2.8) / S.pressure;
-      volley();
+    if (S.attackers > 0) {
+      S.combatTimer -= dt;
+      if (S.combatTimer <= 0) { S.combatTimer = rand(1.5, 2.6) / Math.max(0.4, S.pressure); volley(); }
     }
     // weapons whittle down attackers (power + tactical crew + bridge coordination)
     const cmd = 0.8 + 0.2 * mannedFrac(roomByKey('bridge'));
     const wpEff = sysEff('weapons') * (0.6 + 0.4 * S.depts.tactical.count / S.depts.tactical.max);
-    S.killProg += wpEff * 0.22 * cmd * dt;
-    while (S.killProg >= 1 && S.attackers > 0) {
-      S.killProg -= 1; S.attackers--;
-      logEvent('good', 'Raider destroyed (' + S.attackers + ' remaining)'); comms('good', 'RAIDER DESTROYED');
-    }
-    S.pressure = clamp(0.45 + S.attackers / 14, 0.3, 1.7);
-
-    // reinforcement waves keep the raid alive until it starts to break near the end
-    S.waveTimer -= dt;
-    if (S.waveTimer <= 0 && S.t < RAID_DURATION - 35) {
-      S.waveTimer = rand(14, 22);
-      const n = Math.round(rand(2, 4));
-      S.attackers = Math.min(16, S.attackers + n);
-      logEvent('warn', n + ' raiders entering weapons range'); comms('bad', 'RAIDER WING INBOUND ×' + n);
+    if (S.attackers > 0) {
+      S.killProg += wpEff * 0.3 * cmd * dt;
+      while (S.killProg >= 1 && S.attackers > 0) {
+        S.killProg -= 1; S.attackers--;
+        logEvent('good', 'Raider destroyed (' + S.attackers + ' remaining)'); comms('good', 'RAIDER DESTROYED');
+      }
+      if (S.attackers === 0) { logEvent('good', 'Sky clear — all contacts down'); comms('good', 'ALL CONTACTS CLEAR'); }
     }
 
     // ---- fires & breaches damage rooms (sealing contains them; crew fight them) ----
@@ -557,11 +568,10 @@
       S.injured--; logEvent('good', 'Crew member recovered in Med Bay');
     }
 
-    // ---- random hazards ----
-    S.hazardTimer -= dt;
-    if (S.hazardTimer <= 0) {
-      S.hazardTimer = rand(5, 11) / S.pressure;
-      spawnHazard();
+    // ---- random hazards (only while under fire) ----
+    if (S.attackers > 0) {
+      S.hazardTimer -= dt;
+      if (S.hazardTimer <= 0) { S.hazardTimer = rand(6, 13) / Math.max(0.5, S.pressure); spawnHazard(); }
     }
 
     // ---- crew count from rooms; departments lose people on death ----
@@ -626,12 +636,15 @@
     $('tbClock').textContent = clockStr();
     $('tbCycle').textContent = 'CYCLE ' + S.cycle.toFixed(2);
     $('tbCredits').textContent = fmt(S.credits) + ' ◎';
-    const threat = S.attackers > 8 ? 'CRITICAL' : S.attackers > 3 ? 'SEVERE' : S.attackers > 0 ? 'ELEVATED' : 'CLEAR';
-    $('tbThreat').textContent = threat;
-    $('tbAlert').textContent = S.attackers > 0 ? 'UNDER ATTACK' : 'ALL CLEAR';
-    $('tbThreatBox').classList.toggle('flash', S.attackers > 8);
-    $('tbObjective').textContent = 'SURVIVE ' + Math.max(0, Math.ceil(RAID_DURATION - S.t)) + 'S';
-    let tb = ''; for (let i = 0; i < 5; i++) { tb += i < Math.ceil(S.pressure * 3) ? '<i></i>' : ''; }
+    const lvl = Math.round(S.threat);
+    $('tbThreat').textContent = 'LVL ' + lvl + ' · ' + THREAT_LABEL[clamp(lvl, 0, 5)];
+    $('tbThreatBox').classList.toggle('alarm', S.threat >= 1);
+    $('tbThreatBox').classList.toggle('flash', S.threat >= 4);
+    const underAttack = S.attackers > 0;
+    $('tbAlert').textContent = underAttack ? 'UNDER ATTACK' : (S.t < INTRO ? 'STANDBY' : 'ALL CLEAR');
+    $('tbAlertBox').classList.toggle('alarm', underAttack);
+    $('tbObjective').textContent = S.t < INTRO ? 'STANDBY · CONTACTS INBOUND' : 'SURVIVE ' + Math.max(0, Math.ceil(RAID_DURATION - S.t)) + 'S';
+    let tb = ''; for (let i = 0; i < 5; i++) { tb += '<i class="' + (i < lvl ? 'on' : '') + '"></i>'; }
     $('tbThreatBars').innerHTML = tb;
 
     // captain + departments
@@ -778,104 +791,244 @@
       '<span class="ct">' + c.t + ' <b>' + c.msg + '</b></span>').join('');
     $('autosave').textContent = '◌ AUTOSAVE ' + clockStr();
 
-    if (S.openRoom) { renderModal(); }
+    if (S.openRoom) { updateModal(roomByKey(S.openRoom)); }
   }
 
   // ---------------------------------------------------------------- room inspector
-  function stationPips(rm) {
-    let s = '<div class="rm-pips">';
-    for (let i = 0; i < rm.stations; i++) { s += '<i class="bigpip' + (i < rm.crew ? ' on' : '') + '">☻</i>'; }
-    return s + '</div>';
-  }
-  function powerReroute(rm) {
-    const sy = S.sys[rm.sys];
-    const max = rm.sys === 'reactor' ? 153 : 150;
-    const w = clamp(sy.power / max, 0, 1) * 100;
-    return '<div class="rm-sec"><div class="rm-sec-h">POWER — ' + sy.label + '</div>' +
-      '<div class="rm-pwrrow"><button class="pbtn" data-act="pow-">−</button>' +
-      '<div class="rm-bar"><i style="width:' + w.toFixed(0) + '%"></i></div>' +
-      '<span class="rm-pwrn">' + Math.round(sy.power) + (rm.sys === 'reactor' ? ' MW' : '%') + '</span>' +
-      '<button class="pbtn" data-act="pow+">+</button></div></div>';
-  }
-  function renderModal() {
-    const rm = roomByKey(S.openRoom);
-    if (!rm) { return; }
-    const eff = Math.round(mannedBoost(rm) * 100);
-    const statusTxt = rm.fire ? 'FIRE' : rm.breach ? 'BREACH' : rm.status.toUpperCase();
-    const statusCls = rm.fire ? 'critical' : rm.breach ? 'breach' : rm.status;
-    let metric;
-    if (rm.cargo !== undefined) { metric = 'CARGO INTEGRITY ' + Math.round(S.cargo[rm.cargo].integrity) + '% · ' + Math.round(rm.health) + '% structure'; }
-    else if (rm.pax) { metric = S.pax.filter(p => p !== 'dead').length + ' PASSENGERS · ' + Math.round(rm.health) + '% structure'; }
-    else { metric = 'STRUCTURE ' + Math.round(rm.health) + '%'; }
-    const repairing = S.repair.some(t => t.target === rm.key);
-
-    $('roomModalPanel').innerHTML =
+  // Built once per open so the buttons persist; only values update each frame.
+  // (Rebuilding innerHTML every frame would destroy a button mid-click.)
+  function buildModal(rm) {
+    const panel = $('roomModalPanel');
+    panel.innerHTML =
       '<div class="rm-head">' +
-        '<div><div class="rm-title">' + rm.label + '</div><div class="rm-sub">' + metric + '</div></div>' +
-        '<span class="rm-chip ' + statusCls + '">' + statusTxt + '</span>' +
-        '<button class="rm-close" data-act="close">✕</button></div>' +
+        '<div><div class="rm-title">' + rm.label + '</div><div class="rm-sub"></div></div>' +
+        '<span class="rm-chip"></span>' +
+        '<button class="rm-close" data-act="close" title="Close (Esc)">✕</button></div>' +
       '<div class="rm-sec"><div class="rm-sec-h">' + rm.fn + ' — CREW STATIONS</div>' +
-        '<div class="rm-stationrow">' + stationPips(rm) +
+        '<div class="rm-stationrow"><div class="rm-pips"></div>' +
           '<div class="rm-crewctl"><button class="pbtn" data-act="crew-">−</button>' +
-          '<span class="rm-crewn">' + rm.crew + ' / ' + rm.stations + '</span>' +
+          '<span class="rm-crewn"></span>' +
           '<button class="pbtn" data-act="crew+">+</button></div></div>' +
-        '<div class="rm-eff">Station output <b>' + eff + '%</b> &middot; ' + rm.fdesc +
-          (rm.sealed ? ' &middot; <b class="warnt">crew locked in (sealed)</b>' : '') + '</div>' +
-        '<div class="rm-idle">IDLE CREW AVAILABLE: <b>' + S.crewIdle + '</b> — drag power and people where the fight is</div>' +
+        '<div class="rm-eff"></div>' +
+        '<div class="rm-idle">IDLE CREW AVAILABLE: <b class="rm-idleN"></b> — send people where the fight is</div>' +
       '</div>' +
-      (rm.sys ? powerReroute(rm) : '') +
+      (rm.sys ?
+        '<div class="rm-sec"><div class="rm-sec-h">POWER — ' + S.sys[rm.sys].label + '</div>' +
+          '<div class="rm-pwrrow"><button class="pbtn" data-act="pow-">−</button>' +
+          '<div class="rm-bar"><i></i></div><span class="rm-pwrn"></span>' +
+          '<button class="pbtn" data-act="pow+">+</button></div></div>' : '') +
       '<div class="rm-sec"><div class="rm-sec-h">FUNCTIONS</div><div class="rm-fns">' +
-        '<button class="rm-fn" data-act="repair"' + (repairing ? ' disabled' : '') + '>🛠 ' + (repairing ? 'REPAIR UNDERWAY' : 'DISPATCH REPAIR TEAM') + '</button>' +
-        '<button class="rm-fn' + (rm.sealed ? ' on' : '') + '" data-act="seal">🔒 ' + (rm.sealed ? 'OPEN BULKHEAD' : 'SEAL BULKHEAD') + '</button>' +
-        '<button class="rm-fn" data-act="vent"' + (rm.fire ? '' : ' disabled') + '>🌀 VENT ATMOSPHERE</button>' +
+        '<button class="rm-fn" data-act="repair">🛠 DISPATCH REPAIR TEAM</button>' +
+        '<button class="rm-fn" data-act="seal">🔒 SEAL BULKHEAD</button>' +
+        '<button class="rm-fn" data-act="vent">🌀 VENT ATMOSPHERE</button>' +
       '</div></div>';
+    const pips = panel.querySelector('.rm-pips');
+    for (let i = 0; i < rm.stations; i++) { const e = document.createElement('i'); e.className = 'bigpip'; e.textContent = '☻'; pips.appendChild(e); }
+    R.modal = {
+      key: rm.key,
+      chip: panel.querySelector('.rm-chip'), sub: panel.querySelector('.rm-sub'),
+      pips, crewn: panel.querySelector('.rm-crewn'), eff: panel.querySelector('.rm-eff'),
+      idleN: panel.querySelector('.rm-idleN'), powBar: panel.querySelector('.rm-bar i'),
+      powN: panel.querySelector('.rm-pwrn'), repair: panel.querySelector('[data-act="repair"]'),
+      seal: panel.querySelector('[data-act="seal"]'), vent: panel.querySelector('[data-act="vent"]'),
+    };
+    updateModal(rm);
+  }
+  function updateModal(rm) {
+    const m = R.modal;
+    if (!m || m.key !== rm.key) { buildModal(rm); return; }
+    const statusTxt = rm.fire ? 'FIRE' : rm.breach ? 'BREACH' : rm.status.toUpperCase();
+    m.chip.textContent = statusTxt;
+    m.chip.className = 'rm-chip ' + (rm.fire ? 'critical' : rm.breach ? 'breach' : rm.status);
+    let metric;
+    if (rm.cargo !== undefined) { metric = 'CARGO ' + Math.round(S.cargo[rm.cargo].integrity) + '% · ' + Math.round(rm.health) + '% structure'; }
+    else if (rm.pax) { metric = S.pax.filter(p => p !== 'dead').length + ' passengers · ' + Math.round(rm.health) + '% structure'; }
+    else { metric = 'STRUCTURE ' + Math.round(rm.health) + '%'; }
+    m.sub.textContent = metric;
+    m.crewn.textContent = rm.crew + ' / ' + rm.stations;
+    for (let i = 0; i < m.pips.children.length; i++) { m.pips.children[i].classList.toggle('on', i < rm.crew); }
+    m.eff.innerHTML = 'Station output <b>' + Math.round(mannedBoost(rm) * 100) + '%</b> &middot; ' + rm.fdesc +
+      (rm.sealed ? ' &middot; <b class="warnt">crew locked in (sealed)</b>' : '');
+    m.idleN.textContent = S.crewIdle;
+    if (m.powBar) {
+      const sy = S.sys[rm.sys], max = rm.sys === 'reactor' ? 153 : 150;
+      m.powBar.style.width = (clamp(sy.power / max, 0, 1) * 100).toFixed(0) + '%';
+      m.powN.textContent = Math.round(sy.power) + (rm.sys === 'reactor' ? ' MW' : '%');
+    }
+    const repairing = S.repair.some(t => t.target === rm.key);
+    m.repair.disabled = repairing;
+    m.repair.textContent = repairing ? '🛠 REPAIR UNDERWAY' : '🛠 DISPATCH REPAIR TEAM';
+    m.seal.classList.toggle('on', rm.sealed);
+    m.seal.textContent = rm.sealed ? '🔒 OPEN BULKHEAD' : '🔒 SEAL BULKHEAD';
+    m.vent.disabled = !rm.fire;
   }
 
-  // ---------------------------------------------------------------- external cam (ambiance)
-  let stars = [], bolts = [];
+  // ---------------------------------------------------------------- external cam
+  // A stylised 2D freighter (no photoreal art): hull + cargo containers + glowing
+  // engines, a shimmering shield bubble and raiders/laser fire when under attack,
+  // and hull fires when the ship is damaged.
+  let stars = [], bolts = [], raiders = [], flashes = [];
+  const CONTAINER_COLS = ['#8a5a38', '#39607f', '#3a7d57', '#6a6a74', '#8a4646', '#5a6e34'];
   function initStars() {
     stars = [];
-    for (let i = 0; i < 70; i++) { stars.push({ x: Math.random(), y: Math.random(), z: rand(0.3, 1), }); }
+    for (let i = 0; i < 80; i++) { stars.push({ x: Math.random(), y: Math.random(), z: rand(0.3, 1) }); }
+    raiders = []; bolts = []; flashes = [];
+  }
+  function spawnRaider(w, h) {
+    const edge = Math.random();
+    return {
+      x: edge < 0.5 ? rand(-20, w * 0.2) : rand(w * 0.8, w + 20),
+      y: rand(8, h - 8), vx: rand(-6, 6), vy: rand(-5, 5), fireCd: rand(0.6, 2.4),
+    };
   }
   function drawExt(dt) {
     const ctx = R.extCtx; if (!ctx) { return; }
     const w = R.ext.width = R.ext.clientWidth || 300;
     const h = R.ext.height = 150;
-    ctx.fillStyle = '#02040a'; ctx.fillRect(0, 0, w, h);
-    // nebula tint when under attack
-    if (S.attackers > 0) {
-      const g = ctx.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.6);
-      g.addColorStop(0, 'rgba(80,20,20,0.25)'); g.addColorStop(1, 'transparent');
+    const cx = w * 0.5, cy = h * 0.54, L = Math.min(w * 0.82, 540);
+    const under = S && S.attackers > 0;
+    const hull = S ? S.hull : 100;
+    const fires = S ? S.rooms.filter(r => r.fire).length : 0;
+
+    // backdrop
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#04060f'); bg.addColorStop(1, '#080c1a');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    if (under) {
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.6);
+      g.addColorStop(0, 'rgba(90,22,22,0.25)'); g.addColorStop(1, 'transparent');
       ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
     }
-    // stars drifting
-    ctx.fillStyle = '#9fc0ff';
+    // parallax stars
     stars.forEach(s => {
-      s.x -= s.z * 0.04 * dt; if (s.x < 0) { s.x += 1; s.y = Math.random(); }
-      ctx.globalAlpha = 0.3 + s.z * 0.6;
+      s.x -= s.z * 0.05 * dt; if (s.x < 0) { s.x += 1; s.y = Math.random(); }
+      ctx.globalAlpha = 0.25 + s.z * 0.6; ctx.fillStyle = '#9fc0ff';
       ctx.fillRect(s.x * w, s.y * h, s.z * 1.6, s.z * 1.6);
     });
     ctx.globalAlpha = 1;
-    // occasional laser bolts when under attack
-    if (S.running && S.attackers > 0 && Math.random() < 0.06) {
-      bolts.push({ x: Math.random() * w, y: Math.random() * h, life: 0.4, vertical: Math.random() < 0.5 });
+
+    drawFreighter(ctx, cx, cy, L, hull, fires);
+
+    // shield bubble
+    if (S) {
+      const shMax = 120 * sysEff('shields');
+      const sf = shMax > 0 ? clamp(S.shieldPool / shMax, 0, 1) : 0;
+      if (sf > 0.04) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(90,180,255,' + (0.10 + sf * 0.30 + (under ? 0.06 * Math.sin(S.t * 8) : 0)) + ')';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.ellipse(cx, cy, L * 0.60, h * 0.44, 0, 0, TAU); ctx.stroke();
+        ctx.restore();
+      }
     }
-    bolts = bolts.filter(b => (b.life -= dt) > 0);
-    bolts.forEach(b => {
-      ctx.strokeStyle = 'rgba(255,90,70,' + clamp(b.life * 2.4, 0, 1) + ')';
-      ctx.lineWidth = 1.6; ctx.beginPath();
-      if (b.vertical) { ctx.moveTo(b.x, 0); ctx.lineTo(b.x + 20, h); }
-      else { ctx.moveTo(0, b.y); ctx.lineTo(w, b.y + 14); }
-      ctx.stroke();
+
+    // raiders + their fire
+    if (S) {
+      const want = Math.min(S.attackers, 7);
+      while (raiders.length < want) { raiders.push(spawnRaider(w, h)); }
+      while (raiders.length > want) { raiders.pop(); }
+    }
+    raiders.forEach(r => {
+      if (S && S.running) {
+        r.x += r.vx * dt; r.y += r.vy * dt;
+        if (r.x < -24) { r.x = -24; r.vx = Math.abs(r.vx); }
+        if (r.x > w + 24) { r.x = w + 24; r.vx = -Math.abs(r.vx); }
+        if (r.y < 6 || r.y > h - 6) { r.vy = -r.vy; }
+        r.fireCd -= dt;
+        if (r.fireCd <= 0) { r.fireCd = rand(1.0, 3.0); bolts.push({ x0: r.x, y0: r.y, x: r.x, y: r.y, tx: cx, ty: cy, t: 0 }); }
+      }
+      // little arrow raider pointing at the ship
+      const ang = Math.atan2(cy - r.y, cx - r.x);
+      ctx.save(); ctx.translate(r.x, r.y); ctx.rotate(ang);
+      ctx.fillStyle = '#c46'; ctx.strokeStyle = '#f8a'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -3); ctx.lineTo(-4, 3); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,120,90,0.9)'; ctx.fillRect(-6, -1, 2, 2);
+      ctx.restore();
     });
-    // a faint silhouette block to imply the hull, no detailed art
-    ctx.fillStyle = 'rgba(40,60,95,0.55)';
-    ctx.fillRect(w * 0.28, h * 0.42, w * 0.46, h * 0.18);
-    ctx.fillStyle = 'rgba(60,90,140,0.5)';
-    ctx.fillRect(w * 0.30, h * 0.45, w * 0.10, h * 0.05);
-    // engine glow
-    ctx.fillStyle = 'rgba(80,160,255,' + (0.5 + 0.3 * Math.sin(S.t * 6)) + ')';
-    ctx.fillRect(w * 0.74, h * 0.49, 4, h * 0.04);
+    // bolts travel to the shield/hull then flash
+    for (let i = bolts.length - 1; i >= 0; i--) {
+      const b = bolts[i];
+      b.t += dt * 2.2;
+      const px = b.x0 + (b.tx - b.x0) * Math.min(1, b.t);
+      const py = b.y0 + (b.ty - b.y0) * Math.min(1, b.t);
+      ctx.strokeStyle = 'rgba(255,90,70,0.9)'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(b.x0 + (px - b.x0) * 0.7, b.y0 + (py - b.y0) * 0.7); ctx.lineTo(px, py); ctx.stroke();
+      if (b.t >= 1) {
+        // impact on the shield perimeter
+        const ia = Math.atan2(py - cy, px - cx);
+        flashes.push({ x: cx + Math.cos(ia) * L * 0.6, y: cy + Math.sin(ia) * h * 0.44, life: 0.35 });
+        bolts.splice(i, 1);
+      }
+    }
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i]; f.life -= dt;
+      if (f.life <= 0) { flashes.splice(i, 1); continue; }
+      ctx.globalAlpha = clamp(f.life * 3, 0, 1);
+      ctx.fillStyle = '#bfe0ff';
+      ctx.beginPath(); ctx.arc(f.x, f.y, 3.5, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawFreighter(ctx, cx, cy, L, hull, fires) {
+    const x0 = cx - L / 2, x1 = cx + L / 2, mh = 15;
+    const t = S ? S.t : 0;
+    // main hull
+    ctx.beginPath();
+    ctx.moveTo(x1, cy);
+    ctx.lineTo(x1 - L * 0.15, cy - mh);
+    ctx.lineTo(x0 + L * 0.18, cy - mh);
+    ctx.lineTo(x0 + L * 0.06, cy - mh * 0.65);
+    ctx.lineTo(x0, cy - mh * 0.5);
+    ctx.lineTo(x0, cy + mh * 0.5);
+    ctx.lineTo(x0 + L * 0.06, cy + mh * 0.65);
+    ctx.lineTo(x0 + L * 0.18, cy + mh);
+    ctx.lineTo(x1 - L * 0.15, cy + mh);
+    ctx.closePath();
+    const hg = ctx.createLinearGradient(0, cy - mh, 0, cy + mh);
+    hg.addColorStop(0, '#48566e'); hg.addColorStop(0.5, '#2c3648'); hg.addColorStop(1, '#1a2230');
+    ctx.fillStyle = hg; ctx.fill();
+    ctx.strokeStyle = '#5a6e8c'; ctx.lineWidth = 1; ctx.stroke();
+    // panel lines
+    ctx.strokeStyle = 'rgba(90,120,160,0.25)'; ctx.lineWidth = 1;
+    for (let i = 1; i < 7; i++) { const px = x0 + L * (0.12 + i * 0.11); ctx.beginPath(); ctx.moveTo(px, cy - mh + 2); ctx.lineTo(px, cy + mh - 2); ctx.stroke(); }
+    // cargo containers along the spine
+    const n = 7, cw = L * 0.066, gap = L * 0.012, gx = x0 + L * 0.2;
+    for (let i = 0; i < n; i++) {
+      ctx.fillStyle = CONTAINER_COLS[i % CONTAINER_COLS.length];
+      ctx.fillRect(gx + i * (cw + gap), cy - mh - 9, cw, 10);
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.strokeRect(gx + i * (cw + gap), cy - mh - 9, cw, 10);
+    }
+    // bridge / command module near the bow with lit windows
+    ctx.fillStyle = '#33415c'; ctx.fillRect(x1 - L * 0.22, cy - mh - 11, L * 0.08, 13);
+    ctx.fillStyle = 'rgba(120,210,255,' + (0.6 + 0.4 * Math.sin(t * 3)) + ')';
+    for (let i = 0; i < 3; i++) { ctx.fillRect(x1 - L * 0.205 + i * (L * 0.022), cy - mh - 8, L * 0.013, 3); }
+    // engine nacelles + animated glow
+    ctx.fillStyle = '#222c3c';
+    ctx.fillRect(x0 - 2, cy - mh * 0.55, L * 0.07, mh * 0.4);
+    ctx.fillRect(x0 - 2, cy + mh * 0.15, L * 0.07, mh * 0.4);
+    const eg = 0.55 + 0.35 * Math.sin(t * 9);
+    [cy - mh * 0.35, cy + mh * 0.35].forEach(ey => {
+      const g = ctx.createRadialGradient(x0 - 2, ey, 0, x0 - 2, ey, 16);
+      g.addColorStop(0, 'rgba(120,190,255,' + eg + ')'); g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x0 - 4, ey, 13, 0, TAU); ctx.fill();
+    });
+    // running lights
+    ctx.fillStyle = (Math.sin(t * 4) > 0) ? '#ff5252' : 'rgba(255,82,82,0.25)';
+    ctx.beginPath(); ctx.arc(x1 - L * 0.04, cy - mh + 2, 1.6, 0, TAU); ctx.fill();
+    ctx.fillStyle = (Math.sin(t * 4) < 0) ? '#46d27e' : 'rgba(70,210,126,0.25)';
+    ctx.beginPath(); ctx.arc(x1 - L * 0.04, cy + mh - 2, 1.6, 0, TAU); ctx.fill();
+    // damage: fires/smoke on the hull when hurt
+    const burn = fires + (hull < 60 ? 1 : 0) + (hull < 35 ? 1 : 0);
+    for (let i = 0; i < burn; i++) {
+      const fx = x0 + L * (0.25 + (i * 0.17) % 0.6);
+      const fy = cy - mh + 3 + (i % 2) * (mh - 4);
+      const fl = 0.5 + 0.5 * Math.sin(t * 18 + i * 2);
+      ctx.fillStyle = 'rgba(120,130,150,0.4)';
+      ctx.beginPath(); ctx.arc(fx, fy - 6 - fl * 4, 3 + fl * 2, 0, TAU); ctx.fill(); // smoke
+      ctx.fillStyle = 'rgba(255,' + (120 + fl * 80 | 0) + ',40,' + (0.6 + fl * 0.3) + ')';
+      ctx.beginPath(); ctx.arc(fx, fy, 2.5 + fl * 2, 0, TAU); ctx.fill(); // flame
+    }
   }
 
   // ---------------------------------------------------------------- end game
@@ -916,11 +1069,11 @@
   // ---------------------------------------------------------------- boot
   function start() {
     S = newState();
-    // seed a few log/comms lines
-    logEvent('bad', 'Shield generator hit'); logEvent('bad', 'Fire started in Cargo Bay A');
-    logEvent('warn', 'Enemy torpedo inbound'); logEvent('info', 'Bravo team deployed');
-    logEvent('warn', 'Passengers report panic');
-    comms('bad', 'ENEMY TORPEDO INBOUND'); comms('info', 'BRAVO TEAM DEPLOYED'); comms('warn', 'HULL INTEGRITY 72%');
+    // calm departure: all systems nominal, sensors clear — the storm is coming
+    logEvent('good', 'All systems nominal'); logEvent('info', 'Departed Zhen-9 — bound for Gateway Station');
+    logEvent('info', 'Crew at stations'); logEvent('info', 'Long-range sensors clear');
+    logEvent('warn', 'Pirate activity reported along the lane');
+    comms('info', 'DEPARTING ZHEN-9 STATION'); comms('good', 'ALL SYSTEMS NOMINAL'); comms('warn', 'STAY SHARP — PIRATE LANE AHEAD');
     if (!R.captain) { buildUI(); }
     $('title').classList.add('hidden');
     $('result').classList.add('hidden');

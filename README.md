@@ -58,10 +58,17 @@ Click **ASSUME COMMAND**.
 
 ### Win / lose
 
-- **Survive the raid** (~210s) with cargo integrity above **30%** → win.
+- **Survive the run** (~240s) with cargo integrity above **30%** → win.
 - **Lose** if hull hits 0%, cargo integrity falls below 30%, or all crew die.
 
-A passive player loses to a cargo-bay fire; an active commander pulls through.
+### Threat (0 → 5)
+
+The run **starts calm** — no contacts during the opening minute, so you can set
+up power and crew. Then raiders arrive in batches. **Threat level tracks how many
+raiders are alive**: clear each batch quickly and it stays low; let them pile up
+(or get overwhelmed as batches grow bigger and more frequent later in the run)
+and it climbs toward **5 — endless horde**. It eases back down when you clear the
+sky. Keeping threat low is itself the moment-to-moment game.
 
 ## What each system actually does
 
