@@ -1362,16 +1362,22 @@
   // command module (front/right), and pods on hardpoints. The pods drawn
   // reflect the player's actual loadout. Everything is flat-shaded blocks with
   // 1px highlight/shadow edges, drawn into the low-res buffer.
-  function drawPod(ctx, x, y, u, type, top, t) {
-    const w = Math.max(4, Math.round(u * 1.7)), h = Math.max(3, Math.round(u * 1.3));
-    const x0 = Math.round(x - w / 2), y0 = Math.round(y - h / 2);
+  // Draw a pod filling the cell (x0,y0,w,h). `top` = which side of the spine it
+  // is on (so barrels/emitters point outward). Each pod paints its own framed
+  // edges, so flush neighbours still read as separate units.
+  function drawPod(ctx, x0, y0, w, h, type, top, t) {
+    x0 = Math.round(x0); y0 = Math.round(y0); w = Math.max(4, Math.round(w)); h = Math.max(3, Math.round(h));
+    const mx = x0 + Math.round(w / 2), my = y0 + Math.round(h / 2), u = h / 1.45;
     if (!type) {
-      px(ctx, x0 + 1, y0 + 1, w - 2, 1, '#46566e'); px(ctx, x0 + 1, y0 + h - 2, w - 2, 1, '#283344');
-      px(ctx, x0 + 1, y0 + 1, 1, h - 2, '#46566e'); px(ctx, x0 + w - 2, y0 + 1, 1, h - 2, '#283344');
+      // empty hardpoint — a clearly visible recessed slot
+      px(ctx, x0, y0, w, h, '#0d1524');
+      px(ctx, x0, y0, w, 1, '#32425a'); px(ctx, x0, y0 + h - 1, w, 1, '#1b2636');
+      px(ctx, x0, y0, 1, h, '#32425a'); px(ctx, x0 + w - 1, y0, 1, h, '#1b2636');
+      px(ctx, mx - 2, my, 5, 1, '#2a3a52'); px(ctx, mx, my - 2, 1, 5, '#2a3a52');
       return;
     }
     if (type === 'cargo') {
-      px(ctx, x0, y0, w, h, '#241a10'); // dark backing shows as gridlines
+      px(ctx, x0, y0, w, h, '#241a10'); // dark backing reads as container seams
       const cols = 3, rows = 2, gw = (w - 1) / cols, gh = (h - 1) / rows;
       for (let c = 0; c < cols; c++) { for (let r = 0; r < rows; r++) {
         px(ctx, x0 + 1 + c * gw, y0 + 1 + r * gh, gw - 1, gh - 1, (c + r) % 2 ? '#a06f3f' : '#7d5230');
@@ -1379,16 +1385,18 @@
       px(ctx, x0, y0, w, 1, '#c69050');
     } else if (type === 'passenger') {
       panel(ctx, x0, y0, w, h, '#33485e', '#54718f', '#1f2c3a');
-      const lit = 0.5 + 0.45 * Math.sin(t * 3 + x);
-      for (let i = 0; i < 3; i++) { px(ctx, x0 + 2 + i * Math.round(w / 3), y - 1, Math.max(1, Math.round(w / 6)), 2, 'rgba(150,225,255,' + lit + ')'); }
+      const lit = 0.5 + 0.45 * Math.sin(t * 3 + x0);
+      const ww = Math.max(1, Math.round(w / 6));
+      for (let i = 0; i < 3; i++) { px(ctx, x0 + Math.round(w * 0.16) + i * Math.round(w / 4), my - 1, ww, 2, 'rgba(150,225,255,' + lit + ')'); }
     } else if (type === 'military') {
       panel(ctx, x0, y0, w, h, '#3a4554', '#586a7e', '#222b36');
-      px(ctx, x0, y + Math.round(h * 0.1), w, Math.max(1, Math.round(u * 0.28)), '#c0563a');
-      px(ctx, x - 1, top ? y0 - Math.round(u * 0.5) : y0 + h, 2, Math.round(u * 0.5) + 1, '#222c3a');
+      px(ctx, x0, my - 1, w, Math.max(1, Math.round(h * 0.18)), '#c0563a');
+      const bl = Math.max(2, Math.round(u * 0.5));
+      px(ctx, mx - 1, top ? y0 - bl : y0 + h, 2, bl, '#222c3a'); // barrel points outward
     } else if (type === 'shield') {
       panel(ctx, x0, y0, w, h, '#25405c', '#3f6a92', '#16293c');
-      px(ctx, x - 1, y0 - 1, 2, 2, '#7fd0ff');
-      for (let i = 0; i < 5; i++) { const a = t * 2 + i * 0.5; px(ctx, x + Math.cos(a) * u * 0.7, y + Math.sin(a) * u * 0.55, 1, 1, 'rgba(120,200,255,0.9)'); }
+      px(ctx, mx - 1, top ? y0 - 1 : y0 + h - 1, 2, 2, '#7fd0ff'); // emitter on outer edge
+      for (let i = 0; i < 5; i++) { const a = t * 2 + i * 0.5; px(ctx, mx + Math.cos(a) * w * 0.3, my + Math.sin(a) * h * 0.3, 1, 1, 'rgba(120,200,255,0.9)'); }
     }
   }
   function drawShip(ctx, cx, cy, u, loadout, t, opts) {
@@ -1401,15 +1409,20 @@
     const sH = Math.max(2, Math.round(u * 0.5));
     panel(ctx, xEng + Math.round(u * 0.6), cy - Math.round(sH / 2), xCmd - xEng, sH, '#46546c', '#6e84a6', '#28313f');
 
-    // ---- hardpoint pods (pairs top/bottom) + amber pylons ----
+    // ---- hardpoint pods: tiled flush along the spine, top & bottom rows ----
+    // Columns pack edge-to-edge between the engine block and command module,
+    // each pod tucked directly against the spine (no pylons, no gaps).
     const n = loadout.length || 6, pairs = Math.ceil(n / 2);
-    const startX = xEng + u * 1.8, endX = xCmd - u * 0.4;
+    const startX = Math.round(xEng + u * 1.6); // engine block's right edge
+    const endX = Math.round(xCmd);             // command module's left edge
+    const cellW = Math.max(4, Math.floor((endX - startX) / pairs));
+    const podH = Math.max(3, Math.round(u * 1.45));
+    const spineTop = cy - Math.round(sH / 2), spineBot = cy + Math.round(sH / 2);
     for (let i = 0; i < n; i++) {
-      const pair = Math.floor(i / 2), top = (i % 2) === 0;
-      const pxx = pairs > 1 ? startX + (endX - startX) * (pair / (pairs - 1)) : (startX + endX) / 2;
-      const py = cy + (top ? -1 : 1) * u * 1.55;
-      px(ctx, pxx - 1, top ? py : cy, 2, u * 1.55, '#c9a23f');
-      drawPod(ctx, pxx, py, u, loadout[i], top, t);
+      const col = Math.floor(i / 2), top = (i % 2) === 0;
+      const x0 = startX + col * cellW;
+      const y0 = top ? spineTop - podH : spineBot;
+      drawPod(ctx, x0, y0, cellW, podH, loadout[i], top, t);
     }
 
     // ---- engine block + blocky exhaust plumes ----
