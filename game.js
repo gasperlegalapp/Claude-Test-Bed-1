@@ -58,6 +58,9 @@
     military:  { label: 'TURRET POD',    fn: 'GUNNERY',    fdesc: 'serves the guns — keep it intact for full firepower',  role: 'turret',    stations: 1, flex: 1.1 },
     shield:    { label: 'SHIELD POD',    fn: 'EMITTERS',   fdesc: 'aux shield emitters — keep it intact for full shields', role: 'shield',    stations: 1, flex: 1.0 },
   };
+  // staffing priority when auto-distributing scarce crew at mission start
+  // (lower = filled first); pods and anything unlisted come last
+  const STAFF_PRIO = { reactor: 1, life: 2, engines: 3, shieldgen: 4, weapons: 5, sensors: 6, bridge: 7, medbay: 8, pax: 9 };
 
   const DEPT_DEFS = [
     { key: 'engineering', name: 'ENGINEERING', role: 'CHIEF ENGINEER',        max: 6, init: 'TM' },
@@ -187,7 +190,7 @@
     SYS_DEFS.forEach(d => { sys[d.key] = { ...d, power: d.power, max: d.key === 'reactor' ? bonus.reactorCap : d.max }; });
     const rooms = ROOM_DEFS.map(d => ({
       ...d, status: 'normal', health: 100, fire: false, breach: false, sealed: false,
-      crew: d.stations, crewMax: d.stations,
+      crew: 0, crewMax: d.stations,
       repairTechs: 0, repairState: 'idle', repairEta: 0, // idle | enroute | working
       securityTechs: 0, secState: 'idle', secEta: 0, sweep: 0,
       leak: 0, boarders: false, juryCd: 0,
@@ -212,12 +215,25 @@
         flex: pd ? pd.flex : 0.7,
         sys: null, stations: pd ? pd.stations : 0,
         status: 'normal', health: 100, fire: false, breach: false, sealed: false,
-        crew: pd ? pd.stations : 0, crewMax: pd ? pd.stations : 0,
+        crew: 0, crewMax: pd ? pd.stations : 0,
         repairTechs: 0, repairState: 'idle', repairEta: 0,
         securityTechs: 0, secState: 'idle', secEta: 0, sweep: 0,
         leak: 0, boarders: false, juryCd: 0, inactive: !pd,
       });
     });
+    // ---- scarce crew: ~75% of stations are staffed; player triages the rest ----
+    const opRooms = rooms.filter(r => r.stations > 0);
+    const totalStations = opRooms.reduce((a, r) => a + r.stations, 0);
+    const crewBudget = Math.max(opRooms.length, Math.round(totalStations * 0.75) + crewBonus);
+    const staffOrder = opRooms.slice().sort((a, b) => (STAFF_PRIO[a.key] || 20) - (STAFF_PRIO[b.key] || 20));
+    let pool = crewBudget;
+    const idleReserve = Math.min(2, pool); pool -= idleReserve; // keep a small flex pool spare
+    let progressed = true;
+    while (pool > 0 && progressed) {
+      progressed = false;
+      for (const r of staffOrder) { if (pool <= 0) { break; } if (r.crew < r.stations) { r.crew++; pool--; progressed = true; } }
+    }
+    const startIdle = idleReserve + pool; // leftover (if every station somehow filled)
     const depts = {};
     DEPT_DEFS.forEach(d => { depts[d.key] = { ...d, count: Math.min(d.max, d.max + crewBonus), health: rand(88, 100), morale: rand(78, 96) }; });
     const cargo = (cfg.cargo || []).map(c => ({ ...c, integrity: 100 }));
@@ -241,7 +257,7 @@
       attackers: 0,
       reserve: 0, brownout: false,
       captain: { name: 'LT. K. DRAVEN', role: 'CAPTAIN', health: 100, morale: 'High' },
-      crewIdle: 3, crewCap: rooms.reduce((a, r) => a + r.crewMax, 0) + 3, openRoom: null,
+      crewIdle: startIdle, crewCap: crewBudget, openRoom: null,
       repairPool: TOTAL_TECHS, securityPool: TOTAL_SECURITY,
       sabotage: null, field: null, radiation: 0, eventTimer: INTRO + rand(8, 14),
       nudged: {}, coach: null,
@@ -466,7 +482,10 @@
   function roomByKey(key) { return S.rooms.find(r => r.key === key); }
   function roomBySys(key) { return S.rooms.find(r => r.sys === key); }
   function mannedFrac(rm) { return rm && rm.stations ? clamp(rm.crew / rm.stations, 0, 1) : 1; }
-  function mannedBoost(rm) { return 0.5 + 0.5 * mannedFrac(rm); } // unmanned 0.5x, fully manned 1x
+  function mannedBoost(rm) {
+    if (!rm || !rm.stations) { return 1; }            // no stations needed → no penalty
+    return 0.35 + 0.65 * Math.sqrt(mannedFrac(rm));   // empty 0.35x, 1 person ~most of the way, full 1x
+  }
   function sysEff(key) {
     // effectiveness = power * linked-room health * crew manning * brownout penalty
     const sy = S.sys[key];
@@ -737,6 +756,11 @@
       if (lifeEff < 0.5 && rm.crew > 0 && chance(0.012 * (0.5 - lifeEff) * dt * 4)) {
         hurtRoom(rm, 'life support');
       }
+      // station crew keep their own compartment patched to a limp-along level
+      // (full repair still needs the repair-tech pool); more hands = faster
+      if (rm.crew > 0 && rm.repairTechs === 0 && !rm.breach && rm.leak <= 0 && rm.health < 65) {
+        rm.health = clamp(rm.health + 0.45 * rm.crew * dt, 0, 65);
+      }
       rm.status = rm.health < 33 ? 'critical' : rm.health < 75 ? 'damaged' : 'normal';
     });
 
@@ -774,8 +798,10 @@
         if (rm.repairEta <= 0) { rm.repairState = 'working'; logEvent('good', rm.repairTechs + ' repair tech(s) on station at ' + rm.label); }
         return;
       }
-      // working: ~18s per tech to fully repair from zero; techs also fight hazards
-      const rate = (5.5 * rm.repairTechs * engFactor * S.crewSkill) * (S.brownout ? 0.6 : 1);
+      // working: ~18s per tech to fully repair from zero; techs also fight hazards.
+      // Station crew already on hand help — a well-manned room is repaired faster.
+      const manAssist = 0.8 + 0.4 * mannedFrac(rm);
+      const rate = (5.5 * rm.repairTechs * engFactor * S.crewSkill * manAssist) * (S.brownout ? 0.6 : 1);
       if (rm.leak > 0) { rm.leak = Math.max(0, rm.leak - 1.6 * dt); if (rm.leak === 0) { logEvent('good', 'Repair crew sealed the leak in ' + rm.label); } }
       if (rm.fire && chance(0.35 * rm.repairTechs * dt)) { rm.fire = false; logEvent('good', 'Repair crew suppressed fire in ' + rm.label); }
       if (rm.breach && rm.health > 25 && chance(0.3 * rm.repairTechs * dt)) { rm.breach = false; logEvent('good', 'Repair crew sealed breach in ' + rm.label); }
@@ -1219,7 +1245,9 @@
     m.sub.textContent = metric;
     m.crewn.textContent = rm.crew + ' / ' + rm.stations;
     for (let i = 0; i < m.pips.children.length; i++) { m.pips.children[i].classList.toggle('on', i < rm.crew); }
-    m.eff.innerHTML = 'Station output <b>' + Math.round(mannedBoost(rm) * 100) + '%</b> &middot; ' + rm.fdesc +
+    m.eff.innerHTML = 'Manning <b>' + Math.round(mannedBoost(rm) * 100) + '%</b>' +
+      (rm.sys ? ' &middot; system output <b>' + Math.round(sysEff(rm.sys) * 100) + '%</b>' : '') +
+      ' &middot; ' + rm.fdesc +
       (rm.sealed ? ' &middot; <b class="warnt">crew locked in (sealed)</b>' : '');
     m.idleN.textContent = S.crewIdle;
     if (m.powBar) {

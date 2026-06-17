@@ -48,9 +48,15 @@ Open `index.html` in any modern browser. No build step, no dependencies.
   Watch **Power Reserve** — go negative and you brown out, weakening everything.
 - **Ship schematic (center):** click any compartment to open its **inspector**.
   Each compartment is a station you operate:
-  - **Assign crew** to its stations (± moves people to/from the idle pool). A
-    manned station runs at 100%; an empty one drops to ~50% — so pulling gunners
-    over to fight a fire really does weaken your guns.
+  - **Assign crew** to its stations (± moves people to/from the idle pool).
+    **Crew is scarce** — you start with only ~75% of the hands needed to fully
+    staff every station, so you must pick what runs at full power. Manning has
+    diminishing returns: one person gets a system *mostly* going, a full crew
+    takes it to 100%, and an empty station limps along at ~35%. Extra hands also
+    fight that room's fires, self-patch light damage, and speed repairs. The
+    inspector shows each system's live **output %** (manning × power × damage),
+    so you can see which compartments are carrying the ship — and which you've
+    starved.
   - **Reroute power** to that compartment's system right from the inspector.
   - **Repair crew:** a shared pool of repair technicians. Assign techs to a
     compartment (− / +); they go **EN ROUTE** (travel time), then **REPAIRING**
