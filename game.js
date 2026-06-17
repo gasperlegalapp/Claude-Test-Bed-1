@@ -1426,13 +1426,16 @@
     }
 
     // ---- engine block + blocky exhaust plumes ----
-    const ebX = Math.round(xEng - u * 0.6), ebY = Math.round(cy - u * 1.75), ebW = Math.round(u * 2.2), ebH = Math.round(u * 3.5);
+    // Engine block is the same height as the command module up front; the pods
+    // tucked on the spine stick out past it, which is fine.
+    const coreH = Math.max(4, Math.round(u * 2.4));
+    const ebX = Math.round(xEng - u * 0.6), ebY = cy - Math.round(coreH / 2), ebW = Math.round(u * 2.2), ebH = coreH;
     panel(ctx, ebX, ebY, ebW, ebH, '#39465a', '#5a6e8c', '#222b3a');
-    px(ctx, ebX + 1, Math.round(cy - u * 0.9), ebW - 2, 1, '#222b3a');
-    px(ctx, ebX + 1, Math.round(cy + u * 0.9), ebW - 2, 1, '#222b3a');
+    px(ctx, ebX + 1, Math.round(cy - u * 0.75), ebW - 2, 1, '#222b3a');
+    px(ctx, ebX + 1, Math.round(cy + u * 0.75), ebW - 2, 1, '#222b3a');
     const eg = 0.55 + 0.45 * Math.sin(t * 9);
     for (let k = -1; k <= 1; k++) {
-      const ey = Math.round(cy + k * u * 1.05);
+      const ey = Math.round(cy + k * u * 0.78);
       px(ctx, ebX - u * 0.6, ey - u * 0.28, u * 0.7, u * 0.56, '#10161f'); // nozzle
       const fl = u * (1.0 + 0.7 * eg);
       px(ctx, ebX - u * 0.6 - fl, ey - 1, fl, 3, 'rgba(90,170,255,0.85)');
@@ -1441,7 +1444,7 @@
     }
 
     // ---- command module with stepped slant nose ----
-    const ch = Math.max(4, Math.round(u * 2.4)), cTop = cy - Math.round(ch / 2), bodyW = Math.max(4, Math.round(u * 1.9));
+    const ch = coreH, cTop = cy - Math.round(ch / 2), bodyW = Math.max(4, Math.round(u * 1.9));
     panel(ctx, xCmd, cTop, bodyW, ch, '#515f73', '#7c8da3', '#313b49');
     px(ctx, xCmd + 1, cTop + Math.round(u * 0.5), bodyW - 2, Math.max(1, Math.round(u * 0.25)), '#4fb8ff'); // viewport
     const wl = 0.55 + 0.45 * Math.sin(t * 3);
