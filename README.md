@@ -19,10 +19,29 @@ you take from life support — and:
 So you constantly re-balance the reactor, dispatch repair teams, and spend
 emergency actions while raiders keep coming.
 
+## The loop
+
+It's a roguelite-ish hauler operation that persists between runs
+(saved to `localStorage`):
+
+1. **HOME BASE** — your ship (a modular hauler: engine cluster, spine, command
+   module, and pods on hardpoints), credits, crew rating, and the run you've
+   lined up. The ship preview reflects your actual loadout.
+2. **CONTRACTS** — pick a route. Short/medium/long hauls with CALM/RISKY/HOSTILE
+   pirate danger; longer and more dangerous pays more.
+3. **OUTFIT** — bolt modules onto your hardpoints: **cargo**, **passenger**,
+   **military** (+weapons/point-defense), **shield** pods. You can only install
+   what you own; more hardpoints = more capacity but more to defend.
+4. **SHIPYARD** — spend credits: buy modules, upgrade the ship (hardpoints,
+   reactor, hull, shields, weapons, engines), and hire better crew.
+5. **LAUNCH** — fly the run (the command sim below). Your loadout sets the cargo,
+   passengers and combat bonuses; the contract sets the length and danger.
+6. **DEBRIEF** — get paid for the contract fee, cargo delivered, and surviving
+   passengers (minus crew losses), then return to base to grow your operation.
+
 ## Play
 
 Open `index.html` in any modern browser. No build step, no dependencies.
-Click **ASSUME COMMAND**.
 
 - **Power management (right panel):** use `+ / −` on each system
   (Reactor, Shields, Engines, Weapons, Sensors, Life Support, Cargo Bay).

@@ -8,35 +8,112 @@
 </head>
 <body>
 
-<!-- ===================== TITLE / BRIEFING ===================== -->
-<div id="title" class="overlay">
+<!-- ===================== FIRST-RUN INTRO ===================== -->
+<div id="intro" class="overlay hidden">
   <div class="brief-panel">
-    <div class="brief-logo">◣◢ WAYFARER</div>
-    <h1>CARGO COMMAND</h1>
-    <p class="sub">CSS WAYFARER &middot; DF-17 Class Cargo Hauler</p>
+    <div class="brief-logo">◣◢ WAYFARER LINES</div>
+    <h1>HAULER COMMAND</h1>
+    <p class="sub">Independent freight · Zhen-9 frontier</p>
     <p class="brief-body">
-      You are the bridge officer of a deep-space freight hauler running the
-      <b>Zhen-9 trade lane</b>. Your job: get the cargo to Gateway Station intact
-      &mdash; while raiders tear into your hull. There is never enough reactor power
-      for everything. Route it. <b>Shields up and crew dies in the dark; life
-      support up and the hull caves in.</b> Triage, repair, and keep people alive.
+      You run an independent hauler out of <b>Zhen-9 Station</b>. Bolt the modules
+      you need onto your ship — <b>cargo, passengers, troops, shields</b> — take a
+      <b>contract</b>, and run the route. Longer, more dangerous runs pay more, but
+      pirates will come. Survive the run, get paid, and grow your operation:
+      bigger ship, better crew, more hardpoints.
     </p>
     <ul class="brief-goals">
-      <li><span class="g-ok">OBJECTIVE</span> Survive the raid &middot; keep <b>cargo integrity above 30%</b></li>
-      <li><span class="g-warn">MANAGE</span> Reactor power across shields, engines, weapons, sensors, life support &amp; cargo</li>
-      <li><span class="g-bad">FAIL IF</span> Hull reaches 0%, cargo is lost, or the crew dies</li>
+      <li><span class="g-ok">OUTFIT</span> Install modules on your ship's hardpoints</li>
+      <li><span class="g-warn">CONTRACT</span> Pick a route — weigh pay against danger</li>
+      <li><span class="g-bad">COMMAND</span> Route power & crew under fire to bring it home</li>
     </ul>
-    <button id="startBtn">ASSUME COMMAND</button>
+    <button id="introBtn">ENTER THE BRIDGE</button>
   </div>
 </div>
 
-<!-- ===================== GAME OVER ===================== -->
-<div id="result" class="overlay hidden">
+<!-- ===================== HOME BASE ===================== -->
+<div id="home" class="screen hidden">
+  <header class="screen-top">
+    <div class="brand">◣◢ WAYFARER LINES <span class="brand-sub">ZHEN-9 STATION</span></div>
+    <div class="screen-credits">CREDITS <b id="homeCredits">0</b> ◎</div>
+  </header>
+  <div class="home-body">
+    <div class="panel home-shipwrap">
+      <div class="panel-h">YOUR SHIP — CSS WAYFARER <span class="ph-r" id="homeClass">MULE-CLASS HAULER</span></div>
+      <canvas id="homeShip" class="ship-canvas"></canvas>
+      <div id="homeLoadout" class="loadout-summary"></div>
+    </div>
+    <div class="home-side">
+      <div class="panel">
+        <div class="panel-h">SELECTED CONTRACT</div>
+        <div id="homeContract" class="home-contract"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h">OPERATION</div>
+        <div id="homeStats" class="home-stats"></div>
+      </div>
+      <div class="home-nav">
+        <button class="navbtn" data-screen="contracts"><span class="nv-i">▤</span><b>CONTRACTS</b><span class="nv-s">Pick a route</span></button>
+        <button class="navbtn" data-screen="outfit"><span class="nv-i">⊞</span><b>OUTFIT SHIP</b><span class="nv-s">Install modules</span></button>
+        <button class="navbtn" data-screen="shipyard"><span class="nv-i">⚒</span><b>SHIPYARD</b><span class="nv-s">Upgrade &amp; hire</span></button>
+        <button class="navbtn launch" id="homeLaunch"><span class="nv-i">▶</span><b>LAUNCH RUN</b><span class="nv-s">Begin the contract</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CONTRACTS ===================== -->
+<div id="contracts" class="screen hidden">
+  <header class="screen-top">
+    <button class="backbtn" data-screen="home">‹ BASE</button>
+    <div class="brand">CONTRACT BOARD</div>
+    <div class="screen-credits">CREDITS <b class="creditsTxt">0</b> ◎</div>
+  </header>
+  <div class="contract-list" id="contractList"></div>
+</div>
+
+<!-- ===================== OUTFITTING ===================== -->
+<div id="outfit" class="screen hidden">
+  <header class="screen-top">
+    <button class="backbtn" data-screen="home">‹ BASE</button>
+    <div class="brand">OUTFITTING BAY</div>
+    <div class="screen-credits">CREDITS <b class="creditsTxt">0</b> ◎</div>
+  </header>
+  <div class="outfit-body">
+    <div class="panel outfit-shipwrap">
+      <div class="panel-h">HARDPOINT LAYOUT</div>
+      <canvas id="outfitShip" class="ship-canvas"></canvas>
+      <div class="outfit-hint">Click a hardpoint to cycle the module installed there. You can only install modules you own.</div>
+    </div>
+    <div class="panel outfit-side">
+      <div class="panel-h">HARDPOINTS <span class="ph-r" id="outfitSlotsTxt"></span></div>
+      <div id="hardpointList" class="hardpoint-list"></div>
+      <div class="panel-h">IN STORAGE</div>
+      <div id="inventoryList" class="inventory-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SHIPYARD ===================== -->
+<div id="shipyard" class="screen hidden">
+  <header class="screen-top">
+    <button class="backbtn" data-screen="home">‹ BASE</button>
+    <div class="brand">SHIPYARD</div>
+    <div class="screen-credits">CREDITS <b class="creditsTxt">0</b> ◎</div>
+  </header>
+  <div class="shipyard-body">
+    <div class="panel"><div class="panel-h">BUY MODULES</div><div id="shopModules" class="shop-list"></div></div>
+    <div class="panel"><div class="panel-h">SHIP UPGRADES</div><div id="shopUpgrades" class="shop-list"></div></div>
+    <div class="panel"><div class="panel-h">CREW</div><div id="shopCrew" class="shop-list"></div></div>
+  </div>
+</div>
+
+<!-- ===================== DEBRIEF ===================== -->
+<div id="debrief" class="overlay hidden">
   <div class="brief-panel">
-    <h1 id="resultTitle">RAID SURVIVED</h1>
-    <p class="sub" id="resultSub"></p>
-    <div id="resultStats" class="result-stats"></div>
-    <button id="retryBtn">RUN IT AGAIN</button>
+    <h1 id="debriefTitle">RUN COMPLETE</h1>
+    <p class="sub" id="debriefSub"></p>
+    <div id="debriefStats" class="result-stats"></div>
+    <button id="debriefHome">RETURN TO BASE</button>
   </div>
 </div>
 

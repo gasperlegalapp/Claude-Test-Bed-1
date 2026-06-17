@@ -19,7 +19,6 @@
   const TAU = Math.PI * 2;
 
   // ---------------------------------------------------------------- config
-  const RAID_DURATION = 240;        // sim-seconds to survive the run
   const INTRO = 22;                 // calm sim-seconds before the first contact
   const CARGO_FAIL = 30;            // lose if cargo integrity drops below this
   const SEGMENTS = 14;              // segments per bar
@@ -44,9 +43,9 @@
     { key: 'life',     label: 'LIFE SUPPORT',     gc: '3',     gr: '1',     sys: 'life',    stations: 2, fn: 'ATMOSPHERICS',    fdesc: 'keeps crew & passengers alive' },
     { key: 'pax',      label: 'PASSENGER DECK',   gc: '4 / 6', gr: '1',     sys: null,      stations: 2, fn: 'STEWARDS',       fdesc: 'calms passenger panic', pax: true },
     { key: 'bridge',   label: 'BRIDGE',           gc: '6',     gr: '1 / 3', sys: null,      stations: 3, fn: 'COMMAND',        fdesc: 'ship-wide coordination bonus' },
-    { key: 'cargoA',   label: 'CARGO BAY A',      gc: '3',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects this cargo', cargo: 0 },
-    { key: 'cargoB',   label: 'CARGO BAY B',      gc: '4',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects this cargo', cargo: 1 },
-    { key: 'cargoC',   label: 'CARGO BAY C',      gc: '5',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects this cargo', cargo: 2 },
+    { key: 'cargoA',   label: 'CARGO BAY A',      gc: '3',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects the cargo hold', cargoBay: true },
+    { key: 'cargoB',   label: 'CARGO BAY B',      gc: '4',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects the cargo hold', cargoBay: true },
+    { key: 'cargoC',   label: 'CARGO BAY C',      gc: '5',     gr: '2',     sys: null,      stations: 1, fn: 'CARGO CONTROL',  fdesc: 'protects the cargo hold', cargoBay: true },
     { key: 'weapons',  label: 'WEAPONS DECK',     gc: '2',     gr: '3',     sys: 'weapons', stations: 2, fn: 'GUNNERY',        fdesc: 'raider kill rate' },
     { key: 'shieldgen',label: 'SHIELD GENERATOR', gc: '3 / 5', gr: '3',     sys: 'shields', stations: 2, fn: 'SHIELD OPS',     fdesc: 'shield strength & regen' },
     { key: 'sensors',  label: 'SENSORS ARRAY',    gc: '5',     gr: '3',     sys: 'sensors', stations: 1, fn: 'SENSOR OPS',     fdesc: 'point-defense accuracy' },
@@ -79,38 +78,137 @@
 
   const REPAIR_NAMES = ['ALPHA TEAM', 'BRAVO TEAM', 'CHARLIE TEAM'];
 
+  // ================================================================ META LAYER
+  // Modules you bolt onto the ship's hardpoints. Each shapes the run.
+  const MODULES = {
+    cargo:     { key: 'cargo',     name: 'CARGO POD',     ico: '▦', color: '#b07a3a', cost: 8000,  value: 150000, desc: 'Bulk freight. Pays on delivery — but it burns.' },
+    passenger: { key: 'passenger', name: 'PASSENGER POD', ico: '☻', color: '#3fa7ff', cost: 13000, pax: 12,       desc: '12 fare-paying souls. They panic, and they die.' },
+    military:  { key: 'military',  name: 'MILITARY POD',  ico: '⚔', color: '#c0563a', cost: 16000, value: 70000, weapon: 0.14, pdef: 0.06, desc: 'Troops & guns. +weapons, +point defense.' },
+    shield:    { key: 'shield',    name: 'SHIELD POD',    ico: '⛨', color: '#4fb0ff', cost: 15000, shield: 0.22,  desc: 'Aux emitters. +shield strength & regen.' },
+  };
+  const MODULE_ORDER = ['cargo', 'passenger', 'military', 'shield'];
+
+  const UPGRADE_DEFS = [
+    { key: 'hardpoint', name: 'Hardpoint Mount', ico: '⊞', desc: '+1 module slot', max: 4, cost: l => 22000 + l * 16000 },
+    { key: 'reactor',   name: 'Reactor Core',    ico: '⚛', desc: '+12 MW reactor cap', max: 5, cost: l => 12000 + l * 10000 },
+    { key: 'hull',      name: 'Reinforced Hull', ico: '⛨', desc: '-12% hull damage taken', max: 5, cost: l => 10000 + l * 9000 },
+    { key: 'shield',    name: 'Shield Booster',  ico: '◈', desc: '+12% shield strength', max: 5, cost: l => 11000 + l * 9000 },
+    { key: 'weapon',    name: 'Weapon Array',    ico: '⚔', desc: '+12% weapon power', max: 5, cost: l => 11000 + l * 9000 },
+    { key: 'engine',    name: 'Engine Tuning',   ico: '⏚', desc: '+12% thrust & evasion', max: 5, cost: l => 9000 + l * 8000 },
+  ];
+  const CREW_TIERS = ['GREEN', 'STEADY', 'SEASONED', 'VETERAN', 'ELITE'];
+  const crewCost = tier => 14000 + tier * 14000;       // cost to reach next tier
+  const DEST_NAMES = ['Relay 7', 'Gateway Station', 'Kessler Reach', 'Tannhäuser Yards', 'Cygnus Depot', 'Bao Verge'];
+
+  const SAVE_KEY = 'wayfarer_save_v2';
+  function defaultMeta() {
+    return {
+      credits: 45000,
+      upgrades: { hardpoint: 0, reactor: 0, hull: 0, shield: 0, weapon: 0, engine: 0 },
+      crewTier: 0,
+      inventory: { cargo: 3, passenger: 1, military: 1, shield: 0 },
+      loadout: ['cargo', 'cargo', 'passenger', 'military', null, null],
+      contractId: null, contracts: null,
+      seenIntro: false,
+      stats: { runs: 0, wins: 0, earned: 0 },
+    };
+  }
+  let META = defaultMeta();
+  function hardpoints() { return 6 + META.upgrades.hardpoint; }
+  function loadMeta() {
+    try {
+      const raw = window.localStorage && localStorage.getItem(SAVE_KEY);
+      if (raw) { META = Object.assign(defaultMeta(), JSON.parse(raw)); }
+    } catch (e) { /* fresh start */ }
+    normalizeMeta();
+  }
+  function saveMeta() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(META)); } catch (e) { /* ignore */ }
+  }
+  function normalizeMeta() {
+    const hp = hardpoints();
+    if (!Array.isArray(META.loadout)) { META.loadout = []; }
+    while (META.loadout.length < hp) { META.loadout.push(null); }
+    META.loadout.length = hp;
+    // can't have more installed than owned
+    const need = {};
+    META.loadout = META.loadout.map(m => {
+      if (!m) { return null; }
+      need[m] = (need[m] || 0) + 1;
+      if (need[m] > (META.inventory[m] || 0)) { need[m]--; return null; }
+      return m;
+    });
+  }
+  function loadoutCounts() {
+    const c = { cargo: 0, passenger: 0, military: 0, shield: 0 };
+    META.loadout.forEach(m => { if (m) { c[m]++; } });
+    return c;
+  }
+  function installedCount(type) { return META.loadout.filter(m => m === type).length; }
+  function currentContract() { return (META.contracts || []).find(c => c.id === META.contractId) || null; }
+
+  function genContracts() {
+    const tiers = [
+      { dist: 'SHORT',  duration: 110, danger: 1 },
+      { dist: 'MEDIUM', duration: 180, danger: 2 },
+      { dist: 'LONG',   duration: 260, danger: 3 },
+    ];
+    // shuffle danger a little so it isn't always dist==danger
+    META.contracts = tiers.map((t, i) => {
+      const danger = clamp(t.danger + (chance(0.4) ? pick([-1, 1]) : 0), 1, 3);
+      const dest = pick(DEST_NAMES);
+      const reward = Math.round((t.duration * (4 + danger * 4)) / 10) * 100 + danger * 6000;
+      return {
+        id: 'c' + Date.now() + '_' + i, from: 'ZHEN-9', to: dest,
+        dist: t.dist, duration: t.duration, danger, reward,
+      };
+    });
+    META.contractId = null;
+  }
+
+  const DANGER_LABEL = { 1: 'CALM', 2: 'RISKY', 3: 'HOSTILE' };
+
   // ---------------------------------------------------------------- state
   let S = null;
-  function newState() {
+  let screen = 'intro';
+  function newState(cfg) {
+    cfg = cfg || {};
+    const bonus = cfg.bonus || { weapon: 1, shield: 1, engine: 1, hull: 1, pdef: 0, reactorCap: 153 };
+    const crewBonus = cfg.crewBonus || 0; // extra crew per department from tier
     const sys = {};
-    SYS_DEFS.forEach(d => { sys[d.key] = { ...d, power: d.power }; });
+    SYS_DEFS.forEach(d => { sys[d.key] = { ...d, power: d.power, max: d.key === 'reactor' ? bonus.reactorCap : d.max }; });
     const rooms = ROOM_DEFS.map(d => ({
       ...d, status: 'normal', health: 100, fire: false, breach: false, sealed: false,
       crew: d.stations, crewMax: d.stations,
     }));
     const depts = {};
-    DEPT_DEFS.forEach(d => { depts[d.key] = { ...d, count: d.max, health: rand(88, 100), morale: rand(70, 95) }; });
-    const cargo = CARGO_DEFS.map(d => ({ ...d, integrity: 100 }));
+    DEPT_DEFS.forEach(d => { depts[d.key] = { ...d, count: Math.min(d.max, d.max + crewBonus), health: rand(88, 100), morale: rand(78, 96) }; });
+    const cargo = (cfg.cargo || []).map(c => ({ ...c, integrity: 100 }));
+    const paxCount = cfg.paxCount || 0;
 
     return {
       running: true, speed: 1, over: false,
       t: 0, clock: 22 * 3600 + 41 * 60 + 7, cycle: 1467.11,
-      credits: 1247350,
+      credits: META.credits,
       sys, rooms, depts, cargo,
+      duration: cfg.duration || 200,
+      danger: cfg.danger || 1,
+      bonus, crewSkill: cfg.crewSkill || 1, contract: cfg.contract || null,
+      cargoValue: cargo.reduce((a, c) => a + c.value, 0),
+      milPods: cfg.milPods || 0,
       hull: 100,
-      shieldPool: 0,                  // current absorbed-able shield HP (regens)
-      pressure: 0,                    // raid intensity (0 when sky is clear)
-      threat: 0,                      // 0..5 — rises as raider batches overlap
+      shieldPool: 0,
+      pressure: 0,
+      threat: 0,
       attackers: 0,
       reserve: 0, brownout: false,
       captain: { name: 'LT. K. DRAVEN', role: 'CAPTAIN', health: 100, morale: 'High' },
       crewIdle: 3, openRoom: null,
       killed: 0, injured: 0, missing: 0,
-      pax: Array.from({ length: 48 }, () => 'safe'),
+      pax: Array.from({ length: paxCount }, () => 'safe'),
       paxMorale: 92,
       repair: REPAIR_NAMES.map((n, i) => ({ name: n, target: null, progress: 0 })),
-      actions: {}, // key -> cooldown remaining
-      buffs: {},   // key -> time remaining
+      actions: {}, buffs: {},
       events: [], comms: [],
       combatTimer: 0, hazardTimer: 0, killProg: 0, batchTimer: INTRO + rand(3, 6),
       _commsScroll: 0,
@@ -142,6 +240,36 @@
     }
   }
   const colorFor = pct => (pct >= 66 ? '' : pct >= 33 ? 'amber' : 'red');
+
+  // (re)build the cargo manifest + passenger grid to match the current mission
+  function buildCargo() {
+    R.cargo = [];
+    const cl = $('cargoList'); cl.innerHTML = '';
+    S.cargo.forEach(c => {
+      const row = document.createElement('div'); row.className = 'cargo-item';
+      row.innerHTML =
+        '<span class="cargo-ico">' + c.ico + '</span>' +
+        '<span class="cargo-nm">' + c.name + '</span>' +
+        '<span class="cargo-pct"></span>' +
+        '<span class="cargo-val">' + fmt(c.value) + '</span>';
+      cl.appendChild(row);
+      R.cargo.push({ row, pct: row.querySelector('.cargo-pct') });
+    });
+    if (!S.cargo.length) { cl.innerHTML = '<div class="cargo-item"><span class="cargo-nm" style="color:var(--ink-faint)">No cargo pods installed</span></div>'; }
+    const pods = S.cargo.length;
+    setSeg(R.cargoSpaceBar, pods / hardpoints(), '');
+    $('cargoSpaceTxt').textContent = pods + ' / ' + hardpoints() + ' pods';
+    $('cargoValue').textContent = fmt(S.cargoValue) + ' CR';
+  }
+  function buildPax() {
+    R.pax = [];
+    R.paxGrid.innerHTML = '';
+    S.pax.forEach(() => {
+      const sp = document.createElement('span'); sp.className = 'pax'; sp.textContent = '☻';
+      R.paxGrid.appendChild(sp); R.pax.push(sp);
+    });
+    if (!S.pax.length) { R.paxGrid.innerHTML = '<span style="color:var(--ink-faint);font-size:11px">No passenger pods installed</span>'; }
+  }
 
   // ---------------------------------------------------------------- build UI
   function buildUI() {
@@ -190,23 +318,9 @@
       '<div class="cas missing"><div class="n" id="casM">0</div><div class="l">MISSING</div></div>';
     R.casK = $('casK'); R.casI = $('casI'); R.casM = $('casM');
 
-    // cargo manifest
-    R.cargo = [];
-    const cl = $('cargoList');
-    S.cargo.forEach((c, i) => {
-      const row = document.createElement('div'); row.className = 'cargo-item';
-      row.innerHTML =
-        '<span class="cargo-ico">' + c.ico + '</span>' +
-        '<span class="cargo-nm">' + c.name + '</span>' +
-        '<span class="cargo-pct"></span>' +
-        '<span class="cargo-val">' + fmt(c.value) + '</span>';
-      cl.appendChild(row);
-      R.cargo.push({ row, pct: row.querySelector('.cargo-pct') });
-    });
+    // cargo manifest (rebuilt per mission from the loadout)
     R.cargoSpaceBar = fillSeg($('cargoSpaceBar'), SEGMENTS, '');
-    setSeg(R.cargoSpaceBar, 1456 / 2000, '');
-    $('cargoSpaceTxt').textContent = '1,456 / 2,000 m³';
-    $('cargoValue').textContent = fmt(1823450) + ' CR';
+    buildCargo();
 
     // schematic rooms
     R.rooms = {};
@@ -226,13 +340,9 @@
     });
     R.hullBar = fillSeg($('hullBar'), 20, 'hull');
 
-    // passengers
+    // passengers (rebuilt per mission)
     R.paxGrid = $('paxGrid');
-    R.pax = [];
-    S.pax.forEach(() => {
-      const sp = document.createElement('span'); sp.className = 'pax'; sp.textContent = '☻';
-      R.paxGrid.appendChild(sp); R.pax.push(sp);
-    });
+    buildPax();
     R.paxMoraleBar = fillSeg($('paxMoraleBar'), SEGMENTS, '');
 
     // power systems
@@ -322,7 +432,12 @@
     if (rm) { e *= rm.health / 100; e *= mannedBoost(rm); }
     if (S.brownout && key !== 'reactor') { e *= clamp(S.reserve >= 0 ? 1 : (S.sys.reactor.power / usedPower()), 0.45, 1); }
     if (S.buffs.shields && key === 'shields') { e *= 1.25; }
-    return clamp(e, 0, 2);
+    if (S.bonus) {
+      if (key === 'shields') { e *= S.bonus.shield; }
+      else if (key === 'weapons') { e *= S.bonus.weapon; }
+      else if (key === 'engines') { e *= S.bonus.engine; }
+    }
+    return clamp(e, 0, 2.5);
   }
   function usedPower() {
     let u = 0;
@@ -331,8 +446,13 @@
   }
   function aliveCrew() { return S.rooms.reduce((n, r) => n + r.crew, 0) + S.crewIdle; }
   function cargoIntegrity() {
+    if (!S.cargo.length) { return 100; }
     const t = S.cargo.reduce((a, c) => a + c.value, 0);
     return S.cargo.reduce((a, c) => a + c.integrity * c.value, 0) / t;
+  }
+  function avgBayManned() {
+    const bays = S.rooms.filter(r => r.cargoBay);
+    return bays.length ? bays.reduce((a, b) => a + mannedFrac(b), 0) / bays.length : 0;
   }
 
   // ---------------------------------------------------------------- interactions
@@ -460,9 +580,10 @@
         // if you clear each one early, the tempo eventually outpaces your guns
         // and raiders pile up, dragging threat toward 5 (horde).
         const intensity = S.t - INTRO;
-        const size = Math.round(2 + intensity * 0.02 + S.threat * 0.6 + rand(0, 2));
-        S.attackers = Math.min(26, S.attackers + size);
-        S.batchTimer = clamp(18 - intensity * 0.04 - S.threat * 1.5, 4, 18) * rand(0.85, 1.15);
+        const dmul = 0.6 + S.danger * 0.25;
+        const size = Math.max(1, Math.round((2 + intensity * 0.02 + S.threat * 0.6 + rand(0, 2)) * dmul));
+        S.attackers = Math.min(18 + S.danger * 4, S.attackers + size);
+        S.batchTimer = clamp(18 - intensity * 0.04 - S.threat * 1.5 - S.danger * 1.5, 4, 18) * rand(0.85, 1.15);
         logEvent('bad', size + ' raiders closing to attack range'); comms('bad', 'HOSTILE CONTACTS ×' + size);
       }
     }
@@ -481,7 +602,7 @@
     const cmd = 0.8 + 0.2 * mannedFrac(roomByKey('bridge'));
     const wpEff = sysEff('weapons') * (0.6 + 0.4 * S.depts.tactical.count / S.depts.tactical.max);
     if (S.attackers > 0) {
-      S.killProg += wpEff * 0.3 * cmd * dt;
+      S.killProg += wpEff * 0.3 * cmd * S.crewSkill * dt;
       while (S.killProg >= 1 && S.attackers > 0) {
         S.killProg -= 1; S.attackers--;
         logEvent('good', 'Raider destroyed (' + S.attackers + ' remaining)'); comms('good', 'RAIDER DESTROYED');
@@ -512,19 +633,16 @@
       rm.status = rm.health < 33 ? 'critical' : rm.health < 75 ? 'damaged' : 'normal';
     });
 
-    // ---- cargo integrity (cargo-control crew protect their bay) ----
-    S.cargo.forEach((c, i) => {
-      const bay = S.rooms.find(r => r.cargo === i);
-      let decay = 0;
-      if (bay) {
-        if (bay.fire) { decay += 6; }
-        if (bay.breach) { decay += 8; }
-        if (bay.status === 'critical') { decay += 2; }
-      }
-      decay += (1 - sysEff('cargo')) * 1.5; // poor cargo-bay env
-      if (bay) { decay *= (1 - 0.4 * mannedFrac(bay)); } // manned cargo control reduces loss
-      c.integrity = clamp(c.integrity - decay * dt, 0, 100);
-    });
+    // ---- cargo integrity (hold-wide: bay fires/breaches + env + cargo crew) ----
+    if (S.cargo.length) {
+      const bays = S.rooms.filter(r => r.cargoBay);
+      let bayHaz = 0;
+      bays.forEach(b => { if (b.fire) { bayHaz += 6; } if (b.breach) { bayHaz += 8; } if (b.status === 'critical') { bayHaz += 2; } });
+      bayHaz /= Math.max(1, bays.length);
+      let decay = bayHaz + (1 - sysEff('cargo')) * 1.5;
+      decay *= (1 - 0.4 * avgBayManned());
+      if (decay > 0) { S.cargo.forEach(c => { c.integrity = clamp(c.integrity - decay * dt, 0, 100); }); }
+    }
 
     // ---- hull from average room health + direct combat handled in volley ----
     const avg = S.rooms.reduce((a, r) => a + r.health, 0) / S.rooms.length;
@@ -554,7 +672,7 @@
         return;
       }
       const rm = S.rooms.find(r => r.key === t.target);
-      const rate = (14 * engFactor) * (S.brownout ? 0.6 : 1);
+      const rate = (14 * engFactor * S.crewSkill) * (S.brownout ? 0.6 : 1);
       if (rm.fire && chance(0.5 * dt)) { rm.fire = false; logEvent('good', t.name + ' suppressed fire in ' + rm.label); }
       if (rm.breach && rm.health > 30 && chance(0.4 * dt)) { rm.breach = false; logEvent('good', t.name + ' sealed breach in ' + rm.label); }
       rm.health = clamp(rm.health + rate * dt, 0, 100);
@@ -564,7 +682,7 @@
 
     // injured recover faster with medical dept AND a manned med bay
     const medMan = mannedBoost(roomByKey('medbay'));
-    if (S.injured > 0 && chance(0.04 * S.depts.medical.count / S.depts.medical.max * medMan * dt * 4)) {
+    if (S.injured > 0 && chance(0.04 * S.depts.medical.count / S.depts.medical.max * medMan * S.crewSkill * dt * 4)) {
       S.injured--; logEvent('good', 'Crew member recovered in Med Bay');
     }
 
@@ -579,14 +697,14 @@
 
     // ---- win / lose ----
     if (S.hull <= 0) { endGame(false, 'HULL FAILURE', 'The Wayfarer broke apart under fire.'); }
-    else if (cargoIntegrity() < CARGO_FAIL) { endGame(false, 'CARGO LOST', 'Cargo integrity fell below the contract minimum.'); }
+    else if (S.cargo.length && cargoIntegrity() < CARGO_FAIL) { endGame(false, 'CARGO LOST', 'Cargo integrity fell below the contract minimum.'); }
     else if (aliveCrew() <= 0) { endGame(false, 'ALL HANDS LOST', 'No crew remain to command the ship.'); }
-    else if (S.t >= RAID_DURATION) { endGame(true, 'RAID SURVIVED', 'You held the Wayfarer together and reached Gateway Station.'); }
+    else if (S.t >= S.duration) { endGame(true, 'CONTRACT COMPLETE', 'You brought the Wayfarer in to ' + (S.contract ? S.contract.to : 'port') + '.'); }
   }
 
   function volley() {
     const evasion = sysEff('engines') * 0.35;
-    const pointDef = sysEff('sensors') * 0.3 + sysEff('weapons') * 0.15;
+    const pointDef = sysEff('sensors') * 0.3 + sysEff('weapons') * 0.15 + (S.bonus.pdef || 0);
     if (chance(evasion)) { comms('info', 'EVASIVE MANEUVER — VOLLEY MISSED'); return; }
     let dmg = rand(18, 34) * S.pressure;
     if (chance(pointDef)) { dmg *= 0.4; comms('good', 'POINT DEFENSE ENGAGED'); }
@@ -599,7 +717,7 @@
     // leak hits a random room
     const rm = pick(S.rooms);
     rm.health = clamp(rm.health - leak * 0.9, 0, 100);
-    S.hull = clamp(S.hull - leak * 0.12, 0, 100);
+    S.hull = clamp(S.hull - leak * 0.12 * S.bonus.hull, 0, 100);
     logEvent('bad', rm.label + ' hit (' + Math.round(leak) + ' dmg)'); comms('bad', rm.label + ' HIT');
     if (leak > 16 && chance(0.5)) { rm.fire = true; logEvent('bad', 'Fire started in ' + rm.label); }
     if (S.hull < 45 && leak > 20 && chance(0.35)) { rm.breach = true; logEvent('bad', 'HULL BREACH — ' + rm.label); }
@@ -643,7 +761,7 @@
     const underAttack = S.attackers > 0;
     $('tbAlert').textContent = underAttack ? 'UNDER ATTACK' : (S.t < INTRO ? 'STANDBY' : 'ALL CLEAR');
     $('tbAlertBox').classList.toggle('alarm', underAttack);
-    $('tbObjective').textContent = S.t < INTRO ? 'STANDBY · CONTACTS INBOUND' : 'SURVIVE ' + Math.max(0, Math.ceil(RAID_DURATION - S.t)) + 'S';
+    $('tbObjective').textContent = S.t < INTRO ? 'STANDBY · CONTACTS INBOUND' : 'ARRIVE IN ' + Math.max(0, Math.ceil(S.duration - S.t)) + 'S';
     let tb = ''; for (let i = 0; i < 5; i++) { tb += '<i class="' + (i < lvl ? 'on' : '') + '"></i>'; }
     $('tbThreatBars').innerHTML = tb;
 
@@ -697,8 +815,8 @@
       if (rm.breach) { cls += ' breach'; }
       ref.el.className = cls;
       let statTxt;
-      if (rm.cargo !== undefined) { statTxt = Math.round(S.cargo[rm.cargo].integrity) + '%'; }
-      else if (rm.pax) { statTxt = S.pax.filter(p => p !== 'dead').length + ' aboard'; }
+      if (rm.cargoBay) { statTxt = S.cargo.length ? Math.round(cargoIntegrity()) + '%' : 'EMPTY'; }
+      else if (rm.pax) { statTxt = S.pax.length ? S.pax.filter(p => p !== 'dead').length + ' aboard' : 'EMPTY'; }
       else if (rm.med || rm.key === 'bridge') { statTxt = rm.crew + ' / ' + rm.crewMax; }
       else { statTxt = Math.round(rm.health) + '%'; }
       ref.stat.textContent = statTxt;
@@ -717,7 +835,7 @@
 
     // passengers
     const safe = S.pax.filter(p => p === 'safe').length;
-    $('paxSafe').textContent = safe + ' / 48 SAFE';
+    $('paxSafe').textContent = safe + ' / ' + S.pax.length + ' SAFE';
     S.pax.forEach((p, i) => {
       const sp = R.pax[i];
       sp.className = 'pax' + (p === 'panic' ? ' panic' : p === 'dead' ? ' dead' : '');
@@ -734,7 +852,7 @@
     SYS_DEFS.forEach(d => {
       const sy = S.sys[d.key], ref = R.sys[d.key];
       ref.pct.textContent = Math.round(sy.power) + (d.key === 'reactor' ? '%' : '%');
-      const frac = sy.power / (d.key === 'reactor' ? 153 : 150);
+      const frac = sy.power / (d.key === 'reactor' ? S.sys.reactor.max : 150);
       let cc = '';
       if (d.key === 'reactor') { cc = sy.power > 135 ? 'red' : sy.power > 120 ? 'amber' : ''; }
       else { cc = sy.power >= 100 ? '' : sy.power >= 50 ? 'amber' : 'red'; }
@@ -747,9 +865,9 @@
       ref.net.textContent = (net > 0 ? '+' : '') + net;
       ref.net.className = 'pwr-net ' + (net > 0 ? 'net-pos' : net < 0 ? 'net-neg' : 'net-zero');
     });
-    $('reactorOut').textContent = 'REACTOR ' + Math.round(S.sys.reactor.power) + ' / 153 MW';
+    $('reactorOut').textContent = 'REACTOR ' + Math.round(S.sys.reactor.power) + ' / ' + S.sys.reactor.max + ' MW';
     setSeg(R.reserveBar, clamp(S.reserve / 30, 0, 1), 'reserve ' + (S.reserve < 0 ? 'red' : S.reserve < 5 ? 'amber' : 'green'));
-    $('reserveTxt').textContent = (S.reserve < 0 ? 'OVER ' : '') + Math.round(Math.abs(S.reserve)) + ' / 153 MW';
+    $('reserveTxt').textContent = (S.reserve < 0 ? 'OVER ' : '') + Math.round(Math.abs(S.reserve)) + ' / ' + S.sys.reactor.max + ' MW';
     document.querySelector('.reserve-row').classList.toggle('over', S.reserve < 0);
 
     // active hazards (derived live from ship state)
@@ -841,8 +959,8 @@
     m.chip.textContent = statusTxt;
     m.chip.className = 'rm-chip ' + (rm.fire ? 'critical' : rm.breach ? 'breach' : rm.status);
     let metric;
-    if (rm.cargo !== undefined) { metric = 'CARGO ' + Math.round(S.cargo[rm.cargo].integrity) + '% · ' + Math.round(rm.health) + '% structure'; }
-    else if (rm.pax) { metric = S.pax.filter(p => p !== 'dead').length + ' passengers · ' + Math.round(rm.health) + '% structure'; }
+    if (rm.cargoBay) { metric = (S.cargo.length ? 'CARGO ' + Math.round(cargoIntegrity()) + '%' : 'NO CARGO') + ' · ' + Math.round(rm.health) + '% structure'; }
+    else if (rm.pax) { metric = (S.pax.length ? S.pax.filter(p => p !== 'dead').length + ' passengers' : 'NO PASSENGERS') + ' · ' + Math.round(rm.health) + '% structure'; }
     else { metric = 'STRUCTURE ' + Math.round(rm.health) + '%'; }
     m.sub.textContent = metric;
     m.crewn.textContent = rm.crew + ' / ' + rm.stations;
@@ -885,7 +1003,8 @@
     const ctx = R.extCtx; if (!ctx) { return; }
     const w = R.ext.width = R.ext.clientWidth || 300;
     const h = R.ext.height = 150;
-    const cx = w * 0.5, cy = h * 0.54, L = Math.min(w * 0.82, 540);
+    const unit = Math.min(w * 0.085, (h * 0.5 - 8) / 2.9);
+    const cx = w * 0.5, cy = h * 0.52, L = unit * 9.5;
     const under = S && S.attackers > 0;
     const hull = S ? S.hull : 100;
     const fires = S ? S.rooms.filter(r => r.fire).length : 0;
@@ -907,7 +1026,7 @@
     });
     ctx.globalAlpha = 1;
 
-    drawFreighter(ctx, cx, cy, L, hull, fires);
+    drawShip(ctx, cx, cy, unit, S ? S.loadout : META.loadout, S ? S.t : 0, { hull: hull, fires: fires });
 
     // shield bubble
     if (S) {
@@ -970,118 +1089,310 @@
     }
   }
 
-  function drawFreighter(ctx, cx, cy, L, hull, fires) {
-    const x0 = cx - L / 2, x1 = cx + L / 2, mh = 15;
-    const t = S ? S.t : 0;
-    // main hull
+  // The ship: engine cluster (rear/left), thin spine, big command module
+  // (front/right), and pods bolted to hardpoints along the spine. The pods
+  // drawn reflect the player's actual loadout.
+  function roundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
-    ctx.moveTo(x1, cy);
-    ctx.lineTo(x1 - L * 0.15, cy - mh);
-    ctx.lineTo(x0 + L * 0.18, cy - mh);
-    ctx.lineTo(x0 + L * 0.06, cy - mh * 0.65);
-    ctx.lineTo(x0, cy - mh * 0.5);
-    ctx.lineTo(x0, cy + mh * 0.5);
-    ctx.lineTo(x0 + L * 0.06, cy + mh * 0.65);
-    ctx.lineTo(x0 + L * 0.18, cy + mh);
-    ctx.lineTo(x1 - L * 0.15, cy + mh);
-    ctx.closePath();
-    const hg = ctx.createLinearGradient(0, cy - mh, 0, cy + mh);
-    hg.addColorStop(0, '#48566e'); hg.addColorStop(0.5, '#2c3648'); hg.addColorStop(1, '#1a2230');
-    ctx.fillStyle = hg; ctx.fill();
-    ctx.strokeStyle = '#5a6e8c'; ctx.lineWidth = 1; ctx.stroke();
-    // panel lines
-    ctx.strokeStyle = 'rgba(90,120,160,0.25)'; ctx.lineWidth = 1;
-    for (let i = 1; i < 7; i++) { const px = x0 + L * (0.12 + i * 0.11); ctx.beginPath(); ctx.moveTo(px, cy - mh + 2); ctx.lineTo(px, cy + mh - 2); ctx.stroke(); }
-    // cargo containers along the spine
-    const n = 7, cw = L * 0.066, gap = L * 0.012, gx = x0 + L * 0.2;
-    for (let i = 0; i < n; i++) {
-      ctx.fillStyle = CONTAINER_COLS[i % CONTAINER_COLS.length];
-      ctx.fillRect(gx + i * (cw + gap), cy - mh - 9, cw, 10);
-      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.strokeRect(gx + i * (cw + gap), cy - mh - 9, cw, 10);
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function drawPod(ctx, x, y, u, type, top, t) {
+    const w = u * 1.7, h = u * 1.25, x0 = x - w / 2, y0 = y - h / 2;
+    if (!type) {
+      ctx.strokeStyle = 'rgba(140,170,210,0.45)'; ctx.lineWidth = Math.max(1, u * 0.16);
+      ctx.strokeRect(x - u * 0.45, y - u * 0.38, u * 0.9, u * 0.76);
+      return;
     }
-    // bridge / command module near the bow with lit windows
-    ctx.fillStyle = '#33415c'; ctx.fillRect(x1 - L * 0.22, cy - mh - 11, L * 0.08, 13);
-    ctx.fillStyle = 'rgba(120,210,255,' + (0.6 + 0.4 * Math.sin(t * 3)) + ')';
-    for (let i = 0; i < 3; i++) { ctx.fillRect(x1 - L * 0.205 + i * (L * 0.022), cy - mh - 8, L * 0.013, 3); }
-    // engine nacelles + animated glow
-    ctx.fillStyle = '#222c3c';
-    ctx.fillRect(x0 - 2, cy - mh * 0.55, L * 0.07, mh * 0.4);
-    ctx.fillRect(x0 - 2, cy + mh * 0.15, L * 0.07, mh * 0.4);
-    const eg = 0.55 + 0.35 * Math.sin(t * 9);
-    [cy - mh * 0.35, cy + mh * 0.35].forEach(ey => {
-      const g = ctx.createRadialGradient(x0 - 2, ey, 0, x0 - 2, ey, 16);
+    if (type === 'cargo') {
+      const cols = 4, rows = 3;
+      for (let c = 0; c < cols; c++) { for (let r = 0; r < rows; r++) {
+        ctx.fillStyle = (c + r) % 2 ? '#9a6a3e' : '#7d5230';
+        ctx.fillRect(x0 + c * w / cols, y0 + r * h / rows, w / cols - 1, h / rows - 1);
+      } }
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
+    } else if (type === 'passenger') {
+      ctx.fillStyle = '#33485e'; roundRect(ctx, x0, y0, w, h, u * 0.3); ctx.fill();
+      ctx.strokeStyle = '#5fb6ff'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = 'rgba(150,220,255,' + (0.55 + 0.4 * Math.sin(t * 3 + x)) + ')';
+      for (let i = 0; i < 4; i++) { ctx.fillRect(x0 + u * 0.22 + i * (w - u * 0.4) / 4, y - u * 0.13, (w - u * 0.5) / 4, u * 0.28); }
+    } else if (type === 'military') {
+      ctx.fillStyle = '#33414f'; ctx.fillRect(x0, y0, w, h);
+      ctx.fillStyle = '#c0563a'; ctx.fillRect(x0, y + h * 0.16, w, u * 0.22);
+      ctx.strokeStyle = '#7a8ba0'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
+      ctx.fillStyle = '#222c3a'; ctx.fillRect(x - u * 0.16, top ? y0 - u * 0.45 : y0 + h, u * 0.32, u * 0.45);
+    } else if (type === 'shield') {
+      ctx.fillStyle = '#25405c'; roundRect(ctx, x0, y0, w, h, u * 0.3); ctx.fill();
+      ctx.strokeStyle = '#4fb0ff'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.strokeStyle = 'rgba(90,180,255,' + (0.4 + 0.3 * Math.sin(t * 4 + x)) + ')';
+      ctx.beginPath(); ctx.arc(x, y, u * 0.5, 0, TAU); ctx.stroke();
+    }
+  }
+  function drawShip(ctx, cx, cy, u, loadout, t, opts) {
+    opts = opts || {}; loadout = loadout || [];
+    const hull = opts.hull == null ? 100 : opts.hull, fires = opts.fires || 0;
+    const xEng = cx - u * 4.5, xCmd = cx + u * 4.0;
+    // spine
+    ctx.strokeStyle = '#3a475e'; ctx.lineWidth = Math.max(2, u * 0.5);
+    ctx.beginPath(); ctx.moveTo(xEng, cy); ctx.lineTo(xCmd, cy); ctx.stroke();
+    ctx.strokeStyle = '#62799a'; ctx.lineWidth = Math.max(1, u * 0.16);
+    ctx.beginPath(); ctx.moveTo(xEng, cy); ctx.lineTo(xCmd, cy); ctx.stroke();
+    // hardpoint pods (pairs top/bottom along the spine)
+    const n = loadout.length || 6, pairs = Math.ceil(n / 2);
+    const startX = xEng + u * 1.7, endX = xCmd - u * 2.0;
+    for (let i = 0; i < n; i++) {
+      const pair = Math.floor(i / 2), top = (i % 2) === 0;
+      const px = pairs > 1 ? startX + (endX - startX) * (pair / (pairs - 1)) : (startX + endX) / 2;
+      const py = cy + (top ? -1 : 1) * u * 1.45;
+      ctx.strokeStyle = '#caa24a'; ctx.lineWidth = Math.max(1.5, u * 0.2);
+      ctx.beginPath(); ctx.moveTo(px, cy); ctx.lineTo(px, py + (top ? u * 0.55 : -u * 0.55)); ctx.stroke();
+      drawPod(ctx, px, py, u, loadout[i], top, t);
+    }
+    // engines (rear)
+    ctx.fillStyle = '#2a3344'; roundRect(ctx, xEng - u * 1.3, cy - u * 1.6, u * 1.8, u * 3.2, u * 0.4); ctx.fill();
+    ctx.strokeStyle = '#46566c'; ctx.lineWidth = 1; ctx.stroke();
+    const eg = 0.5 + 0.4 * Math.sin(t * 9);
+    for (let k = -1; k <= 1; k++) {
+      const ey = cy + k * u * 1.0;
+      ctx.fillStyle = '#161e2b'; ctx.fillRect(xEng - u * 1.7, ey - u * 0.32, u * 0.55, u * 0.64);
+      const g = ctx.createRadialGradient(xEng - u * 1.9, ey, 0, xEng - u * 1.9, ey, u * 1.5);
       g.addColorStop(0, 'rgba(120,190,255,' + eg + ')'); g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x0 - 4, ey, 13, 0, TAU); ctx.fill();
-    });
-    // running lights
-    ctx.fillStyle = (Math.sin(t * 4) > 0) ? '#ff5252' : 'rgba(255,82,82,0.25)';
-    ctx.beginPath(); ctx.arc(x1 - L * 0.04, cy - mh + 2, 1.6, 0, TAU); ctx.fill();
-    ctx.fillStyle = (Math.sin(t * 4) < 0) ? '#46d27e' : 'rgba(70,210,126,0.25)';
-    ctx.beginPath(); ctx.arc(x1 - L * 0.04, cy + mh - 2, 1.6, 0, TAU); ctx.fill();
-    // damage: fires/smoke on the hull when hurt
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(xEng - u * 2.0, ey, u * 1.4, 0, TAU); ctx.fill();
+    }
+    // command module (front)
+    const cw = u * 3.0, ch = u * 2.3;
+    const cg = ctx.createLinearGradient(0, cy - ch / 2, 0, cy + ch / 2);
+    cg.addColorStop(0, '#5a6a7e'); cg.addColorStop(1, '#27313e');
+    ctx.fillStyle = cg; roundRect(ctx, xCmd - u * 0.3, cy - ch / 2, cw, ch, u * 0.9); ctx.fill();
+    ctx.strokeStyle = '#7d8ea2'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#3fa7ff'; ctx.fillRect(xCmd - u * 0.3, cy - ch / 2 + u * 0.35, cw, u * 0.16);
+    ctx.fillStyle = 'rgba(150,220,255,' + (0.6 + 0.4 * Math.sin(t * 3)) + ')';
+    for (let i = 0; i < 3; i++) { ctx.fillRect(xCmd + cw - u * 1.3, cy - u * 0.7 + i * u * 0.55, u * 0.5, u * 0.24); }
+    // nose running light
+    ctx.fillStyle = (Math.sin(t * 4) > 0) ? '#ff7a7a' : 'rgba(255,120,120,0.3)';
+    ctx.beginPath(); ctx.arc(xCmd + cw - u * 0.2, cy, u * 0.18, 0, TAU); ctx.fill();
+    // damage fire/smoke
     const burn = fires + (hull < 60 ? 1 : 0) + (hull < 35 ? 1 : 0);
     for (let i = 0; i < burn; i++) {
-      const fx = x0 + L * (0.25 + (i * 0.17) % 0.6);
-      const fy = cy - mh + 3 + (i % 2) * (mh - 4);
+      const fx = startX + (endX - startX) * ((i * 0.37) % 1), fy = cy + (i % 2 ? 1 : -1) * u * 0.6;
       const fl = 0.5 + 0.5 * Math.sin(t * 18 + i * 2);
-      ctx.fillStyle = 'rgba(120,130,150,0.4)';
-      ctx.beginPath(); ctx.arc(fx, fy - 6 - fl * 4, 3 + fl * 2, 0, TAU); ctx.fill(); // smoke
+      ctx.fillStyle = 'rgba(120,130,150,0.4)'; ctx.beginPath(); ctx.arc(fx, fy - u * 0.6, u * 0.4 + fl * u * 0.2, 0, TAU); ctx.fill();
       ctx.fillStyle = 'rgba(255,' + (120 + fl * 80 | 0) + ',40,' + (0.6 + fl * 0.3) + ')';
-      ctx.beginPath(); ctx.arc(fx, fy, 2.5 + fl * 2, 0, TAU); ctx.fill(); // flame
+      ctx.beginPath(); ctx.arc(fx, fy, u * 0.3 + fl * u * 0.25, 0, TAU); ctx.fill();
     }
   }
 
-  // ---------------------------------------------------------------- end game
+  function drawPreviewScene(canvas, dt) {
+    const ctx = canvas.getContext ? canvas.getContext('2d') : null; if (!ctx) { return; }
+    const w = canvas.width = canvas.clientWidth || 600, h = canvas.height = canvas.clientHeight || 320;
+    const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#070d1c'); bg.addColorStop(1, '#04060f');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#9fc0ff';
+    stars.forEach(s => { s.x -= s.z * 0.02 * dt; if (s.x < 0) { s.x += 1; s.y = Math.random(); } ctx.globalAlpha = 0.25 + s.z * 0.6; ctx.fillRect(s.x * w, s.y * h, s.z * 1.7, s.z * 1.7); });
+    ctx.globalAlpha = 1;
+    const u = Math.min(w * 0.072, (h * 0.5 - 16) / 2.9);
+    drawShip(ctx, w * 0.5, h * 0.5, u, META.loadout, previewT, { hull: 100, fires: 0 });
+  }
+
+  // ================================================================ screens
+  function showScreen(name) {
+    screen = name;
+    ['intro', 'home', 'contracts', 'outfit', 'shipyard', 'debrief'].forEach(s => $(s).classList.toggle('hidden', s !== name));
+    $('app').classList.toggle('hidden', name !== 'mission');
+    if (name === 'home') { renderHome(); }
+    else if (name === 'contracts') { renderContracts(); }
+    else if (name === 'outfit') { renderOutfit(); }
+    else if (name === 'shipyard') { renderShipyard(); }
+  }
+  function updateCreditsUI() {
+    if ($('homeCredits')) { $('homeCredits').textContent = fmt(META.credits); }
+    document.querySelectorAll('.creditsTxt').forEach(e => { e.textContent = fmt(META.credits); });
+  }
+  function renderHome() {
+    updateCreditsUI();
+    const c = loadoutCounts();
+    $('homeLoadout').innerHTML = MODULE_ORDER.map(t => {
+      const m = MODULES[t];
+      return '<div class="lo-chip"><span class="lo-ico" style="color:' + m.color + '">' + m.ico + '</span>' + m.name.replace(' POD', '') + ' <span class="lo-n">×' + c[t] + '</span></div>';
+    }).join('') + '<div class="lo-chip">HARDPOINTS <span class="lo-n">' + META.loadout.filter(Boolean).length + ' / ' + hardpoints() + '</span></div>';
+    const ct = currentContract();
+    $('homeContract').innerHTML = ct ?
+      '<div class="hc-route">ZHEN-9 → ' + ct.to + '</div>' +
+      '<div class="hc-meta"><span>' + ct.dist + ' HAUL</span><span class="ct-danger dg' + ct.danger + '">' + DANGER_LABEL[ct.danger] + '</span><span>~' + ct.duration + 's</span></div>' +
+      '<div class="hc-reward">' + fmt(ct.reward) + ' ◎ <span style="font-size:11px;color:var(--ink-faint)">fee</span></div>'
+      : '<div class="none">No contract selected — visit the Contract Board.</div>';
+    $('homeStats').innerHTML =
+      '<div class="hs"><span>Crew rating</span><b>' + CREW_TIERS[META.crewTier] + '</b></div>' +
+      '<div class="hs"><span>Runs completed</span><b>' + META.stats.wins + ' / ' + META.stats.runs + '</b></div>' +
+      '<div class="hs"><span>Total earned</span><b>' + fmt(META.stats.earned) + ' ◎</b></div>';
+    $('homeLaunch').disabled = !ct;
+  }
+  function renderContracts() {
+    updateCreditsUI();
+    if (!META.contracts) { genContracts(); }
+    $('contractList').innerHTML = META.contracts.map(c => {
+      const sel = c.id === META.contractId;
+      return '<div class="contract' + (sel ? ' selected' : '') + '" data-cid="' + c.id + '">' +
+        '<div class="ct-route">ZHEN-9 → ' + c.to + '</div>' +
+        '<div class="ct-dist">' + c.dist + ' HAUL · ~' + c.duration + 's run</div>' +
+        '<div class="ct-row"><span>Pirate danger</span><span class="ct-danger dg' + c.danger + '">' + DANGER_LABEL[c.danger] + '</span></div>' +
+        '<div class="ct-row"><span>Contract fee</span><span class="ct-reward">' + fmt(c.reward) + ' ◎</span></div>' +
+        '<div class="ct-pick">' + (sel ? '✓ SELECTED' : 'CLICK TO SELECT') + '</div></div>';
+    }).join('');
+    $('contractList').querySelectorAll('.contract').forEach(el => {
+      el.onclick = () => { META.contractId = el.getAttribute('data-cid'); saveMeta(); renderContracts(); };
+    });
+  }
+  function renderOutfit() {
+    updateCreditsUI(); normalizeMeta();
+    $('outfitSlotsTxt').textContent = META.loadout.filter(Boolean).length + ' / ' + hardpoints() + ' USED';
+    $('hardpointList').innerHTML = META.loadout.map((m, i) => {
+      const mod = m ? MODULES[m] : null;
+      return '<div class="hp-slot" data-slot="' + i + '"><span class="hp-n">' + (i + 1) + '</span>' +
+        '<span class="hp-ico" style="color:' + (mod ? mod.color : '#5a7090') + '">' + (mod ? mod.ico : '○') + '</span>' +
+        '<span class="hp-name' + (mod ? '' : ' hp-empty') + '">' + (mod ? mod.name : '— empty —') + '</span>' +
+        '<span class="hp-n">⟲</span></div>';
+    }).join('');
+    $('hardpointList').querySelectorAll('.hp-slot').forEach(el => { el.onclick = () => cycleSlot(+el.getAttribute('data-slot')); });
+    $('inventoryList').innerHTML = MODULE_ORDER.map(t => {
+      const m = MODULES[t], owned = META.inventory[t] || 0, used = installedCount(t);
+      return '<div class="inv-row"><span class="iv-ico" style="color:' + m.color + '">' + m.ico + '</span>' +
+        '<span class="iv-name">' + m.name + '</span><span class="iv-n"><b>' + (owned - used) + '</b> free / ' + owned + ' owned</span></div>';
+    }).join('');
+  }
+  function cycleSlot(i) {
+    const cur = META.loadout[i];
+    const avail = MODULE_ORDER.filter(t => (META.inventory[t] || 0) - installedCount(t) > 0 || t === cur);
+    const opts = [null, ...avail];
+    let idx = opts.indexOf(cur); idx = (idx + 1) % opts.length;
+    META.loadout[i] = opts[idx]; saveMeta(); renderOutfit();
+  }
+  function shopRow(ico, name, desc, lvl, price, enabled, act, maxed) {
+    return '<div class="shop-item' + (maxed ? ' maxed' : '') + '"><span class="si-ico">' + ico + '</span>' +
+      '<div class="si-main"><div class="si-name">' + name + '</div><div class="si-desc">' + desc + '</div><div class="si-lvl">' + lvl + '</div></div>' +
+      (maxed ? '<button disabled>' + price + '</button>' : '<button data-shop="' + act + '"' + (enabled ? '' : ' disabled') + '>' + price + '</button>') + '</div>';
+  }
+  function renderShipyard() {
+    updateCreditsUI();
+    $('shopModules').innerHTML = MODULE_ORDER.map(t => {
+      const m = MODULES[t];
+      return shopRow(m.ico, m.name, m.desc, 'OWN ' + (META.inventory[t] || 0), fmt(m.cost) + ' ◎', META.credits >= m.cost, 'buymod:' + t, false);
+    }).join('');
+    $('shopUpgrades').innerHTML = UPGRADE_DEFS.map(u => {
+      const lvl = META.upgrades[u.key], maxed = lvl >= u.max, cost = u.cost(lvl);
+      return shopRow(u.ico, u.name, u.desc, 'LVL ' + lvl + ' / ' + u.max, maxed ? 'MAX' : fmt(cost) + ' ◎', META.credits >= cost, 'buyupg:' + u.key, maxed);
+    }).join('');
+    const tier = META.crewTier, maxed = tier >= CREW_TIERS.length - 1, cost = crewCost(tier);
+    $('shopCrew').innerHTML = shopRow('★', 'Crew Rating: ' + CREW_TIERS[tier],
+      'Faster repair, fighting and healing.', 'TIER ' + (tier + 1) + ' / ' + CREW_TIERS.length,
+      maxed ? 'MAX' : fmt(cost) + ' ◎', META.credits >= cost, 'hirecrew', maxed);
+    document.querySelectorAll('#shipyard [data-shop]').forEach(btn => { btn.onclick = () => buyAction(btn.getAttribute('data-shop')); });
+  }
+  function buyAction(a) {
+    if (a === 'hirecrew') {
+      const cost = crewCost(META.crewTier);
+      if (META.credits >= cost && META.crewTier < CREW_TIERS.length - 1) { META.credits -= cost; META.crewTier++; }
+    } else if (a.indexOf('buymod:') === 0) {
+      const t = a.split(':')[1], cost = MODULES[t].cost;
+      if (META.credits >= cost) { META.credits -= cost; META.inventory[t] = (META.inventory[t] || 0) + 1; }
+    } else if (a.indexOf('buyupg:') === 0) {
+      const k = a.split(':')[1], u = UPGRADE_DEFS.find(x => x.key === k), lvl = META.upgrades[k];
+      if (lvl < u.max) { const cost = u.cost(lvl); if (META.credits >= cost) { META.credits -= cost; META.upgrades[k]++; if (k === 'hardpoint') { normalizeMeta(); } } }
+    }
+    saveMeta(); renderShipyard();
+  }
+
+  // ---------------------------------------------------------------- launch / debrief
+  function launchMission() {
+    const contract = currentContract(); if (!contract) { return; }
+    normalizeMeta();
+    const counts = loadoutCounts(), up = META.upgrades;
+    const cargo = [];
+    for (let i = 0; i < counts.cargo; i++) {
+      const g = CARGO_DEFS[i % CARGO_DEFS.length];
+      cargo.push({ ico: g.ico, name: g.name, value: Math.round(MODULES.cargo.value * rand(0.85, 1.15)) });
+    }
+    const bonus = {
+      weapon: 1 + up.weapon * 0.12 + counts.military * MODULES.military.weapon,
+      shield: 1 + up.shield * 0.12 + counts.shield * MODULES.shield.shield,
+      engine: 1 + up.engine * 0.12,
+      hull: 1 / (1 + up.hull * 0.12),
+      pdef: counts.military * MODULES.military.pdef,
+      reactorCap: 153 + up.reactor * 12,
+    };
+    const cfg = {
+      duration: contract.duration, danger: contract.danger, cargo,
+      paxCount: counts.passenger * MODULES.passenger.pax, bonus,
+      crewSkill: 0.85 + META.crewTier * 0.08, crewBonus: Math.floor(META.crewTier / 2),
+      milPods: counts.military, contract,
+    };
+    S = newState(cfg);
+    S.loadout = META.loadout.slice();
+    logEvent('good', 'All systems nominal'); logEvent('info', 'Departed Zhen-9 — bound for ' + contract.to);
+    logEvent('info', counts.cargo + ' cargo · ' + counts.passenger + ' passenger · ' + counts.military + ' military pods aboard');
+    logEvent('warn', 'Route danger: ' + DANGER_LABEL[contract.danger] + ' — pirates likely');
+    comms('info', 'DEPARTING ZHEN-9 → ' + contract.to.toUpperCase()); comms('good', 'ALL SYSTEMS NOMINAL'); comms('warn', 'ROUTE DANGER: ' + DANGER_LABEL[contract.danger]);
+    if (!R.captain) { buildUI(); } else { buildCargo(); buildPax(); }
+    showScreen('mission');
+    last = performance.now(); simAcc = 0;
+  }
+
   function endGame(win, title, sub) {
     if (S.over) { return; }
     S.over = true; S.running = false;
-    $('resultTitle').textContent = title;
-    $('resultTitle').style.color = win ? 'var(--green)' : 'var(--red)';
-    $('resultSub').textContent = sub;
-    const ci = Math.round(cargoIntegrity());
-    const cargoSaved = Math.round(1823450 * ci / 100);
-    $('resultStats').innerHTML =
-      row('Time survived', Math.floor(S.t) + 's / ' + RAID_DURATION + 's') +
+    const ci = cargoIntegrity(), paxAlive = S.pax.filter(p => p !== 'dead').length, c = S.contract;
+    const lines = [];
+    const fee = Math.round(c.reward * (win ? 1 : 0.25));
+    let pay = fee; lines.push(['Contract fee' + (win ? '' : ' (partial)'), fee]);
+    if (S.cargo.length) { const cb = Math.round(S.cargoValue * ci / 100 * 0.05); pay += cb; lines.push(['Cargo delivered (' + Math.round(ci) + '%)', cb]); }
+    if (S.pax.length) { const pb = paxAlive * 450; pay += pb; lines.push(['Passenger fares (' + paxAlive + ')', pb]); }
+    if (S.milPods && win) { const mb = S.milPods * 9000; pay += mb; lines.push(['Military escort bonus', mb]); }
+    if (S.killed) { const pen = S.killed * 1200; pay -= pen; lines.push(['Crew benefits paid', -pen]); }
+    pay = Math.max(0, pay);
+    META.credits += pay; META.stats.runs++; if (win) { META.stats.wins++; } META.stats.earned += pay;
+    saveMeta();
+    $('debriefTitle').textContent = title; $('debriefTitle').style.color = win ? 'var(--green)' : 'var(--red)';
+    $('debriefSub').textContent = sub;
+    $('debriefStats').innerHTML =
+      lines.map(l => row(l[0], (l[1] < 0 ? '−' : '+') + fmt(Math.abs(l[1])) + ' ◎')).join('') +
+      '<div class="rs" style="border-top:1px solid rgba(120,160,220,.3);margin-top:4px;padding-top:6px"><span>NET PAYOUT</span><b style="color:var(--green)">+' + fmt(pay) + ' ◎</b></div>' +
       row('Hull integrity', Math.round(S.hull) + '%') +
-      row('Cargo integrity', ci + '% (' + fmt(cargoSaved) + ' CR delivered)') +
-      row('Raiders destroyed', (12 - S.attackers) + ' / 12') +
       row('Crew lost', S.killed + ' killed, ' + S.injured + ' injured') +
-      row('Passengers safe', S.pax.filter(p => p !== 'dead').length + ' / 48');
-    $('result').classList.remove('hidden');
+      (S.pax.length ? row('Passengers', paxAlive + ' / ' + S.pax.length + ' survived') : '');
+    showScreen('debrief');
     function row(k, v) { return '<div class="rs"><span>' + k + '</span><b>' + v + '</b></div>'; }
   }
 
   // ---------------------------------------------------------------- loop
-  let last = 0, simAcc = 0;
+  let last = 0, simAcc = 0, previewT = 0;
   function frame(now) {
-    if (!S) { requestAnimationFrame(frame); return; }
     const realDt = Math.min(0.05, (now - last) / 1000) || 0;
-    last = now;
-    const dt = realDt * S.speed;
-    // step sim in fixed 0.1s slices for stability
-    simAcc += dt;
-    while (simAcc >= 0.1) { sim(0.1); simAcc -= 0.1; }
-    drawExt(realDt * (S.running ? S.speed : 0.3));
-    render();
+    last = now; previewT += realDt;
+    if (screen === 'mission' && S) {
+      const dt = realDt * S.speed;
+      simAcc += dt;
+      while (simAcc >= 0.1) { sim(0.1); simAcc -= 0.1; }
+      drawExt(realDt * (S.running ? S.speed : 0.3));
+      render();
+    } else if (screen === 'home') { drawPreviewScene($('homeShip'), realDt); }
+    else if (screen === 'outfit') { drawPreviewScene($('outfitShip'), realDt); }
     requestAnimationFrame(frame);
   }
 
   // ---------------------------------------------------------------- boot
-  function start() {
-    S = newState();
-    // calm departure: all systems nominal, sensors clear — the storm is coming
-    logEvent('good', 'All systems nominal'); logEvent('info', 'Departed Zhen-9 — bound for Gateway Station');
-    logEvent('info', 'Crew at stations'); logEvent('info', 'Long-range sensors clear');
-    logEvent('warn', 'Pirate activity reported along the lane');
-    comms('info', 'DEPARTING ZHEN-9 STATION'); comms('good', 'ALL SYSTEMS NOMINAL'); comms('warn', 'STAY SHARP — PIRATE LANE AHEAD');
-    if (!R.captain) { buildUI(); }
-    $('title').classList.add('hidden');
-    $('result').classList.add('hidden');
-    $('app').classList.remove('hidden');
+  function boot() {
+    loadMeta();
+    initStars();
+    document.querySelectorAll('[data-screen]').forEach(b => { b.onclick = () => showScreen(b.getAttribute('data-screen')); });
+    $('introBtn').onclick = () => { META.seenIntro = true; saveMeta(); showScreen('home'); };
+    $('homeLaunch').onclick = launchMission;
+    $('debriefHome').onclick = () => { genContracts(); showScreen('home'); };
+    if (META.seenIntro) { showScreen('home'); }
+    else { screen = 'intro'; $('intro').classList.remove('hidden'); }
     last = performance.now();
+    requestAnimationFrame(frame);
   }
-
-  $('startBtn').onclick = start;
-  $('retryBtn').onclick = start;
-  requestAnimationFrame(frame);
+  boot();
 })();
