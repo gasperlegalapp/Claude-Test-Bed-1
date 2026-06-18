@@ -103,6 +103,9 @@
     { key: 'distress', name: 'BROADCAST DISTRESS', ico: '📡', danger: false, desc: 'Call for help. May ease the assault — or draw more attention.', confirm: 'A distress call goes out. It may thin the current raiders — but it also broadcasts your position.' },
     { key: 'divert',   name: 'CHANGE DESTINATION', ico: '⛯', danger: false, desc: 'Divert to the nearest port. Arrive much sooner at a reduced payout.', confirm: 'Divert to the nearest port. You arrive far sooner, but the contract bonus is cut.' },
     { key: 'surrender',name: 'SURRENDER',          ico: '🏳', danger: true,  desc: 'Stand down. Pirates take the cargo; crew and passengers likely survive.', confirm: 'You surrender. Raiders strip the cargo and leave. The run ends here — crew and passengers survive, but you forfeit the contract.' },
+    { key: 'allshields',name: 'ALL POWER TO SHIELDS',ico: '⛨', danger: false, desc: 'Slam every spare watt into the shields, starving everything else.', confirm: 'Reactor maxed and all non-essential power dumped into shields. Weapons, sensors and engines run on fumes until you rebalance from Engineering.' },
+    { key: 'brace',    name: 'BRACE FOR BOARDING',  ico: '🛡', danger: false, desc: 'Seal the ship and post security to repel boarders.', confirm: 'All bulkheads seal and any boarders are met by security. The ship is locked down — protective, but repairs and crew movement grind to a halt while sealed.' },
+    { key: 'abandon',  name: 'ABANDON SHIP',        ico: '🚀', danger: true,  desc: 'Get the crew and passengers off. The ship and cargo are lost.', confirm: 'Abandon ship. The crew and passengers make for the escape pods; the Wayfarer and all her cargo are lost. The run ends here.' },
   ];
 
   // ---- weapons: four fixed combat mounts, each a mount TYPE (1 small .. 3 big) ----
@@ -712,6 +715,39 @@
     const def = POSTURE_DEFS.find(p => p.key === key);
     logEvent('info', 'Helm posture: ' + def.name); comms('info', 'HELM — ' + def.name);
   }
+  // ---- custom station actions (own cooldown keys in S.actions) ----
+  function ventHeat() {
+    if (!S || S.over || S.actions.ventheat > 0) { return; }
+    S.actions.ventheat = 16; S.heat = clamp(S.heat - 34, 0, 100);
+    logEvent('good', 'Reactor heat vented'); comms('warn', 'VENTING REACTOR HEAT');
+  }
+  function dispatchRepair() {
+    if (!S || S.over) { return; }
+    if (S.repairPool <= 0) { logEvent('warn', 'No repair techs idle in the pool'); return; }
+    const cand = S.rooms.filter(r => r.repairTechs === 0 && (r.health < 95 || r.fire || r.breach || r.leak > 0))
+      .sort((a, b) => a.health - b.health)[0];
+    if (!cand) { logEvent('info', 'No faults need a repair team right now'); return; }
+    assignTech(cand.key, 1);
+  }
+  function afterburner() {
+    if (!S || S.over || S.actions.afterburner > 0) { return; }
+    S.actions.afterburner = 22; S.buffs.afterburner = 6; S.heat = clamp(S.heat + 18, 0, 100);
+    logEvent('good', 'Afterburner — hard burn'); comms('warn', 'AFTERBURNER ENGAGED');
+  }
+  function sealAll() {
+    if (!S || S.over) { return; }
+    const anyOpen = S.rooms.some(r => !r.hardpoint && !r.sealed);
+    S.rooms.forEach(r => { if (!r.hardpoint) { r.sealed = anyOpen; } });
+    logEvent('warn', anyOpen ? 'All bulkheads sealed — ship locked down' : 'All bulkheads opened');
+    comms('warn', anyOpen ? 'SHIP LOCKED DOWN' : 'BULKHEADS OPEN');
+  }
+  function jettisonLightest() {
+    if (!S || S.over || !S.cargo.length) { return; }
+    let idx = 0; for (let i = 1; i < S.cargo.length; i++) { if (S.cargo[i].value < S.cargo[idx].value) { idx = i; } }
+    const c = S.cargo[idx]; S.cargo.splice(idx, 1);
+    S.cargoValue = S.cargo.reduce((a, x) => a + x.value, 0); buildCargo();
+    logEvent('bad', 'Jettisoned ' + c.name + ' to lighten the ship'); comms('bad', 'JETTISONED ' + c.name);
+  }
   function execOrder(key) {
     if (!S || S.over) { return; }
     const def = EXEC_DEFS.find(d => d.key === key); if (!def) { return; }
@@ -742,6 +778,17 @@
       logEvent('warn', 'Diverting to nearest port — payout reduced'); comms('warn', 'DIVERTING TO NEAREST PORT');
     } else if (key === 'surrender') {
       endGame(false, 'SURRENDERED', 'You stood down. Raiders stripped the hold and withdrew — crew and passengers survived, but the contract is forfeit.');
+    } else if (key === 'allshields') {
+      S.sys.reactor.power = S.sys.reactor.max; S.sys.shields.power = 150;
+      ['weapons', 'sensors', 'engines'].forEach(k => { S.sys[k].power = S.sys[k].min; });
+      S.sys.life.power = Math.max(S.sys.life.power, 60);
+      logEvent('warn', 'All power diverted to shields'); comms('warn', 'ALL POWER TO SHIELDS');
+    } else if (key === 'brace') {
+      S.rooms.forEach(r => { if (!r.hardpoint) { r.sealed = true; } });
+      S.rooms.forEach(r => { if (r.boarders && S.securityPool > 0) { assignSecurity(r.key, 1); } });
+      logEvent('warn', 'Locked down — bracing for boarders'); comms('bad', 'BRACE FOR BOARDING');
+    } else if (key === 'abandon') {
+      endGame(false, 'ABANDONED SHIP', 'You gave the order to abandon ship. The crew and passengers made for the pods; the Wayfarer was lost with her cargo.');
     }
   }
   function buildStations() {
@@ -763,16 +810,42 @@
       hp.appendChild(b); R.postures[p.key] = b;
     });
     R.cmd = [];
-    const mk = (containerId, key, name) => {
-      const def = ACTION_DEFS.find(a => a.key === key);
+    const mk = (containerId, key, name, sub, handler) => {
       const b = document.createElement('button');
-      b.className = 'stn-act'; b.innerHTML = '<b>' + name + '</b><span class="sa-sub">' + def.sub + '</span><span class="sa-cd"></span>';
-      b.onclick = () => triggerAction(key);
+      b.className = 'stn-act'; b.innerHTML = '<b>' + name + '</b><span class="sa-sub">' + sub + '</span><span class="sa-cd"></span>';
+      b.onclick = handler;
       $(containerId).appendChild(b); R.cmd.push({ btn: b, key: key, cd: b.querySelector('.sa-cd') });
     };
-    mk('tacCommands', 'shields', 'PRIORITIZE SHIELDS'); mk('tacCommands', 'power', 'EMERGENCY POWER');
-    mk('engActions', 'power', 'EMERGENCY POWER'); mk('engActions', 'damage', 'DAMAGE CONTROL');
-    mk('opsCommands', 'evac', 'EVACUATE PASSENGERS'); mk('opsCommands', 'damage', 'DAMAGE CONTROL');
+    const act = (c, key, name) => { const def = ACTION_DEFS.find(a => a.key === key); mk(c, key, name, def.sub, () => triggerAction(key)); };
+    // tactical
+    act('tacCommands', 'shields', 'PRIORITIZE SHIELDS'); act('tacCommands', 'power', 'EMERGENCY POWER');
+    // engineering
+    act('engActions', 'power', 'EMERGENCY POWER'); act('engActions', 'damage', 'DAMAGE CONTROL');
+    mk('engActions', 'ventheat', 'VENT REACTOR HEAT', 'Bleed off ~34% heat', ventHeat);
+    mk('engActions', 'dispatch', 'DISPATCH REPAIR TEAM', 'Send a tech to the worst fault', dispatchRepair);
+    // operations
+    act('opsCommands', 'evac', 'CALM PASSENGERS'); act('opsCommands', 'damage', 'DAMAGE CONTROL');
+    mk('opsCommands', 'sealall', 'SEAL ALL BULKHEADS', 'Contain spread — locks crew in', sealAll);
+    mk('opsCommands', 'jetlight', 'JETTISON LIGHTEST HOLD', 'Dump cheapest cargo to lighten', jettisonLightest);
+    // helm
+    mk('helmControls', 'afterburner', 'AFTERBURNER', 'Hard burn: +evasion & speed, +heat', afterburner);
+    // ---- engineering power routing (persistent +/- per system) ----
+    const ep = $('engPower'); ep.innerHTML = ''; R.bus = {};
+    ['reactor', 'shields', 'engines', 'weapons', 'sensors', 'life'].forEach(key => {
+      const sd = SYS_DEFS.find(s => s.key === key);
+      const row = document.createElement('div'); row.className = 'bus ctrl';
+      row.innerHTML = '<span class="bus-l">' + sd.label + '</span><button class="pw-btn" data-pw="' + key + ':-">−</button>' +
+        '<div class="seg-mini"><i></i></div><button class="pw-btn" data-pw="' + key + ':+">+</button><b class="bus-mw"></b>';
+      ep.appendChild(row); R.bus[key] = { bar: row.querySelector('.seg-mini i'), mw: row.querySelector('.bus-mw') };
+    });
+    ep.querySelectorAll('[data-pw]').forEach(b => {
+      const a = b.getAttribute('data-pw').split(':'), step = a[0] === 'reactor' ? 3 : 5;
+      b.onclick = () => { if (S && !S.over) { adjustPower(a[0], a[1] === '+' ? step : -step); } };
+    });
+    // ---- helm engine throttle (persistent +/-) ----
+    const he = $('helmEngine'); he.innerHTML = '<span class="bus-l">ENGINE POWER</span><button class="pw-btn" data-eng="-">−</button>' +
+      '<div class="seg-mini"><i id="helmEngBar"></i></div><button class="pw-btn" data-eng="+">+</button><b id="helmEngMw"></b>';
+    he.querySelectorAll('[data-eng]').forEach(b => { b.onclick = () => { if (S && !S.over) { adjustPower('engines', b.getAttribute('data-eng') === '+' ? 6 : -6); } }; });
     // tactical targeting controls
     $('tacTargeting').innerHTML = '<button id="tacFire" class="tac-fire"></button>' +
       '<div class="tac-modes">' + ['closest', 'strongest', 'weakest'].map(m => '<button data-mode="' + m + '">' + m.toUpperCase() + '</button>').join('') +
@@ -894,15 +967,24 @@
       statRow('ENGINE OUTPUT', Math.round(sysEff('engines') * 100) + '%') +
       statRow('REACTOR HEAT', Math.round(S.heat) + '%' + (S.heat > 85 ? ' ⚠' : '')) +
       statRow('THREAT LEVEL', THREAT_LABEL[clamp(Math.round(S.threat), 0, 5)]) +
-      statRow('RAIDERS ON SCOPE', S.attackers);
+      statRow('RAIDERS ON SCOPE', S.attackers) +
+      statRow('POSTURE', POSTURE_DEFS.find(p => p.key === S.posture).name);
     if (R.postures) { Object.keys(R.postures).forEach(k => R.postures[k].classList.toggle('active', S.posture === k)); }
+    // engine throttle bar
+    const eb = $('helmEngBar'); if (eb) { eb.style.width = (S.sys.engines.power / 150 * 100) + '%'; $('helmEngMw').textContent = Math.round(S.sys.engines.power) + '%'; }
   }
   function renderEngineering() {
     $('engReactor').textContent = Math.round(S.sys.reactor.power) + ' / ' + S.sys.reactor.max + ' MW';
-    let ph = '';
-    SYS_DEFS.forEach(d => { if (d.key === 'reactor') { return; } ph += busRow(d.label, S.sys[d.key].power, Math.round(d.base * S.sys[d.key].power / 100)); });
-    $('engPower').innerHTML = ph + '<div class="bus res"><span class="bus-l">RESERVE</span><b class="' + (S.reserve < 0 ? 'bad' : '') + '">' + Math.round(S.reserve) + ' MW</b></div>';
-    $('engReactorStat').innerHTML = statRow('HEAT', Math.round(S.heat) + '%') +
+    // power routing buses (persistent +/- controls — just update values)
+    ['reactor', 'shields', 'engines', 'weapons', 'sensors', 'life'].forEach(key => {
+      const ref = R.bus[key]; if (!ref) { return; }
+      const sy = S.sys[key], max = key === 'reactor' ? sy.max : 150;
+      ref.bar.style.width = clamp(sy.power / max, 0, 1) * 100 + '%';
+      ref.bar.className = (key !== 'reactor' && S.brownout) ? 'warn' : '';
+      ref.mw.textContent = key === 'reactor' ? Math.round(sy.power) + ' MW' : Math.round(SYS_DEFS.find(s => s.key === key).base * sy.power / 100) + ' MW';
+    });
+    $('engReactorStat').innerHTML = statRow('RESERVE', '<b class="' + (S.reserve < 0 ? 'bad' : '') + '">' + Math.round(S.reserve) + ' MW</b>') +
+      statRow('HEAT', Math.round(S.heat) + '%') +
       statRow('STATUS', S.heat > 85 ? '<span class="bad">UNSTABLE</span>' : S.brownout ? '<span class="warnt">BROWNOUT</span>' : '<span style="color:var(--green)">STABLE</span>');
     $('engSystems').innerHTML = S.rooms.filter(r => r.sys).map(sysRowEng).join('');
     const issues = S.rooms.filter(r => r.fire || r.breach || r.leak > 0 || r.status !== 'normal');
@@ -955,8 +1037,8 @@
   // ---------------------------------------------------------------- simulation
   function sim(dt) {
     if (!S.running || S.over) { return; }
-    // EMERGENCY BURN closes the distance faster — the run effectively ends sooner
-    const burnAdvance = S.posture === 'burn' ? dt * 0.8 : 0;
+    // EMERGENCY BURN / afterburner close the distance faster — run ends sooner
+    const burnAdvance = (S.posture === 'burn' ? dt * 0.8 : 0) + (S.buffs.afterburner > 0 ? dt * 1.1 : 0);
     S.t += dt + burnAdvance; S.clock += dt; S.cycle += dt * 0.0007;
 
     // cooldowns & buffs
@@ -1178,7 +1260,7 @@
     return { id: S._cid, kind: key, name: k.name, hp: hp, maxHp: hp, dist: rand(2.6, 4.2), facing: pick(SHIELD_SIDES), fireCd: rand(1.5, 3.5), dmgMin: k.dmg[0], dmgMax: k.dmg[1], size: k.size, speed: k.speed };
   }
   function enemyFire(c) {
-    const evasion = sysEff('engines') * 0.35 + (S.posture === 'evasive' ? 0.25 : 0);
+    const evasion = sysEff('engines') * 0.35 + (S.posture === 'evasive' ? 0.25 : 0) + (S.buffs.afterburner > 0 ? 0.3 : 0);
     if (chance(evasion)) { comms('info', 'EVASIVE — ' + c.name + ' MISSED'); return; }
     let dmg = rand(c.dmgMin, c.dmgMax) * (0.7 + S.danger * 0.12);
     const pointDef = sysEff('sensors') * 0.25 + sysEff('weapons') * 0.1 + (S.pods ? S.pods.pdef * bayCond('turret') : 0);

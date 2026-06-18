@@ -753,3 +753,13 @@ button:active { transform: translateY(0); }
 .wm-top { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--ink-dim); letter-spacing: .5px; }
 .wm-name { font-size: 13px; color: #e7f1ff; font-weight: 700; letter-spacing: .5px; margin: 2px 0; }
 .wm-stats { font-size: 10px; color: var(--cyan); font-family: ui-monospace, monospace; }
+
+/* ============================================ station power controls */
+.bus.ctrl { display: flex; align-items: center; gap: 6px; }
+.bus.ctrl .bus-l { width: 88px; flex-shrink: 0; }
+.bus.ctrl .seg-mini { flex: 1; margin: 0; }
+.bus.ctrl .bus-mw, .bus.ctrl b { width: 54px; text-align: right; font-family: ui-monospace, monospace; color: #e7f1ff; flex-shrink: 0; }
+.pw-btn { width: 22px; height: 20px; flex-shrink: 0; border-radius: 4px; border: 1px solid rgba(90,150,220,0.4); background: rgba(30,55,100,0.5); color: #cfe0ff; cursor: pointer; font-family: inherit; line-height: 1; padding: 0; }
+.pw-btn:hover { border-color: var(--cyan); background: rgba(40,75,130,0.7); }
+#engPower { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+#helmEngine { margin-bottom: 10px; }
