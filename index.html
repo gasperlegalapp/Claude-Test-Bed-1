@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CSS WAYFARER — Cargo Command</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===================== FIRST-RUN INTRO ===================== -->
+<div id="intro" class="overlay hidden">
+  <div class="brief-panel">
+    <div class="brief-logo">◣◢ WAYFARER LINES</div>
+    <h1>HAULER COMMAND</h1>
+    <p class="sub">Independent freight · Zhen-9 frontier</p>
+    <p class="brief-body">
+      You run an independent hauler out of <b>Zhen-9 Station</b>. Bolt the modules
+      you need onto your ship — <b>cargo, passengers, troops, shields</b> — take a
+      <b>contract</b>, and run the route. Longer, more dangerous runs pay more, but
+      pirates will come. Survive the run, get paid, and grow your operation:
+      bigger ship, better crew, more hardpoints.
+    </p>
+    <ul class="brief-goals">
+      <li><span class="g-ok">OUTFIT</span> Install modules on your ship's hardpoints</li>
+      <li><span class="g-warn">CONTRACT</span> Pick a route — weigh pay against danger</li>
+      <li><span class="g-bad">COMMAND</span> Route power & crew under fire to bring it home</li>
+    </ul>
+    <button id="introBtn">ENTER THE BRIDGE</button>
+  </div>
+</div>
+
+<!-- ===================== HOME BASE ===================== -->
+<div id="home" class="screen hidden">
+  <header class="screen-top">
+    <div class="brand">◣◢ WAYFARER LINES <span class="brand-sub">ZHEN-9 STATION</span></div>
+    <div class="screen-credits">CREDITS <b id="homeCredits">0</b> ◎</div>
+  </header>
+  <div class="home-body">
+    <div class="panel home-shipwrap">
+      <div class="panel-h">YOUR SHIP — CSS WAYFARER <span class="ph-r" id="homeClass">MULE-CLASS HAULER</span></div>
+      <canvas id="homeShip" class="ship-canvas"></canvas>
+      <div id="homeLoadout" class="loadout-summary"></div>
+    </div>
+    <div class="home-side">
+      <div class="panel">
+        <div class="panel-h">SELECTED CONTRACT</div>
+        <div id="homeContract" class="home-contract"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h">OPERATION</div>
+        <div id="homeStats" class="home-stats"></div>
+        <button id="coachToggle" class="coach-toggle" type="button">
+          <span class="ct-label">Coach tips</span>
+          <span class="ct-sw"><i></i></span>
+          <span class="ct-state">ON</span>
+        </button>
+        <div class="coach-hint">First time each new threat appears, a short tip explains how to respond.</div>
+      </div>
+      <div class="home-nav">
+        <button class="navbtn" data-screen="contracts"><span class="nv-i">▤</span><b>CONTRACTS</b><span class="nv-s">Pick a route</span></button>
+        <button class="navbtn" data-screen="outfit"><span class="nv-i">⊞</span><b>OUTFIT SHIP</b><span class="nv-s">Install modules</span></button>
+        <button class="navbtn" data-screen="shipyard"><span class="nv-i">⚒</span><b>SHIPYARD</b><span class="nv-s">Upgrade &amp; hire</span></button>
+        <button class="navbtn launch" id="homeLaunch"><span class="nv-i">▶</span><b>LAUNCH RUN</b><span class="nv-s">Begin the contract</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CONTRACTS ===================== -->
+<div id="contracts" class="screen hidden">
+  <header class="screen-top">
+    <button class="backbtn" data-screen="home">‹ BASE</button>
+    <div class="brand">CONTRACT BOARD</div>
+    <div class="screen-credits">CREDITS <b class="creditsTxt">0</b> ◎</div>
+  </header>
+  <div class="contract-list" id="contractList"></div>
+</div>
+
+<!-- ===================== OUTFITTING ===================== -->
+<div id="outfit" class="screen hidden">
+  <header class="screen-top">
+    <button class="backbtn" data-screen="home">‹ BASE</button>
+    <div class="brand">OUTFITTING BAY</div>
+    <div class="screen-credits">CREDITS <b class="creditsTxt">0</b> ◎</div>
+  </header>
+  <div class="outfit-body">
+    <div class="panel outfit-shipwrap">
+      <div class="panel-h">HARDPOINT LAYOUT</div>
+      <canvas id="outfitShip" class="ship-canvas"></canvas>
+      <div class="outfit-hint">Click a hardpoint to cycle the module installed there. You can only install modules you own.</div>
+    </div>
+    <div class="panel outfit-side">
+      <div class="panel-h">HARDPOINTS <span class="ph-r" id="outfitSlotsTxt"></span></div>
+      <div id="hardpointList" class="hardpoint-list"></div>
+      <div class="panel-h">WEAPON MOUNTS <span class="ph-r">click to change</span></div>
+      <div id="weaponMounts" class="weapon-mounts"></div>
+      <div class="panel-h">IN STORAGE</div>
+      <div id="inventoryList" class="inventory-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SHIPYARD ===================== -->
+<div id="shipyard" class="screen hidden">
+  <header class="screen-top">
+    <button class="backbtn" data-screen="home">‹ BASE</button>
+    <div class="brand">SHIPYARD</div>
+    <div class="screen-credits">CREDITS <b class="creditsTxt">0</b> ◎</div>
+  </header>
+  <div class="shipyard-body">
+    <div class="panel"><div class="panel-h">BUY MODULES</div><div id="shopModules" class="shop-list"></div></div>
+    <div class="panel"><div class="panel-h">SHIP UPGRADES</div><div id="shopUpgrades" class="shop-list"></div></div>
+    <div class="panel"><div class="panel-h">CREW</div><div id="shopCrew" class="shop-list"></div></div>
+  </div>
+</div>
+
+<!-- ===================== DEBRIEF ===================== -->
+<div id="debrief" class="overlay hidden">
+  <div class="brief-panel">
+    <h1 id="debriefTitle">RUN COMPLETE</h1>
+    <p class="sub" id="debriefSub"></p>
+    <div id="debriefStats" class="result-stats"></div>
+    <button id="debriefHome">RETURN TO BASE</button>
+  </div>
+</div>
+
+<!-- ===================== MAIN DASHBOARD ===================== -->
+<div id="app" class="hidden">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="tb-ship">
+      <div class="tb-logo">◣◢</div>
+      <div>
+        <div class="tb-name">CSS WAYFARER</div>
+        <div class="tb-class">DF-17 CLASS CARGO HAULER</div>
+      </div>
+    </div>
+    <div class="tb-stat"><label>SECTOR</label><span>ZHEN-9 TRADE RUN</span></div>
+    <div class="tb-stat"><label>CREDITS</label><span id="tbCredits">1,247,350 ◎</span></div>
+    <div class="tb-stat" id="tbThreatBox"><label>THREAT LEVEL</label><span id="tbThreat">LVL 0 · STANDBY</span><span class="hazbars" id="tbThreatBars"></span></div>
+    <div class="tb-stat" id="tbAlertBox"><label>ALERT STATE</label><span id="tbAlert">STANDBY</span></div>
+    <div class="tb-stat"><label>OBJECTIVE</label><span id="tbObjective">SURVIVE THE RAID</span></div>
+    <div class="tb-clock">
+      <div id="tbClock">22:41:07</div>
+      <div class="tb-cycle" id="tbCycle">CYCLE 1,467.11</div>
+    </div>
+    <div class="tb-controls">
+      <button id="btnPause" class="ctrl" title="Pause">❚❚</button>
+      <button id="btnFast" class="ctrl" title="Fast forward">▶▶</button>
+    </div>
+  </header>
+
+  <!-- STATION TABS -->
+  <nav class="station-tabs" id="stationTabs">
+    <button data-station="captain" class="active">CAPTAIN<kbd>F1</kbd></button>
+    <button data-station="tactical">TACTICAL<kbd>F2</kbd></button>
+    <button data-station="helm">HELM<kbd>F3</kbd></button>
+    <button data-station="engineering">ENGINEERING<kbd>F4</kbd></button>
+    <button data-station="operations">OPERATIONS<kbd>F5</kbd></button>
+    <button data-station="executive">EXECUTIVE<kbd>F6</kbd></button>
+  </nav>
+
+  <div class="stations" id="stations">
+
+  <!-- ============ CAPTAIN ============ -->
+  <section class="station" data-station="captain">
+  <!-- BODY -->
+  <main class="layout">
+
+    <!-- ===== LEFT COLUMN ===== -->
+    <section class="col col-left">
+      <div class="panel">
+        <div class="panel-h">CREW MANAGEMENT <span class="ph-r" id="crewCount">24 / 28 CREW</span></div>
+        <div class="sub-h">COMMAND</div>
+        <div class="captain" id="captainCard"></div>
+        <div class="sub-h">DEPARTMENTS</div>
+        <div id="deptList"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">REPAIR CREW <span class="ph-r" id="repairPool"></span></div>
+        <div id="repairBody" class="repair-body"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">CASUALTIES</div>
+        <div class="casualties" id="casualties"></div>
+      </div>
+
+      <div class="panel grow">
+        <div class="panel-h">CARGO MANIFEST <span class="ph-r" id="cargoValue"></span></div>
+        <div id="cargoList"></div>
+        <div class="cargo-space">
+          <div class="cs-row"><span>TOTAL SPACE</span><span id="cargoSpaceTxt"></span></div>
+          <div class="seg" id="cargoSpaceBar"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== CENTER COLUMN ===== -->
+    <section class="col col-center">
+      <div class="panel grow">
+        <div id="coachToast" class="coach-toast hidden">
+          <button class="coach-x" id="coachDismiss" title="Dismiss">✕</button>
+          <div class="coach-tag">COACH TIP</div>
+          <div class="coach-title" id="coachTitle"></div>
+          <div class="coach-body" id="coachBody"></div>
+        </div>
+        <div class="panel-h">▲ SHIP SCHEMATIC COMMAND VIEW
+          <span class="legend">
+            <i class="lg normal"></i>NORMAL
+            <i class="lg damaged"></i>DAMAGED
+            <i class="lg critical"></i>CRITICAL
+            <i class="lg fire"></i>FIRE
+            <i class="lg breach"></i>BREACH
+            <i class="lg crew"></i>CREW
+          </span>
+        </div>
+        <div class="schematic" id="schematic"></div>
+        <div class="pod-strip-wrap">
+          <div class="pod-strip-h">POD HARDPOINTS</div>
+          <div class="pod-strip" id="podStrip"></div>
+        </div>
+        <div class="hull-row">
+          <span class="hull-label">HULL INTEGRITY <b id="hullPct">72%</b></span>
+          <div class="seg hull" id="hullBar"></div>
+          <span class="hull-warn" id="hullWarn">⚠ MULTIPLE SYSTEMS DAMAGED</span>
+        </div>
+      </div>
+
+      <!-- bottom strip of center+ : the operational panels -->
+      <div class="ops-row">
+        <div class="panel">
+          <div class="panel-h">PASSENGER SAFETY <span class="ph-r" id="paxSafe">38 / 48 SAFE</span></div>
+          <div class="pax-grid" id="paxGrid"></div>
+          <div class="pax-foot">
+            <div class="cs-row"><span>MORALE</span><span id="paxMoraleTxt">68%</span></div>
+            <div class="seg" id="paxMoraleBar"></div>
+            <div class="cs-row"><span>PANIC RISK</span><span id="paxPanic" class="risk-high">HIGH</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h alarm">ACTIVE HAZARDS</div>
+          <div id="hazardList" class="hazard-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">EMERGENCY ACTIONS</div>
+          <div class="actions" id="actionList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== RIGHT COLUMN ===== -->
+    <section class="col col-right">
+      <div class="panel">
+        <div class="panel-h">EXTERNAL VIEW <span class="ph-r live">● LIVE</span></div>
+        <canvas id="extCanvas" class="ext-cam"></canvas>
+        <div class="ext-foot"><span>RANGE 2.1 KM</span><span>CAM 01 · EXTERIOR</span></div>
+      </div>
+
+      <div class="panel grow">
+        <div class="panel-h">SYSTEMS &amp; POWER <span class="ph-r" id="reactorOut">REACTOR 120 / 153 MW</span></div>
+        <div id="powerList"></div>
+        <div class="reserve-row">
+          <span>POWER RESERVE</span>
+          <div class="seg reserve" id="reserveBar"></div>
+          <span id="reserveTxt">8 / 153 MW</span>
+        </div>
+      </div>
+
+      <div class="panel grow">
+        <div class="panel-h">EVENT LOG <span class="ph-r">FILTER: ALL</span></div>
+        <div id="eventLog" class="event-log"></div>
+      </div>
+    </section>
+  </main>
+  </section><!-- /captain -->
+
+  <!-- ============ TACTICAL ============ -->
+  <section class="station hidden" data-station="tactical">
+    <div class="stn-grid stn-tactical">
+      <div class="panel grow"><div class="panel-h">TARGETING <span class="ph-r" id="tacThreat"></span></div>
+        <div id="tacTargeting" class="tac-targeting"></div>
+        <div id="tacCommands" class="stn-actions"></div>
+        <div class="panel-h">CONTACTS</div>
+        <div id="tacContacts" class="contact-list"></div>
+      </div>
+      <div class="panel"><div class="panel-h">WEAPON MOUNTS</div>
+        <div id="tacWeapons" class="weapon-list"></div>
+        <div class="panel-h">SHIELDS &amp; HULL <span class="ph-r">power-allocated</span></div>
+        <div id="tacShields" class="shield-grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HELM ============ -->
+  <section class="station hidden" data-station="helm">
+    <div class="stn-grid stn-helm">
+      <div class="panel grow"><div class="panel-h">NAVIGATION <span class="ph-r" id="helmDest"></span></div>
+        <div id="helmReadout" class="helm-readout"></div>
+        <div class="panel-h">ENGINE CONTROL</div>
+        <div id="helmEngine" class="bus ctrl"></div>
+        <div id="helmControls" class="stn-actions"></div>
+      </div>
+      <div class="panel"><div class="panel-h">FLIGHT POSTURE</div>
+        <div id="helmPostures" class="posture-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ENGINEERING ============ -->
+  <section class="station hidden" data-station="engineering">
+    <div class="stn-grid stn-eng">
+      <div class="panel"><div class="panel-h">POWER DISTRIBUTION <span class="ph-r" id="engReactor"></span></div>
+        <div id="engPower" class="eng-power"></div>
+        <div class="panel-h">REACTOR</div>
+        <div id="engReactorStat" class="eng-reactor"></div>
+      </div>
+      <div class="panel"><div class="panel-h">SYSTEMS STATUS</div>
+        <div id="engSystems" class="eng-systems"></div>
+      </div>
+      <div class="panel"><div class="panel-h alarm">ACTIVE ISSUES</div>
+        <div id="engIssues" class="eng-issues"></div>
+        <div class="panel-h">ENGINEERING ACTIONS</div>
+        <div id="engActions" class="stn-actions"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ OPERATIONS ============ -->
+  <section class="station hidden" data-station="operations">
+    <div class="stn-grid stn-ops">
+      <div class="panel"><div class="panel-h">CARGO MANIFEST <span class="ph-r" id="opsCargoVal"></span></div>
+        <div id="opsCargo" class="ops-cargo"></div>
+      </div>
+      <div class="panel"><div class="panel-h">PASSENGERS <span class="ph-r" id="opsPaxTot"></span></div>
+        <div id="opsPax" class="ops-pax"></div>
+        <div class="panel-h">POD HARDPOINTS</div>
+        <div id="opsPods" class="ops-pods"></div>
+      </div>
+      <div class="panel"><div class="panel-h">OPERATIONS COMMANDS</div>
+        <div id="opsCommands" class="stn-actions"></div>
+        <div class="panel-h">OPERATIONAL STATUS</div>
+        <div id="opsStatus" class="ops-status"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ EXECUTIVE ============ -->
+  <section class="station hidden" data-station="executive">
+    <div class="exec-wrap">
+      <div class="exec-head">EXECUTIVE COMMAND<span class="exec-sub">IRREVERSIBLE DECISIONS</span></div>
+      <div id="execGrid" class="exec-grid"></div>
+      <div id="execConfirm" class="exec-confirm hidden">
+        <div class="exec-confirm-title" id="execConfirmTitle"></div>
+        <div class="exec-confirm-body" id="execConfirmBody"></div>
+        <div class="exec-confirm-btns">
+          <button id="execCancel" class="exec-btn-cancel">CANCEL</button>
+          <button id="execGo" class="exec-btn-go">CONFIRM ORDER</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </div><!-- /stations -->
+
+  <!-- ROOM INSPECTOR -->
+  <div id="roomModal" class="overlay modal hidden">
+    <div class="modal-panel" id="roomModalPanel"></div>
+  </div>
+
+  <!-- COMMS TICKER -->
+  <footer class="comms">
+    <span class="comms-ico">📡 COMMS LOG</span>
+    <div class="comms-track" id="commsTrack"></div>
+    <span class="comms-save" id="autosave">◌ AUTOSAVE 22:41:07</span>
+  </footer>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
