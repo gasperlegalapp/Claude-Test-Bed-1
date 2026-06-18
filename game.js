@@ -144,7 +144,8 @@
   const UPGRADE_DEFS = [
     { key: 'hardpoint', name: 'Hardpoint Mount', ico: '⊞', desc: '+1 module slot', max: 4, cost: l => 22000 + l * 16000 },
     { key: 'reactor',   name: 'Reactor Core',    ico: '⚛', desc: '+12 MW reactor cap', max: 5, cost: l => 12000 + l * 10000 },
-    { key: 'hull',      name: 'Reinforced Hull', ico: '⛨', desc: '-12% hull damage taken', max: 5, cost: l => 10000 + l * 9000 },
+    { key: 'hull',      name: 'Hull Plating',    ico: '⛨', desc: '-12% hull plating damage (permanent in flight)', max: 5, cost: l => 10000 + l * 9000 },
+    { key: 'podplating',name: 'Pod Plating',     ico: '▣', desc: '+12% pod durability & redundancy', max: 5, cost: l => 9000 + l * 8000 },
     { key: 'shield',    name: 'Shield Booster',  ico: '◈', desc: '+12% shield strength', max: 5, cost: l => 11000 + l * 9000 },
     { key: 'weapon',    name: 'Weapon Array',    ico: '⚔', desc: '+12% weapon power', max: 5, cost: l => 11000 + l * 9000 },
     { key: 'engine',    name: 'Engine Tuning',   ico: '⏚', desc: '+12% thrust & evasion', max: 5, cost: l => 9000 + l * 8000 },
@@ -157,7 +158,7 @@
   function defaultMeta() {
     return {
       credits: 45000,
-      upgrades: { hardpoint: 0, reactor: 0, hull: 0, shield: 0, weapon: 0, engine: 0 },
+      upgrades: { hardpoint: 0, reactor: 0, hull: 0, podplating: 0, shield: 0, weapon: 0, engine: 0 },
       crewTier: 0,
       inventory: { cargo: 3, passenger: 1, military: 1, shield: 0 },
       loadout: ['cargo', 'cargo', 'passenger', 'military', null, null],
@@ -303,6 +304,7 @@
       cargoValue: cargo.reduce((a, c) => a + c.value, 0),
       milPods: cfg.milPods || 0,
       hull: 100,
+      hullSides: { fore: 100, port: 100, stbd: 100, aft: 100 }, // external plating — permanent in flight
       shields: { fore: { hp: 0, max: 0, down: 0 }, port: { hp: 0, max: 0, down: 0 }, stbd: { hp: 0, max: 0, down: 0 }, aft: { hp: 0, max: 0, down: 0 } },
       shieldAlloc: { fore: 25, port: 25, stbd: 25, aft: 25 },
       contacts: [], _cid: 0,
@@ -861,10 +863,12 @@
     SHIELD_SIDES.forEach(side => {
       const el = document.createElement('div'); el.className = 'shq';
       el.innerHTML = '<div class="shq-h"><b>' + side.toUpperCase() + '</b><span class="shq-lbl"></span></div>' +
-        '<div class="seg-mini"><i></i></div>' +
+        '<div class="seg-mini shq-sh"><i></i></div>' +
+        '<div class="shq-hull"><span class="shq-hk">HULL</span><div class="seg-mini shq-hb"><i></i></div><span class="shq-hp"></span></div>' +
         '<div class="shq-alloc"><button data-alloc="' + side + ':-">−</button><span class="shq-pct"></span><button data-alloc="' + side + ':+">+</button></div>';
       sg.appendChild(el);
-      R.shq[side] = { el: el, bar: el.querySelector('.seg-mini i'), lbl: el.querySelector('.shq-lbl'), pct: el.querySelector('.shq-pct') };
+      R.shq[side] = { el: el, bar: el.querySelector('.shq-sh i'), lbl: el.querySelector('.shq-lbl'),
+        hullbar: el.querySelector('.shq-hb i'), hullpct: el.querySelector('.shq-hp'), pct: el.querySelector('.shq-pct') };
     });
     sg.querySelectorAll('[data-alloc]').forEach(b => {
       const a = b.getAttribute('data-alloc').split(':');
@@ -948,14 +952,18 @@
         '<div class="wpn-sub">' + mt.label + ' · MOUNT T' + mt.type + ' · ' + w.kind.toUpperCase() + '</div>' +
         '<div class="wpn-stats"><span>AMMO ' + ammoTxt + '</span><span>PWR ' + w.power + '</span><span>DMG ' + w.dmg + '</span></div></div>';
     }).join('');
-    // shield quadrants — update persistent elements only
+    // shield quadrants + hull plating per facing — update persistent elements only
     SHIELD_SIDES.forEach(side => {
       const sh = S.shields[side], ref = R.shq[side]; if (!ref) { return; }
       const f = sh.max > 0 ? clamp(sh.hp / sh.max, 0, 1) * 100 : 0;
-      ref.el.className = 'shq ' + (sh.down > 0 ? 'down' : f < 30 ? 'low' : '');
-      ref.lbl.textContent = sh.down > 0 ? 'DOWN ' + Math.ceil(sh.down) + 's' : Math.round(sh.hp) + ' / ' + Math.round(sh.max);
+      const hull = S.hullSides[side];
+      ref.el.className = 'shq ' + (hull <= 0 ? 'breached' : sh.down > 0 ? 'down' : f < 30 ? 'low' : '');
+      ref.lbl.textContent = sh.down > 0 ? 'SHIELD DOWN ' + Math.ceil(sh.down) + 's' : Math.round(sh.hp) + ' / ' + Math.round(sh.max);
       ref.bar.className = sh.down > 0 ? 'bad' : f < 30 ? 'warn' : '';
       ref.bar.style.width = f + '%';
+      ref.hullbar.className = hull <= 0 ? 'bad' : hull < 40 ? 'warn' : 'hull';
+      ref.hullbar.style.width = clamp(hull, 0, 100) + '%';
+      ref.hullpct.textContent = hull <= 0 ? 'BREACHED' : Math.round(hull) + '%';
       ref.pct.textContent = Math.round(S.shieldAlloc[side]) + '%';
     });
   }
@@ -1146,9 +1154,8 @@
       S.cargo.forEach(c => { c.integrity = cond; });
     }
 
-    // ---- hull from average room health + direct combat handled in volley ----
-    const avg = S.rooms.reduce((a, r) => a + r.health, 0) / S.rooms.length;
-    S.hull = clamp(S.hull + (avg - S.hull) * 0.05 * dt, 0, 100);
+    // ---- hull = average of the four plating facings (permanent; only falls) ----
+    S.hull = (S.hullSides.fore + S.hullSides.port + S.hullSides.stbd + S.hullSides.aft) / 4;
 
     // ---- passengers panic / morale ----
     const hazardCount = S.rooms.filter(r => r.fire || r.breach).length;
@@ -1273,12 +1280,18 @@
     if (absorbed > 0) { comms('warn', '[' + facing.toUpperCase() + '] SHIELD ABSORB ' + Math.round(absorbed)); }
     if (sh.hp <= 0 && absorbed > 0 && sh.down <= 0) { sh.down = 7; logEvent('warn', facing.toUpperCase() + ' shield collapsed — emitter overloaded'); comms('bad', facing.toUpperCase() + ' SHIELD DOWN'); }
     if (leak <= 0) { return; }
+    // anything past the shield chews PERMANENTLY into that facing's hull plating
+    const breached = S.hullSides[facing] <= 0;
+    S.hullSides[facing] = clamp(S.hullSides[facing] - leak * 0.5 * S.bonus.hull, 0, 100);
+    if (S.hullSides[facing] <= 0 && !breached) { logEvent('bad', facing.toUpperCase() + ' HULL PLATING BREACHED — permanent'); comms('bad', facing.toUpperCase() + ' HULL BREACH'); }
+    // internal damage to a compartment — amplified when this facing is exposed
+    const exposure = breached ? 1.7 : 1.0;
     const rm = pick(S.rooms);
-    rm.health = clamp(rm.health - leak * 0.9, 0, 100);
-    S.hull = clamp(S.hull - leak * 0.12 * S.bonus.hull, 0, 100);
-    logEvent('bad', rm.label + ' hit (' + Math.round(leak) + ' dmg)'); comms('bad', rm.label + ' HIT');
-    if (leak > 16 && chance(0.5)) { rm.fire = true; logEvent('bad', 'Fire started in ' + rm.label); }
-    if (S.hull < 45 && leak > 20 && chance(0.35)) {
+    const armor = rm.hardpoint ? (1 - (S.bonus.podArmor || 0)) : 1; // pod plating upgrade
+    rm.health = clamp(rm.health - leak * 0.7 * exposure * armor, 0, 100);
+    logEvent('bad', rm.label + ' hit (' + Math.round(leak * exposure) + ' dmg)'); comms('bad', rm.label + ' HIT');
+    if (leak * exposure > 16 && chance(0.5 * exposure)) { rm.fire = true; logEvent('bad', 'Fire started in ' + rm.label); }
+    if (breached && leak > 14 && chance(0.4)) {
       rm.breach = true; logEvent('bad', 'HULL BREACH — ' + rm.label);
       if (S.danger >= 2 && !rm.boarders && chance(0.5)) { rm.boarders = true; logEvent('bad', 'Boarders coming through the breach — ' + rm.label); comms('bad', 'BOARDERS — ' + rm.label); coach('boarders'); }
     }
@@ -2132,6 +2145,7 @@
       shield: 1 + up.shield * 0.12,
       engine: 1 + up.engine * 0.12,
       hull: 1 / (1 + up.hull * 0.12),
+      podArmor: (up.podplating || 0) * 0.12,
       pdef: 0,
       reactorCap: 153 + up.reactor * 12,
     };

@@ -763,3 +763,12 @@ button:active { transform: translateY(0); }
 .pw-btn:hover { border-color: var(--cyan); background: rgba(40,75,130,0.7); }
 #engPower { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 #helmEngine { margin-bottom: 10px; }
+
+/* per-facing hull readout inside each shield quadrant */
+.shq.breached { border-color: var(--red); background: rgba(70,18,22,0.5); }
+.shq-hull { display: flex; align-items: center; gap: 5px; margin: 4px 0 2px; }
+.shq-hull .shq-hk { font-size: 8.5px; letter-spacing: 1px; color: var(--ink-faint); width: 28px; flex-shrink: 0; }
+.shq-hull .seg-mini { flex: 1; margin: 0; height: 5px; }
+.shq-hull .seg-mini i.hull { background: #7d97be; }
+.shq-hp { font-size: 9px; font-family: ui-monospace, monospace; color: var(--ink-dim); width: 46px; text-align: right; flex-shrink: 0; }
+.shq.breached .shq-hp { color: var(--red); }

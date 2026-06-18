@@ -126,7 +126,11 @@ for the pure figure-it-out experience. The setting is remembered between runs.
   - **Captain** — the full overview: schematic, crew, hazards, log.
   - **Tactical** — individual enemy contacts (HP, distance, facing, fire timer;
     click to lock), **fire-at-will + target priority** (closest/strongest/weakest),
-    four **weapon mounts**, and **four-facing shields** with per-side power allocation.
+    four **weapon mounts**, and **four-facing shields + hull plating**. Each
+    facing has a shield (regenerates from allocated power) over **permanent hull
+    plating** — when a shield drops, hits chew into that facing's plate, and a
+    breached plate can't be repaired in flight (only upgraded at base). Boosting
+    one shield facing pulls power from its opposite.
   - **Helm** — destination ETA, engine/heat readout, and **flight postures**
     (Steady / Evasive / Silent / Emergency Burn), each a real tradeoff.
   - **Engineering** — power distribution, systems status, active faults, repair/power orders.
