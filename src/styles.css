@@ -1,0 +1,66 @@
+:root {
+  --bg: #14171c;
+  --panel: #1e2228;
+  --panel-2: #262b33;
+  --ink: #e6e9ef;
+  --muted: #8b94a3;
+  --accent: #4f9da6;
+  --good: #5fb878;
+  --bad: #d9655f;
+  --warn: #d8a23a;
+  --line: #333a44;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas,
+    monospace;
+  font-size: 14px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar h1 {
+  font-size: 18px;
+  letter-spacing: 3px;
+  margin: 0;
+  color: var(--accent);
+}
+
+.stat {
+  color: var(--muted);
+}
+
+button {
+  background: var(--accent);
+  color: #06212a;
+  border: 0;
+  padding: 7px 14px;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.1);
+}
+
+button:disabled {
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: not-allowed;
+}
