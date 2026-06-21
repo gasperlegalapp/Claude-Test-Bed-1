@@ -1,26 +1,50 @@
 import { createRng } from "./rng.ts";
-import type { GameState, Skills, Staff } from "./types.ts";
+import type { District, GameState, Skills, Staff } from "./types.ts";
 import { SKILL_AXES } from "../data/skills.ts";
 import { STARTING_STAFF, type StaffSeed } from "../data/staff.ts";
+import { CITY } from "../data/city.ts";
 import { rollNewCase } from "./jobs.ts";
 
 const STARTING_MONEY = 15000;
 const STARTING_REPUTATION = 10;
-export const CASE_POOL_TARGET = 5; // how many open cases to keep on offer
 
-// ---- Balance constants used by scoring / win-loss ----
-// Each reputation point this much firm valuation (prestige is worth money).
-export const REP_VALUE = 1500;
-// Lose if the firm can't make payroll (negative cash) this many weeks running.
+// ---- Balance constants ----
+export const REP_VALUE = 1500; // firm valuation per reputation point
+export const OFFICE_VALUE = 10000; // firm valuation per office (asset value)
 export const DEBT_WEEKS_TO_BANKRUPTCY = 4;
+export const SCOUT_WEEKS = 2;
+export const BUILD_WEEKS = 2;
+export const BUILD_COST = 8000;
 
-// Expand a sparse staff seed into a full skill record (unset axes default to 1).
+// How many open cases to keep on offer: a base, plus capacity for each
+// district you've revealed and each office you've built. Expanding the firm
+// literally widens the funnel of work.
+export function casePoolTarget(districts: District[]): number {
+  const discovered = districts.filter((d) => d.discovered).length;
+  const offices = districts.filter((d) => d.hasOffice).length;
+  return 5 + (discovered - 1) + (offices - 1);
+}
+
 function buildSkills(partial: StaffSeed["skills"]): Skills {
   const skills = {} as Skills;
   for (const axis of SKILL_AXES) {
     skills[axis] = partial[axis] ?? 1;
   }
   return skills;
+}
+
+function buildDistricts(): District[] {
+  return CITY.map((seed) => ({
+    id: seed.id,
+    name: seed.name,
+    x: seed.x,
+    y: seed.y,
+    wealth: seed.wealth,
+    dominantSkill: seed.dominantSkill,
+    isHome: !!seed.isHome,
+    discovered: !!seed.isHome, // only home starts revealed
+    hasOffice: !!seed.isHome, // ...with an office
+  }));
 }
 
 // Builds a fresh game. Pass a seed for reproducible runs.
@@ -38,9 +62,12 @@ export function createInitialState(seed = 1): GameState {
     jobId: null,
   }));
 
+  const districts = buildDistricts();
+
   const availableCases = [];
-  for (let i = 0; i < CASE_POOL_TARGET; i++) {
-    const rolled = rollNewCase(`case-${nextId++}`, rng);
+  const target = casePoolTarget(districts);
+  for (let i = 0; i < target; i++) {
+    const rolled = rollNewCase(districts, `case-${nextId++}`, rng);
     rng = rolled.rng;
     availableCases.push(rolled.caseInst);
   }
@@ -51,6 +78,7 @@ export function createInitialState(seed = 1): GameState {
     money: STARTING_MONEY,
     reputation: STARTING_REPUTATION,
     staff,
+    districts,
     availableCases,
     activeJobs: [],
     lastTurn: null,

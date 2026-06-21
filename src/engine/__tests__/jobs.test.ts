@@ -34,6 +34,8 @@ function makeCase(over: Partial<CaseInstance> = {}): CaseInstance {
     payoff: 10000,
     riskCost: 1000,
     reputation: 4,
+    districtId: "downtown",
+    districtName: "Old Downtown",
     ...over,
   };
 }
@@ -63,6 +65,14 @@ describe("successChance", () => {
     const weak = successChance(c, [staff({ litigation: 1 })]);
     expect(strong).toBeGreaterThan(0.5);
     expect(weak).toBeLessThan(0.5);
+  });
+
+  it("an office score bonus raises the odds", () => {
+    const c = makeCase({ requiredSkills: ["litigation"], difficulty: 8 });
+    const team = [staff({ litigation: 5 })];
+    const without = successChance(c, team, 0);
+    const withOffice = successChance(c, team, 3);
+    expect(withOffice).toBeGreaterThan(without);
   });
 
   it("never leaves the [0.05, 0.95] band", () => {

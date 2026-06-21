@@ -89,4 +89,40 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     riskCost: 1800,
     reputation: 4,
   },
+  {
+    templateId: "rainmaker-gala",
+    title: "The Rainmaker's Gala",
+    flavor:
+      "A $300-a-plate charity dinner that is, legally speaking, entirely about getting three general counsels to like you.",
+    requiredSkills: ["networking"],
+    difficulty: 6,
+    durationWeeks: 1,
+    payoff: 6000,
+    riskCost: 700,
+    reputation: 3,
+  },
+  {
+    templateId: "paper-trail",
+    title: "The Paper Trail",
+    flavor:
+      "Forty bankers' boxes of documents and one paralegal with a deeply personal vendetta against poor indexing.",
+    requiredSkills: ["research"],
+    difficulty: 8,
+    durationWeeks: 2,
+    payoff: 8000,
+    riskCost: 1200,
+    reputation: 3,
+  },
+  {
+    templateId: "lease-of-problems",
+    title: "Lease of Our Problems",
+    flavor:
+      "A commercial tenant, a flooded basement, and a lease drafted by the landlord's nephew over a long weekend.",
+    requiredSkills: ["diligence", "litigation"],
+    difficulty: 10,
+    durationWeeks: 2,
+    payoff: 9500,
+    riskCost: 1600,
+    reputation: 3,
+  },
 ];

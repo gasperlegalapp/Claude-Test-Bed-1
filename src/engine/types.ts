@@ -3,11 +3,10 @@ import type { SkillAxis } from "../data/skills.ts";
 import type { StaffRole } from "../data/staff.ts";
 
 // ---------------------------------------------------------------------------
-// Game state (Milestone 1).
+// Game state (through Milestone 3).
 //
 // One flat, JSON-serializable object. All game rules read and return this via
-// pure reducer functions — no DOM, no globals, no hidden mutation. It grows
-// milestone by milestone.
+// pure reducer functions — no DOM, no globals, no hidden mutation.
 // ---------------------------------------------------------------------------
 
 export type Skills = Record<SkillAxis, number>;
@@ -24,7 +23,20 @@ export interface Staff {
   jobId: string | null; // the active job this staffer is working, if any
 }
 
-// A concrete, offered case (instantiated from a CaseTemplate).
+// A district on the city map. Starts fogged unless it's home.
+export interface District {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  wealth: number; // 1–3
+  dominantSkill: SkillAxis;
+  isHome: boolean;
+  discovered: boolean; // revealed by scouting (or home)
+  hasOffice: boolean; // built office: success bonus + more caseload here
+}
+
+// A concrete, offered case (instantiated from a CaseTemplate for a district).
 export interface CaseInstance {
   id: string;
   templateId: string;
@@ -36,35 +48,53 @@ export interface CaseInstance {
   payoff: number;
   riskCost: number;
   reputation: number; // reputation gained on a clean success
+  districtId: string;
+  districtName: string;
 }
 
-// An in-progress assignment of staff to a case.
-export interface Job {
+// In-progress assignments. Three kinds of work share the staff/timer shape.
+export type JobKind = "case" | "scout" | "build";
+
+interface JobBase {
   id: string;
-  case: CaseInstance;
   staffIds: string[];
   weeksRemaining: number;
 }
+export interface CaseJob extends JobBase {
+  kind: "case";
+  case: CaseInstance;
+}
+export interface ScoutJob extends JobBase {
+  kind: "scout";
+  districtId: string;
+  districtName: string;
+}
+export interface BuildJob extends JobBase {
+  kind: "build";
+  districtId: string;
+  districtName: string;
+}
+export type Job = CaseJob | ScoutJob | BuildJob;
 
 export type Outcome = "critical" | "success" | "partial" | "failure";
 
-// Record of one case resolving during end-of-turn processing.
-export interface ResolvedJob {
-  caseTitle: string;
-  outcome: Outcome;
-  moneyDelta: number;
-  repDelta: number;
+// One thing that happened during end-of-turn processing, for the recap.
+export interface TurnEvent {
+  kind: JobKind;
+  title: string; // case title, or district name for scout/build
+  outcome?: Outcome; // cases only
+  moneyDelta?: number;
+  repDelta?: number;
+  detail?: string; // e.g. "District revealed", "Office opened"
   staffNames: string[];
 }
 
-// Summary of everything that happened on the most recent End Turn, for the UI.
 export interface TurnLog {
   week: number;
   salariesPaid: number;
-  resolved: ResolvedJob[];
+  events: TurnEvent[];
 }
 
-// Whether the run is ongoing, won, or lost.
 export type GameStatus = "playing" | "won" | "lost";
 
 export interface GameState {
@@ -73,11 +103,12 @@ export interface GameState {
   money: number;
   reputation: number;
   staff: Staff[];
+  districts: District[];
   availableCases: CaseInstance[];
   activeJobs: Job[];
   lastTurn: TurnLog | null;
   nextId: number; // deterministic counter for unique ids
   weeksInDebt: number; // consecutive end-of-week with negative cash
   status: GameStatus;
-  statusReason: string; // human-readable win/loss explanation
+  statusReason: string;
 }

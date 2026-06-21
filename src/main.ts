@@ -4,21 +4,32 @@ import type { GameState } from "./engine/types.ts";
 import { renderApp, type UiState } from "./ui/render.ts";
 import "./styles.css";
 
+function freshUi(game: GameState): UiState {
+  // Start focused on the home district so there's something to do immediately.
+  const home = game.districts.find((d) => d.isHome);
+  return {
+    selectedDistrictId: home ? home.id : null,
+    selectedCaseId: null,
+    selectedStaff: new Set(),
+    showSummary: false,
+  };
+}
+
 let game: GameState = createInitialState(Date.now() >>> 0);
-let ui: UiState = {
-  selectedCaseId: null,
-  selectedStaff: new Set(),
-  showSummary: false,
-};
+let ui: UiState = freshUi(game);
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 
 function render(): void {
   renderApp(root, game, ui, {
-    selectCase(id) {
-      // Toggle selection; switching cases clears the in-progress team pick.
-      ui.selectedCaseId = ui.selectedCaseId === id ? null : id;
+    selectDistrict(id) {
+      ui.selectedDistrictId = ui.selectedDistrictId === id ? null : id;
+      ui.selectedCaseId = null;
       ui.selectedStaff.clear();
+      render();
+    },
+    selectCase(id) {
+      ui.selectedCaseId = ui.selectedCaseId === id ? null : id;
       render();
     },
     toggleStaff(id) {
@@ -26,14 +37,34 @@ function render(): void {
       else ui.selectedStaff.add(id);
       render();
     },
-    assign() {
+    assignCase() {
       if (!ui.selectedCaseId || ui.selectedStaff.size === 0) return;
       game = reduce(game, {
-        type: "ASSIGN",
+        type: "ASSIGN_CASE",
         caseId: ui.selectedCaseId,
         staffIds: [...ui.selectedStaff],
       });
       ui.selectedCaseId = null;
+      ui.selectedStaff.clear();
+      render();
+    },
+    scout() {
+      if (!ui.selectedDistrictId || ui.selectedStaff.size === 0) return;
+      game = reduce(game, {
+        type: "SCOUT",
+        districtId: ui.selectedDistrictId,
+        staffIds: [...ui.selectedStaff],
+      });
+      ui.selectedStaff.clear();
+      render();
+    },
+    buildOffice() {
+      if (!ui.selectedDistrictId || ui.selectedStaff.size === 0) return;
+      game = reduce(game, {
+        type: "BUILD_OFFICE",
+        districtId: ui.selectedDistrictId,
+        staffIds: [...ui.selectedStaff],
+      });
       ui.selectedStaff.clear();
       render();
     },
@@ -50,19 +81,16 @@ function render(): void {
     },
     newGame() {
       game = createInitialState(Date.now() >>> 0);
-      ui = { selectedCaseId: null, selectedStaff: new Set(), showSummary: false };
+      ui = freshUi(game);
       render();
     },
   });
 }
 
-// Keyboard shortcuts — the genre standard: End Turn on E / Enter, dismiss
-// overlays on Escape.
+// Keyboard shortcuts: End Turn on E / Enter, dismiss overlays on Escape.
 window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement)?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
-
-  // Once the run is over, only the New Game button drives things.
   if (game.status !== "playing") return;
 
   if (ui.showSummary) {
@@ -74,7 +102,6 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape" && ui.selectedCaseId) {
     ui.selectedCaseId = null;
-    ui.selectedStaff.clear();
     render();
   } else if (e.key === "Enter" || e.key.toLowerCase() === "e") {
     game = reduce(game, { type: "END_TURN" });
