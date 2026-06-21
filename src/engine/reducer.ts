@@ -14,8 +14,8 @@ import {
   SCOUT_WEEKS,
 } from "./state.ts";
 import { checkStatus } from "./scoring.ts";
-import { trainStaff } from "./growth.ts";
-import { SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
+import { gainXp, spendSkillPoint } from "./growth.ts";
+import { type SkillAxis } from "../data/skills.ts";
 import { PRACTICE_AREAS } from "../data/practices.ts";
 
 // All game actions flow through this reducer: (state, action) -> new state.
@@ -26,6 +26,7 @@ export type Action =
   | { type: "SCOUT"; districtId: string; staffIds: string[] }
   | { type: "BUILD_OFFICE"; districtId: string; staffIds: string[] }
   | { type: "UNLOCK_PRACTICE"; practiceId: string }
+  | { type: "SPEND_SKILL_POINT"; staffId: string; axis: SkillAxis }
   | { type: "END_TURN" };
 
 export function reduce(state: GameState, action: Action): GameState {
@@ -40,11 +41,29 @@ export function reduce(state: GameState, action: Action): GameState {
       return buildOffice(state, action.districtId, action.staffIds);
     case "UNLOCK_PRACTICE":
       return unlockPractice(state, action.practiceId);
+    case "SPEND_SKILL_POINT":
+      return spendPoint(state, action.staffId, action.axis);
     case "END_TURN":
       return endTurn(state);
     default:
       return state;
   }
+}
+
+// Spend a banked skill point on one of a staffer's skills.
+function spendPoint(
+  state: GameState,
+  staffId: string,
+  axis: SkillAxis,
+): GameState {
+  let changed = false;
+  const staff = state.staff.map((s) => {
+    if (s.id !== staffId) return s;
+    const next = spendSkillPoint(s, axis);
+    if (next) changed = true;
+    return next ?? s;
+  });
+  return changed ? { ...state, staff } : state;
 }
 
 // Unlock a practice area: requires its prerequisites and enough money + rep.
@@ -193,8 +212,8 @@ function endTurn(state: GameState): GameState {
   const freedStaff = new Set<string>();
   const revealed = new Set<string>();
   const builtOffices = new Set<string>();
-  // Which case (skills + outcome) each freed staffer worked, so they can train.
-  const training = new Map<string, { axes: SkillAxis[]; outcome: Outcome }>();
+  // What each freed staffer worked (outcome + difficulty), so they earn XP.
+  const training = new Map<string, { outcome: Outcome; difficulty: number }>();
 
   const staffNamesOf = (ids: string[]) =>
     ids.map((id) => state.staff.find((s) => s.id === id)?.name ?? "?");
@@ -227,11 +246,11 @@ function endTurn(state: GameState): GameState {
         repDelta: res.repDelta,
         staffNames: assigned.map((s) => s.name),
       });
-      // Everyone on the case trains the skills it exercised.
+      // Everyone on the case earns experience toward their next level.
       for (const s of assigned) {
         training.set(s.id, {
-          axes: job.case.requiredSkills,
           outcome: res.outcome,
+          difficulty: job.case.difficulty,
         });
       }
     } else if (job.kind === "scout") {
@@ -261,13 +280,16 @@ function endTurn(state: GameState): GameState {
       : s;
     const t = training.get(s.id);
     if (t) {
-      const trained = trainStaff(ns, t.axes, t.outcome);
+      const trained = gainXp(ns, t.outcome, t.difficulty);
       ns = trained.staff;
-      for (const lu of trained.levelUps) {
+      if (trained.levels > 0) {
+        const pts = trained.levels;
         events.push({
           kind: "growth",
           title: ns.name,
-          detail: `${SKILL_LABELS[lu.axis]} → ${lu.newLevel}`,
+          detail: `Reached level ${ns.level} — +${pts} skill point${
+            pts > 1 ? "s" : ""
+          }`,
           staffNames: [],
         });
       }

@@ -1,13 +1,13 @@
-import type { Outcome, Skills, Staff } from "./types.ts";
-import { SKILL_AXES, type SkillAxis } from "../data/skills.ts";
+import type { Outcome, Staff } from "./types.ts";
+import type { SkillAxis } from "../data/skills.ts";
 
-// Staff leveling. Working a case banks experience in the skills it exercised;
-// enough experience raises that skill by a point. You learn even from losses,
-// just slower.
+// Staff leveling. Working *any* case earns general experience (more for harder
+// cases and better outcomes; you learn from losses too, just slower). Enough
+// experience grants a level and a skill point, which the player spends on
+// whichever skill they like.
 
-export const LEVEL_XP = 100; // experience per skill point
 export const MAX_SKILL = 10;
-const BASE_XP = 35; // per required skill, per completed case
+const XP_BASE = 40;
 const OUTCOME_MULT: Record<Outcome, number> = {
   critical: 1.5,
   success: 1.0,
@@ -15,39 +15,46 @@ const OUTCOME_MULT: Record<Outcome, number> = {
   failure: 0.3,
 };
 
-export function emptyXp(): Skills {
-  const xp = {} as Skills;
-  for (const axis of SKILL_AXES) xp[axis] = 0;
-  return xp;
+// Experience required to go from `level` to the next. Later levels cost more.
+export function xpForLevel(level: number): number {
+  return 100 + (level - 1) * 50;
 }
 
-export interface LevelUp {
-  axis: SkillAxis;
-  newLevel: number;
+// XP earned for completing one case.
+export function caseXp(outcome: Outcome, difficulty: number): number {
+  return Math.round(XP_BASE * OUTCOME_MULT[outcome] * (1 + difficulty / 20));
 }
 
-// Award experience to a staffer for the axes a case exercised, applying any
-// resulting level-ups. Pure: returns a new staff object plus the level-ups.
-export function trainStaff(
+// Award experience for a completed case, applying any level-ups (each grants a
+// skill point). Pure: returns a new staff object plus how many levels gained.
+export function gainXp(
   staff: Staff,
-  axes: SkillAxis[],
   outcome: Outcome,
-): { staff: Staff; levelUps: LevelUp[] } {
-  const mult = OUTCOME_MULT[outcome];
-  const skills: Skills = { ...staff.skills };
-  const xp: Skills = { ...staff.xp };
-  const levelUps: LevelUp[] = [];
+  difficulty: number,
+): { staff: Staff; levels: number } {
+  let xp = staff.xp + caseXp(outcome, difficulty);
+  let level = staff.level;
+  let skillPoints = staff.skillPoints;
+  let levels = 0;
 
-  for (const axis of axes) {
-    if (skills[axis] >= MAX_SKILL) continue;
-    xp[axis] += BASE_XP * mult;
-    while (xp[axis] >= LEVEL_XP && skills[axis] < MAX_SKILL) {
-      xp[axis] -= LEVEL_XP;
-      skills[axis] += 1;
-      levelUps.push({ axis, newLevel: skills[axis] });
-    }
-    if (skills[axis] >= MAX_SKILL) xp[axis] = 0;
+  while (xp >= xpForLevel(level)) {
+    xp -= xpForLevel(level);
+    level += 1;
+    skillPoints += 1;
+    levels += 1;
   }
 
-  return { staff: { ...staff, skills, xp }, levelUps };
+  return { staff: { ...staff, xp, level, skillPoints }, levels };
+}
+
+// Spend one banked skill point to raise a skill. Returns null if there's no
+// point to spend or the skill is already maxed.
+export function spendSkillPoint(staff: Staff, axis: SkillAxis): Staff | null {
+  if (staff.skillPoints <= 0) return null;
+  if (staff.skills[axis] >= MAX_SKILL) return null;
+  return {
+    ...staff,
+    skillPoints: staff.skillPoints - 1,
+    skills: { ...staff.skills, [axis]: staff.skills[axis] + 1 },
+  };
 }

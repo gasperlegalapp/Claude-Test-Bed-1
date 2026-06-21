@@ -4,7 +4,6 @@ import { SKILL_AXES } from "../data/skills.ts";
 import { STARTING_STAFF, type StaffSeed } from "../data/staff.ts";
 import { CITY } from "../data/city.ts";
 import { rollNewCase } from "./jobs.ts";
-import { emptyXp } from "./growth.ts";
 
 const STARTING_MONEY = 15000;
 const STARTING_REPUTATION = 10;
@@ -60,7 +59,9 @@ export function createInitialState(seed = 1): GameState {
     name: seed.name,
     role: seed.role,
     skills: buildSkills(seed.skills),
-    xp: emptyXp(),
+    xp: 0,
+    level: 1,
+    skillPoints: 0,
     salary: seed.salary,
     status: "idle",
     jobId: null,
