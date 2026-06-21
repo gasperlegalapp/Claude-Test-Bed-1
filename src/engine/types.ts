@@ -1,81 +1,70 @@
 import type { RngState } from "./rng.ts";
 import type { SkillAxis } from "../data/skills.ts";
 import type { StaffRole } from "../data/staff.ts";
-
-// ---------------------------------------------------------------------------
-// Game state. One flat, JSON-serializable object driven by pure reducers.
-// ---------------------------------------------------------------------------
+import type { MatterCategory } from "../data/matters.ts";
 
 export type Skills = Record<SkillAxis, number>;
-
-export type StaffStatus = "idle" | "assigned";
 
 export interface Staff {
   id: string;
   name: string;
   role: StaffRole;
+  practiceAreas: string[]; // areas of law this person can work
   skills: Skills;
-  xp: number; // experience toward the next level (any case earns it)
+  xp: number;
   level: number;
-  skillPoints: number; // unspent points the player allocates to any skill
+  skillPoints: number;
   salary: number; // weekly upkeep
-  status: StaffStatus;
-  jobId: string | null;
 }
 
-// A hireable candidate. Becomes a Staff member once hired.
 export interface Candidate {
   id: string;
   name: string;
   role: StaffRole;
+  practiceAreas: string[];
   skills: Skills;
   salary: number;
-  signingCost: number; // one-time fee to hire
+  signingCost: number;
 }
 
-// A built room occupying one slot of the office floor plan.
 export interface Room {
   id: string;
-  typeId: string; // references a RoomType in data
-  slot: number; // index into the floor-plan grid
+  typeId: string;
+  slot: number;
 }
 
-// A concrete, offered case (instantiated from a CaseTemplate).
-export interface CaseInstance {
+// A client matter. Offered matters are leads; active matters are being worked.
+export interface Matter {
   id: string;
   templateId: string;
+  area: string;
+  category: MatterCategory;
   title: string;
   flavor: string;
   requiredSkills: SkillAxis[];
   difficulty: number;
-  durationWeeks: number;
+  totalDays: number;
+  daysRemaining: number;
   payoff: number;
   riskCost: number;
   reputation: number;
-}
-
-// An in-progress case assignment. (Building and hiring are instant, so cases
-// are the only timed jobs.)
-export interface Job {
-  id: string;
-  case: CaseInstance;
-  staffIds: string[];
-  weeksRemaining: number;
+  staffIds: string[]; // who's working it (active matters)
+  status: "offered" | "active";
+  expiresInWeeks: number; // offered leads go cold if ignored
 }
 
 export type Outcome = "critical" | "success" | "partial" | "failure";
 
-export type TurnEventKind = "case" | "growth";
+export type TurnEventKind = "matter" | "growth" | "lead";
 
-// One thing that happened during end-of-turn processing, for the recap.
 export interface TurnEvent {
   kind: TurnEventKind;
-  title: string; // case title, or staff name for growth
-  outcome?: Outcome;
+  title: string;
+  category?: MatterCategory;
+  outcome?: Outcome; // litigation only
   moneyDelta?: number;
   repDelta?: number;
   detail?: string;
-  staffNames: string[];
 }
 
 export interface TurnLog {
@@ -85,19 +74,20 @@ export interface TurnLog {
 }
 
 export type GameStatus = "playing" | "won" | "lost";
+export type GamePhase = "setup" | "playing";
 
 export interface GameState {
+  phase: GamePhase;
+  focusAreas: string[]; // areas chosen at setup
   week: number;
   rng: RngState;
   money: number;
   reputation: number;
   staff: Staff[];
   rooms: Room[];
-  buildingTier: number; // index into BUILDINGS
+  buildingTier: number;
   candidates: Candidate[];
-  availableCases: CaseInstance[];
-  activeJobs: Job[];
-  unlockedPractices: string[];
+  matters: Matter[];
   lastTurn: TurnLog | null;
   nextId: number;
   weeksInDebt: number;

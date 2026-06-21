@@ -754,10 +754,114 @@ button.ghost:hover {
   gap: 9px;
 }
 .active-card {
-  background: var(--panel-3);
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  color: var(--ink);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 9px;
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+.active-card:hover {
+  border-color: var(--accent);
+  filter: none;
+}
+.active-card.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.case-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 6px;
+}
+.cat-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.cat-badge.lit {
+  background: #fde8e4;
+  color: #b12704;
+}
+.cat-badge.txn {
+  background: #e3f1ea;
+  color: #067d62;
+}
+.tag.area {
+  background: #eef4fb;
+  color: #146eb4;
+  border-color: #cfe0f0;
+}
+
+/* ---- Setup screen ---- */
+.setup {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.setup-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 26px 28px;
+  width: min(720px, 96vw);
+}
+.setup-card h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+.area-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0;
+}
+@media (max-width: 560px) {
+  .area-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.area-pick {
+  text-align: left;
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 13px;
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+.area-pick:hover {
+  border-color: var(--accent);
+  filter: none;
+}
+.area-pick.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: #eef4fb;
+}
+.area-name {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.setup-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 .active-top {
   display: flex;

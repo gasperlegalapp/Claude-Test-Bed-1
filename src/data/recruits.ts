@@ -1,24 +1,18 @@
-import type { SkillAxis } from "./skills.ts";
 import type { StaffRole } from "./staff.ts";
 
-// Content used to generate hireable candidates: name pools and, per role, the
-// skills the role leans on, a base salary, and which seat type it needs.
+// Content for generating hireable candidates: name pools and the roles that
+// turn up in the market (weighted — common roles appear more often).
 
-export type SeatCategory = "lawyer" | "support";
-
-export interface RoleProfile {
-  role: StaffRole;
-  category: SeatCategory;
-  primarySkills: SkillAxis[];
-  baseSalary: number;
-}
-
-export const ROLE_PROFILES: RoleProfile[] = [
-  { role: "Associate", category: "lawyer", primarySkills: ["litigation", "research"], baseSalary: 1400 },
-  { role: "Rainmaker", category: "lawyer", primarySkills: ["networking", "negotiation"], baseSalary: 1500 },
-  { role: "Paralegal", category: "support", primarySkills: ["research", "diligence"], baseSalary: 1000 },
-  { role: "Investigator", category: "support", primarySkills: ["diligence", "networking"], baseSalary: 1100 },
-  { role: "Process Server", category: "support", primarySkills: ["diligence", "litigation"], baseSalary: 900 },
+export const HIREABLE_ROLES: StaffRole[] = [
+  "Associate",
+  "Associate",
+  "Of Counsel",
+  "Partner",
+  "Paralegal",
+  "Paralegal",
+  "Legal Assistant",
+  "Receptionist",
+  "Managing Attorney",
 ];
 
 export const FIRST_NAMES = [

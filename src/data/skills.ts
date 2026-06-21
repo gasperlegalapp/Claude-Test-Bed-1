@@ -1,6 +1,5 @@
-// The skill axes staff are rated on and cases are judged against.
-// Content-only: adding or renaming an axis here should never require
-// touching engine logic (the engine iterates these generically).
+// The general lawyering skill axes staff are rated on. Distinct from areas of
+// law (which gate *what* a staffer can work); skills drive *how well*.
 
 export const SKILL_AXES = [
   "litigation",
