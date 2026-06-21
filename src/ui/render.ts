@@ -1,22 +1,34 @@
-import type { CaseInstance, GameState, Outcome, Staff } from "../engine/types.ts";
-import { successChance } from "../engine/jobs.ts";
+import type {
+  District,
+  GameState,
+  Job,
+  Outcome,
+  Staff,
+  TurnEvent,
+} from "../engine/types.ts";
+import { successChance, OFFICE_SCORE_BONUS } from "../engine/jobs.ts";
 import { computeValuation, evaluateGoals } from "../engine/scoring.ts";
+import { BUILD_COST, BUILD_WEEKS, SCOUT_WEEKS } from "../engine/state.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
 import type { GoalMetric } from "../data/goals.ts";
+import { CITY_COLS } from "../data/city.ts";
 
-// UI-only state, kept separate from the game state. Selection-driven, the way
-// 4X / squad-management games work: pick a case on the board, then staff it in
-// the briefing panel.
+// UI-only state. Selection-driven, like a 4X map: pick a district, then act on
+// it (scout it, build there, or staff one of its cases).
 export interface UiState {
+  selectedDistrictId: string | null;
   selectedCaseId: string | null;
-  selectedStaff: Set<string>; // staff toggled into the briefing's team
+  selectedStaff: Set<string>;
   showSummary: boolean;
 }
 
 export interface Handlers {
+  selectDistrict: (id: string) => void;
   selectCase: (id: string) => void;
   toggleStaff: (id: string) => void;
-  assign: () => void;
+  assignCase: () => void;
+  scout: () => void;
+  buildOffice: () => void;
   endTurn: () => void;
   closeSummary: () => void;
   newGame: () => void;
@@ -24,8 +36,9 @@ export interface Handlers {
 
 const money = (n: number): string =>
   (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US");
-
 const pct = (n: number): string => `${Math.round(n * 100)}%`;
+const stars = (wealth: number): string =>
+  "●".repeat(wealth) + "○".repeat(Math.max(0, 3 - wealth));
 
 const OUTCOME_LABEL: Record<Outcome, string> = {
   critical: "Critical win",
@@ -43,326 +56,388 @@ function chanceBand(chance: number): string {
 function selectedStaffList(game: GameState, ui: UiState): Staff[] {
   return game.staff.filter((s) => ui.selectedStaff.has(s.id));
 }
-
 function skillTags(axes: SkillAxis[]): string {
   return axes.map((a) => `<span class="tag">${SKILL_LABELS[a]}</span>`).join("");
 }
-
 function staffSkillSummary(s: Staff): string {
-  // Two strongest axes — enough to staff sensibly at a glance.
   return SKILL_AXES.map((a) => ({ a, v: s.skills[a] }))
     .sort((x, y) => y.v - x.v)
     .slice(0, 2)
     .map(({ a, v }) => `${SKILL_LABELS[a]} ${v}`)
     .join(" · ");
 }
-
 function jobWeeks(game: GameState, jobId: string | null): number {
   const job = game.activeJobs.find((j) => j.id === jobId);
   return job ? job.weeksRemaining : 0;
 }
+function districtOf(game: GameState, id: string | null): District | undefined {
+  return game.districts.find((d) => d.id === id) ?? undefined;
+}
 
-// ---- Top HUD (Civ / Master of Orion style persistent resource bar) ----
+// ---- Top HUD ----
 function hud(game: GameState): string {
   const idle = game.staff.filter((s) => s.status === "idle").length;
+  const offices = game.districts.filter((d) => d.hasOffice).length;
   return `
     <header class="hud">
       <div class="brand">FIRM</div>
       <div class="hud-stats">
-        <div class="hud-stat">
-          <span class="hud-label">Week</span>
-          <span class="hud-value">${game.week}</span>
-        </div>
-        <div class="hud-stat">
-          <span class="hud-label">Cash</span>
-          <span class="hud-value ${game.money < 0 ? "bad" : "good"}">${money(
-            game.money,
-          )}</span>
-        </div>
-        <div class="hud-stat">
-          <span class="hud-label">Reputation</span>
-          <span class="hud-value ${
-            game.reputation <= 3 ? "bad" : ""
-          }">${game.reputation}</span>
-        </div>
-        <div class="hud-stat">
-          <span class="hud-label">Valuation</span>
-          <span class="hud-value accent">${money(computeValuation(game))}</span>
-        </div>
-        <div class="hud-stat">
-          <span class="hud-label">Idle Staff</span>
-          <span class="hud-value ${idle > 0 ? "warn" : ""}">${idle}/${
-            game.staff.length
-          }</span>
-        </div>
+        <div class="hud-stat"><span class="hud-label">Week</span><span class="hud-value">${
+          game.week
+        }</span></div>
+        <div class="hud-stat"><span class="hud-label">Cash</span><span class="hud-value ${
+          game.money < 0 ? "bad" : "good"
+        }">${money(game.money)}</span></div>
+        <div class="hud-stat"><span class="hud-label">Reputation</span><span class="hud-value ${
+          game.reputation <= 3 ? "bad" : ""
+        }">${game.reputation}</span></div>
+        <div class="hud-stat"><span class="hud-label">Valuation</span><span class="hud-value accent">${money(
+          computeValuation(game),
+        )}</span></div>
+        <div class="hud-stat"><span class="hud-label">Offices</span><span class="hud-value">${offices}</span></div>
+        <div class="hud-stat"><span class="hud-label">Idle</span><span class="hud-value ${
+          idle > 0 ? "warn" : ""
+        }">${idle}/${game.staff.length}</span></div>
       </div>
       <button id="new-game" class="ghost">New Game</button>
     </header>`;
 }
 
-// ---- Goals panel — always show the player what they're working toward ----
-function goalMetricFormat(metric: GoalMetric, value: number): string {
-  return metric === "reputation" ? `${value}` : money(value);
-}
-
-function goalsPanel(game: GameState): string {
-  const rows = evaluateGoals(game)
-    .map(({ goal, current, done }) => {
-      const pctDone = Math.min(100, Math.round((current / goal.target) * 100));
-      return `
-        <li class="goal ${done ? "done" : ""}">
-          <div class="goal-top">
-            <span>${done ? "✓ " : ""}${goal.label}${
-              goal.isVictory ? ' <span class="crown">★</span>' : ""
-            }</span>
-          </div>
-          <div class="goal-bar"><div class="goal-fill ${
-            done ? "good" : ""
-          }" style="width:${pctDone}%"></div></div>
-          <div class="goal-meta muted small">
-            ${goalMetricFormat(goal.metric, current)} / ${goalMetricFormat(
-              goal.metric,
-              goal.target,
-            )}
-          </div>
-        </li>`;
-    })
-    .join("");
-  return `
-    <section class="panel goals">
-      <h2>Goals</h2>
-      <ul class="goal-list">${rows}</ul>
-    </section>`;
-}
-
-// ---- Left: personnel roster (Football Manager / XCOM barracks) ----
+// ---- Left: roster + goals ----
 function rosterPanel(game: GameState): string {
   const rows = game.staff
     .map((s) => {
       const idle = s.status === "idle";
-      const dot = idle ? "dot-idle" : "dot-busy";
       const status = idle
         ? "Available"
         : `Assigned · ${jobWeeks(game, s.jobId)}w`;
       return `
         <li class="roster-row">
-          <span class="dot ${dot}"></span>
+          <span class="dot ${idle ? "dot-idle" : "dot-busy"}"></span>
           <div class="roster-main">
-            <div class="roster-top">
-              <strong>${s.name}</strong>
-              <span class="role">${s.role}</span>
-            </div>
+            <div class="roster-top"><strong>${s.name}</strong><span class="role">${
+              s.role
+            }</span></div>
             <div class="muted small">${staffSkillSummary(s)}</div>
-            <div class="roster-bottom small">
-              <span class="${idle ? "good" : "warn"}">${status}</span>
-              <span class="muted">${money(s.salary)}/wk</span>
-            </div>
+            <div class="roster-bottom small"><span class="${
+              idle ? "good" : "warn"
+            }">${status}</span><span class="muted">${money(s.salary)}/wk</span></div>
           </div>
         </li>`;
     })
     .join("");
-  return `
-    <aside class="panel roster">
-      <h2>Personnel</h2>
-      <ul class="roster-list">${rows}</ul>
-    </aside>`;
+  return `<aside class="panel roster"><h2>Personnel</h2><ul class="roster-list">${rows}</ul></aside>`;
 }
 
-// ---- Center: the case board + in-progress tray ----
-function progressBar(done: number, total: number): string {
-  const fill = Math.round((done / total) * 100);
-  return `<div class="progress"><div class="progress-fill" style="width:${fill}%"></div></div>`;
+function goalMetricFormat(metric: GoalMetric, value: number): string {
+  return metric === "reputation" ? `${value}` : money(value);
+}
+function goalsPanel(game: GameState): string {
+  const rows = evaluateGoals(game)
+    .map(({ goal, current, done }) => {
+      const p = Math.min(100, Math.round((current / goal.target) * 100));
+      return `
+        <li class="goal ${done ? "done" : ""}">
+          <div class="goal-top">${done ? "✓ " : ""}${goal.label}${
+            goal.isVictory ? ' <span class="crown">★</span>' : ""
+          }</div>
+          <div class="goal-bar"><div class="goal-fill ${
+            done ? "good" : ""
+          }" style="width:${p}%"></div></div>
+          <div class="goal-meta muted small">${goalMetricFormat(
+            goal.metric,
+            current,
+          )} / ${goalMetricFormat(goal.metric, goal.target)}</div>
+        </li>`;
+    })
+    .join("");
+  return `<section class="panel goals"><h2>Goals</h2><ul class="goal-list">${rows}</ul></section>`;
+}
+
+// ---- Center: city map + in-progress tray ----
+function cellJobLabel(game: GameState, d: District): string {
+  const job = game.activeJobs.find(
+    (j) => j.kind !== "case" && j.districtId === d.id,
+  );
+  if (job)
+    return `<div class="cell-job warn small">${
+      job.kind === "scout" ? "Scouting" : "Building"
+    } · ${job.weeksRemaining}w</div>`;
+  return "";
+}
+
+function mapCell(game: GameState, ui: UiState, d: District): string {
+  const selected = ui.selectedDistrictId === d.id;
+  const caseCount = game.availableCases.filter(
+    (c) => c.districtId === d.id,
+  ).length;
+  const classes = [
+    "cell",
+    d.discovered ? "discovered" : "fogged",
+    d.hasOffice ? "office" : "",
+    selected ? "selected" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!d.discovered) {
+    return `
+      <button class="${classes}" data-district="${d.id}">
+        <div class="cell-fog">?</div>
+        ${cellJobLabel(game, d)}
+      </button>`;
+  }
+
+  return `
+    <button class="${classes}" data-district="${d.id}">
+      <div class="cell-top">
+        <strong>${d.name}</strong>
+        ${d.isHome ? '<span class="hq">HQ</span>' : ""}
+        ${!d.isHome && d.hasOffice ? '<span class="hq office-tag">Office</span>' : ""}
+      </div>
+      <div class="cell-wealth" title="Wealth">${stars(d.wealth)}</div>
+      <div class="cell-meta muted small">${SKILL_LABELS[d.dominantSkill]}</div>
+      <div class="cell-foot small">${
+        caseCount > 0 ? `${caseCount} case${caseCount > 1 ? "s" : ""}` : ""
+      }</div>
+      ${cellJobLabel(game, d)}
+    </button>`;
+}
+
+function cityMap(game: GameState, ui: UiState): string {
+  const cells = [...game.districts]
+    .sort((a, b) => a.y * CITY_COLS + a.x - (b.y * CITY_COLS + b.x))
+    .map((d) => mapCell(game, ui, d))
+    .join("");
+  return `
+    <section class="panel map-panel">
+      <h2>The City</h2>
+      <p class="muted small">Click a district. Scout the fog, open offices, take local cases.</p>
+      <div class="city-grid">${cells}</div>
+    </section>`;
+}
+
+function jobTitle(j: Job): string {
+  if (j.kind === "case") return j.case.title;
+  if (j.kind === "scout") return `Scout ${j.districtName}`;
+  return `Build office · ${j.districtName}`;
+}
+function jobDuration(j: Job): number {
+  if (j.kind === "case") return j.case.durationWeeks;
+  return j.kind === "scout" ? SCOUT_WEEKS : BUILD_WEEKS;
 }
 
 function activeTray(game: GameState): string {
-  if (game.activeJobs.length === 0) return "";
+  if (game.activeJobs.length === 0) {
+    return `<section class="panel"><h2>In Progress</h2><p class="muted small">Nothing underway. Idle staff still draw salary — put them to work.</p></section>`;
+  }
   const rows = game.activeJobs
     .map((j) => {
       const names = j.staffIds
         .map((id) => game.staff.find((s) => s.id === id)?.name ?? "?")
         .join(", ");
-      const done = j.case.durationWeeks - j.weeksRemaining;
+      const total = jobDuration(j);
+      const fill = Math.round(((total - j.weeksRemaining) / total) * 100);
       return `
         <div class="active-card">
-          <div class="active-top">
-            <strong>${j.case.title}</strong>
-            <span class="warn small">${j.weeksRemaining}w left</span>
-          </div>
-          ${progressBar(done, j.case.durationWeeks)}
+          <div class="active-top"><strong>${jobTitle(
+            j,
+          )}</strong><span class="warn small">${j.weeksRemaining}w</span></div>
+          <div class="progress"><div class="progress-fill" style="width:${fill}%"></div></div>
           <div class="muted small">${names}</div>
         </div>`;
     })
     .join("");
-  return `
-    <div class="tray">
-      <h3>In Progress</h3>
-      <div class="active-grid">${rows}</div>
+  return `<section class="panel"><h2>In Progress</h2><div class="active-grid">${rows}</div></section>`;
+}
+
+// ---- Right: context-sensitive district panel ----
+function teamPicker(game: GameState, ui: UiState): string {
+  const rows = game.staff
+    .map((s) => {
+      const idle = s.status === "idle";
+      const checked = ui.selectedStaff.has(s.id);
+      const cls = ["team-row", idle ? "" : "busy", checked ? "checked" : ""]
+        .filter(Boolean)
+        .join(" ");
+      const status = idle
+        ? staffSkillSummary(s)
+        : `Busy · ${jobWeeks(game, s.jobId)}w left`;
+      return `
+        <button class="${cls}" data-team="${s.id}" ${idle ? "" : "disabled"}>
+          <span class="checkbox">${checked ? "✓" : ""}</span>
+          <span class="team-main">
+            <span class="team-top"><strong>${s.name}</strong><span class="role">${
+              s.role
+            }</span></span>
+            <span class="muted small">${status}</span>
+          </span>
+        </button>`;
+    })
+    .join("");
+  return `<h3 class="assign-h">Assign Team</h3><div class="team-list">${rows}</div>`;
+}
+
+function districtCaseRows(game: GameState, ui: UiState, d: District): string {
+  const cases = game.availableCases.filter((c) => c.districtId === d.id);
+  if (cases.length === 0)
+    return `<p class="muted small">No open cases here right now.</p>`;
+  return cases
+    .map((c) => {
+      const selected = ui.selectedCaseId === c.id;
+      return `
+        <button class="dcase ${selected ? "selected" : ""}" data-case="${c.id}">
+          <div class="dcase-top"><strong>${c.title}</strong><span class="payoff good">${money(
+            c.payoff,
+          )}</span></div>
+          <div class="tags">${skillTags(c.requiredSkills)}</div>
+          <div class="muted small">Difficulty ${c.difficulty} · ${
+            c.durationWeeks
+          }w · risk ${money(c.riskCost)}</div>
+        </button>`;
+    })
+    .join("");
+}
+
+function oddsBlock(chance: number | null): string {
+  if (chance === null)
+    return `<div class="odds-empty muted small">Add staff to see success odds.</div>`;
+  const band = chanceBand(chance);
+  return `<div class="odds-wrap">
+      <div class="odds-top"><span>Success chance</span><span class="${band}">${pct(
+        chance,
+      )}</span></div>
+      <div class="odds-bar"><div class="odds-fill ${band}" style="width:${Math.round(
+        chance * 100,
+      )}%"></div></div>
     </div>`;
 }
 
-function caseBoardCard(ui: UiState, c: CaseInstance): string {
-  const selected = ui.selectedCaseId === c.id;
-  return `
-    <button class="board-case ${selected ? "selected" : ""}" data-case="${c.id}">
-      <div class="board-top">
-        <strong>${c.title}</strong>
-        <span class="payoff good">${money(c.payoff)}</span>
-      </div>
-      <div class="tags">${skillTags(c.requiredSkills)}</div>
-      <div class="board-meta muted small">
-        Difficulty ${c.difficulty} · ${c.durationWeeks}w
-      </div>
-    </button>`;
-}
-
-function boardPanel(game: GameState, ui: UiState): string {
-  const cards = game.availableCases.map((c) => caseBoardCard(ui, c)).join("");
-  return `
-    <section class="panel board">
-      <h2>Caseload</h2>
-      <p class="muted small">Pick a case to staff it. Idle staff cost you every week.</p>
-      ${activeTray(game)}
-      <div class="board-grid">
-        ${cards || '<p class="muted">No cases on offer.</p>'}
-      </div>
-    </section>`;
-}
-
-// ---- Right: briefing / assignment panel (XCOM squad-select pattern) ----
-function firmOverview(game: GameState): string {
-  const payroll = game.staff.reduce((sum, s) => sum + s.salary, 0);
-  const idle = game.staff.filter((s) => s.status === "idle").length;
-  return `
-    <div class="briefing-empty">
-      <p class="muted">Select a case from the board to assemble a team.</p>
-      <div class="overview">
-        <div class="ov-row"><span class="muted">Weekly payroll</span><span class="bad">-${money(
-          payroll,
-        )}</span></div>
-        <div class="ov-row"><span class="muted">Active cases</span><span>${
-          game.activeJobs.length
-        }</span></div>
-        <div class="ov-row"><span class="muted">Idle staff</span><span class="${
-          idle ? "warn" : ""
-        }">${idle}</span></div>
-      </div>
-      <p class="hint small">Tip: press <kbd>E</kbd> or <kbd>Enter</kbd> to end the week.</p>
-    </div>`;
-}
-
-function teamRow(game: GameState, ui: UiState, s: Staff): string {
-  const idle = s.status === "idle";
-  const checked = ui.selectedStaff.has(s.id);
-  const cls = ["team-row", idle ? "" : "busy", checked ? "checked" : ""]
-    .filter(Boolean)
-    .join(" ");
-  const status = idle
-    ? staffSkillSummary(s)
-    : `Busy · ${jobWeeks(game, s.jobId)}w left`;
-  return `
-    <button class="${cls}" data-team="${s.id}" ${
-      idle ? "" : "disabled"
-    }>
-      <span class="checkbox">${checked ? "✓" : ""}</span>
-      <span class="team-main">
-        <span class="team-top"><strong>${s.name}</strong><span class="role">${
-          s.role
-        }</span></span>
-        <span class="muted small">${status}</span>
-      </span>
-    </button>`;
-}
-
-function briefingPanel(game: GameState, ui: UiState): string {
-  const c = game.availableCases.find((x) => x.id === ui.selectedCaseId);
-  if (!c) {
-    return `<aside class="panel briefing"><h2>Briefing</h2>${firmOverview(
-      game,
-    )}</aside>`;
+function districtPanel(game: GameState, ui: UiState): string {
+  const d = districtOf(game, ui.selectedDistrictId);
+  if (!d) {
+    return `<aside class="panel briefing"><h2>District</h2><p class="muted">Select a district on the map to act on it.</p></aside>`;
   }
 
   const team = selectedStaffList(game, ui);
-  const chance = team.length > 0 ? successChance(c, team) : null;
-  const band = chance !== null ? chanceBand(chance) : "muted";
-  const oddsBlock =
-    chance === null
-      ? `<div class="odds-empty muted small">Add staff to see success odds.</div>`
-      : `<div class="odds-wrap">
-           <div class="odds-top"><span>Success chance</span><span class="${band}">${pct(
-             chance,
-           )}</span></div>
-           <div class="odds-bar"><div class="odds-fill ${band}" style="width:${Math.round(
-             chance * 100,
-           )}%"></div></div>
-         </div>`;
+  const teamCount = team.length;
 
-  const rows = game.staff.map((s) => teamRow(game, ui, s)).join("");
+  // Fogged: only option is to scout.
+  if (!d.discovered) {
+    return `
+      <aside class="panel briefing">
+        <h2>District</h2>
+        <div class="brief-head"><strong class="brief-title">Unknown District</strong></div>
+        <p class="flavor">Fog still covers this part of the city. Send staff to scout it — you'll learn its wealth, its specialty, and the work on offer.</p>
+        ${teamPicker(game, ui)}
+        <button id="scout-btn" class="primary-wide" ${
+          teamCount === 0 ? "disabled" : ""
+        }>Scout District ▸ (${SCOUT_WEEKS}w)</button>
+      </aside>`;
+  }
+
+  // Discovered: stats, local cases, build option.
+  const selectedCase = game.availableCases.find(
+    (c) => c.id === ui.selectedCaseId && c.districtId === d.id,
+  );
+  const bonus = d.hasOffice ? OFFICE_SCORE_BONUS : 0;
+  const chance =
+    selectedCase && teamCount > 0
+      ? successChance(selectedCase, team, bonus)
+      : null;
+
+  const statusBadge = d.isHome
+    ? '<span class="hq">HQ</span>'
+    : d.hasOffice
+      ? '<span class="hq office-tag">Office</span>'
+      : '<span class="muted small">No office</span>';
+
+  const assignBlock = selectedCase
+    ? `${oddsBlock(chance)}
+       <button id="confirm-assign" class="primary-wide" ${
+         teamCount === 0 ? "disabled" : ""
+       }>Assign ${teamCount || ""} → ${selectedCase.title}</button>`
+    : `<p class="muted small">Pick a case below, then assign a team.</p>`;
+
+  const buildBlock = d.hasOffice
+    ? `<div class="office-note good small">✓ Office active — +${OFFICE_SCORE_BONUS} to case odds here.</div>`
+    : `<button id="build-btn" class="secondary-wide" ${
+        teamCount === 0 || game.money < BUILD_COST ? "disabled" : ""
+      }>Build Office — ${money(BUILD_COST)}, ${BUILD_WEEKS}w</button>
+       ${
+         game.money < BUILD_COST
+           ? `<div class="muted small">Need ${money(BUILD_COST)} to build.</div>`
+           : ""
+       }`;
 
   return `
     <aside class="panel briefing">
-      <h2>Briefing</h2>
+      <h2>District</h2>
       <div class="brief-head">
-        <strong class="brief-title">${c.title}</strong>
-        <span class="payoff good">${money(c.payoff)}</span>
+        <strong class="brief-title">${d.name}</strong>
+        ${statusBadge}
       </div>
-      <p class="flavor">${c.flavor}</p>
-      <div class="tags">${skillTags(c.requiredSkills)}</div>
       <div class="brief-meta muted small">
-        Difficulty ${c.difficulty} · ${c.durationWeeks} week${
-          c.durationWeeks > 1 ? "s" : ""
-        } · risk ${money(c.riskCost)} on a loss
+        Wealth <span class="wealth">${stars(d.wealth)}</span> · Specialty ${
+          SKILL_LABELS[d.dominantSkill]
+        }
       </div>
-      <h3 class="assign-h">Assign Team</h3>
-      <div class="team-list">${rows}</div>
-      ${oddsBlock}
-      <button id="confirm-assign" class="primary-wide" ${
-        team.length === 0 ? "disabled" : ""
-      }>Assign ${team.length || ""} → Open Case</button>
+      ${teamPicker(game, ui)}
+      <h3 class="assign-h">Cases in ${d.name}</h3>
+      <div class="dcase-list">${districtCaseRows(game, ui, d)}</div>
+      ${assignBlock}
+      <div class="build-block">${buildBlock}</div>
     </aside>`;
 }
 
-// ---- Bottom action bar: primary End Turn pinned bottom-right (Civ/MoO) ----
+// ---- Bottom bar ----
 function actionBar(game: GameState): string {
   const payroll = game.staff.reduce((sum, s) => sum + s.salary, 0);
   return `
     <footer class="actionbar">
       <span class="muted small">Ending the week pays <span class="bad">-${money(
         payroll,
-      )}</span> in salaries and resolves active cases.</span>
+      )}</span> in salaries and resolves all active work.</span>
       <button id="end-turn" class="end-turn">End Turn ▸ <kbd>E</kbd></button>
     </footer>`;
 }
 
-function repBadge(rep: number): string {
-  if (rep === 0) return "";
+// ---- Recap modal ----
+function repBadge(rep: number | undefined): string {
+  if (!rep) return "";
   const cls = rep > 0 ? "good" : "bad";
   return `<span class="o-rep ${cls}">${rep > 0 ? "+" : ""}${rep} rep</span>`;
 }
-
+function eventLine(e: TurnEvent): string {
+  if (e.kind === "case") {
+    return `
+      <li class="resolve-line ${e.outcome}">
+        <span class="o-tag">${OUTCOME_LABEL[e.outcome!]}</span>
+        <span class="o-title">${e.title}</span>
+        <span class="o-deltas">
+          <span class="o-money ${
+            (e.moneyDelta ?? 0) >= 0 ? "good" : "bad"
+          }">${(e.moneyDelta ?? 0) >= 0 ? "+" : ""}${money(e.moneyDelta ?? 0)}</span>
+          ${repBadge(e.repDelta)}
+        </span>
+      </li>`;
+  }
+  return `
+    <li class="resolve-line ${e.kind}">
+      <span class="o-tag accent">${e.kind === "scout" ? "Scouted" : "Office"}</span>
+      <span class="o-title">${e.title}</span>
+      <span class="o-deltas muted small">${e.detail ?? ""}</span>
+    </li>`;
+}
 function summaryModal(game: GameState): string {
   const log = game.lastTurn;
   if (!log) return "";
   const lines =
-    log.resolved.length === 0
-      ? `<li class="muted">No cases resolved this week.</li>`
-      : log.resolved
-          .map(
-            (r) => `
-            <li class="resolve-line ${r.outcome}">
-              <span class="o-tag">${OUTCOME_LABEL[r.outcome]}</span>
-              <span class="o-title">${r.caseTitle}</span>
-              <span class="o-deltas">
-                <span class="o-money ${r.moneyDelta >= 0 ? "good" : "bad"}">${
-                  r.moneyDelta >= 0 ? "+" : ""
-                }${money(r.moneyDelta)}</span>
-                ${repBadge(r.repDelta)}
-              </span>
-            </li>`,
-          )
-          .join("");
-
+    log.events.length === 0
+      ? `<li class="muted">A quiet week. Nothing resolved.</li>`
+      : log.events.map(eventLine).join("");
   return `
-    <div class="modal-backdrop" id="summary-backdrop">
+    <div class="modal-backdrop">
       <div class="modal">
         <h2>Week ${log.week} — Recap</h2>
         <ul class="resolve-list">${lines}</ul>
@@ -376,10 +451,11 @@ function summaryModal(game: GameState): string {
     </div>`;
 }
 
-// ---- End-of-game overlay (win / loss) ----
+// ---- End-of-game overlay ----
 function endOverlay(game: GameState): string {
   if (game.status === "playing") return "";
   const won = game.status === "won";
+  const offices = game.districts.filter((d) => d.hasOffice).length;
   return `
     <div class="modal-backdrop">
       <div class="modal end-modal ${game.status}">
@@ -389,9 +465,7 @@ function endOverlay(game: GameState): string {
           <div><span class="muted">Weeks survived</span><strong>${
             game.week
           }</strong></div>
-          <div><span class="muted">Final cash</span><strong>${money(
-            game.money,
-          )}</strong></div>
+          <div><span class="muted">Offices</span><strong>${offices}</strong></div>
           <div><span class="muted">Reputation</span><strong>${
             game.reputation
           }</strong></div>
@@ -410,7 +484,6 @@ export function renderApp(
   ui: UiState,
   handlers: Handlers,
 ): void {
-  // The end overlay takes precedence over the weekly recap.
   const overlay =
     game.status !== "playing"
       ? endOverlay(game)
@@ -425,38 +498,43 @@ export function renderApp(
         ${rosterPanel(game)}
         ${goalsPanel(game)}
       </div>
-      ${boardPanel(game, ui)}
-      ${briefingPanel(game, ui)}
+      <div class="col">
+        ${cityMap(game, ui)}
+        ${activeTray(game)}
+      </div>
+      ${districtPanel(game, ui)}
     </main>
     ${actionBar(game)}
     ${overlay}
   `;
 
   root
+    .querySelectorAll<HTMLButtonElement>("[data-district]")
+    .forEach((el) =>
+      el.addEventListener("click", () =>
+        handlers.selectDistrict(el.dataset.district!),
+      ),
+    );
+  root
     .querySelectorAll<HTMLButtonElement>("[data-case]")
     .forEach((el) =>
       el.addEventListener("click", () => handlers.selectCase(el.dataset.case!)),
     );
-
   root
     .querySelectorAll<HTMLButtonElement>("[data-team]")
     .forEach((el) =>
       el.addEventListener("click", () => handlers.toggleStaff(el.dataset.team!)),
     );
 
-  const confirm = root.querySelector<HTMLButtonElement>("#confirm-assign");
-  if (confirm) confirm.addEventListener("click", handlers.assign);
-
-  root
-    .querySelector<HTMLButtonElement>("#end-turn")!
-    .addEventListener("click", handlers.endTurn);
-  root
-    .querySelector<HTMLButtonElement>("#new-game")!
-    .addEventListener("click", handlers.newGame);
-
-  const close = root.querySelector<HTMLButtonElement>("#close-summary");
-  if (close) close.addEventListener("click", handlers.closeSummary);
-
-  const overlayNew = root.querySelector<HTMLButtonElement>("#overlay-newgame");
-  if (overlayNew) overlayNew.addEventListener("click", handlers.newGame);
+  const bind = (sel: string, fn: () => void) => {
+    const el = root.querySelector<HTMLButtonElement>(sel);
+    if (el) el.addEventListener("click", fn);
+  };
+  bind("#confirm-assign", handlers.assignCase);
+  bind("#scout-btn", handlers.scout);
+  bind("#build-btn", handlers.buildOffice);
+  bind("#end-turn", handlers.endTurn);
+  bind("#new-game", handlers.newGame);
+  bind("#close-summary", handlers.closeSummary);
+  bind("#overlay-newgame", handlers.newGame);
 }

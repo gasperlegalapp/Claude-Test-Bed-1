@@ -263,6 +263,152 @@ button.ghost {
   letter-spacing: 1px;
 }
 
+/* ---- City map ---- */
+.city-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+.cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 96px;
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+.cell:hover {
+  border-color: var(--accent);
+  filter: none;
+}
+.cell.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.cell.fogged {
+  background: repeating-linear-gradient(
+    45deg,
+    #1a1d23,
+    #1a1d23 8px,
+    #1e2128 8px,
+    #1e2128 16px
+  );
+  color: var(--muted);
+  align-items: center;
+  justify-content: center;
+}
+.cell.office {
+  border-color: rgba(95, 184, 120, 0.5);
+}
+.cell-fog {
+  font-size: 30px;
+  font-weight: 800;
+  color: #3a4150;
+}
+.cell-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+.hq {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+.hq.office-tag {
+  background: var(--good);
+}
+.cell-wealth {
+  color: var(--warn);
+  letter-spacing: 2px;
+  font-size: 12px;
+}
+.cell-foot {
+  margin-top: auto;
+  color: var(--accent);
+}
+.cell-job {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+}
+
+/* ---- District panel extras ---- */
+.wealth {
+  color: var(--warn);
+  letter-spacing: 2px;
+}
+.dcase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.dcase {
+  display: block;
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 9px 10px;
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+.dcase:hover {
+  border-color: var(--accent);
+  filter: none;
+}
+.dcase.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--panel-3);
+}
+.dcase-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.build-block {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.secondary-wide {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.secondary-wide:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  background: transparent;
+}
+.office-note {
+  padding: 4px 0;
+}
+.o-tag.accent {
+  color: var(--accent);
+}
+
 /* ---- Case board ---- */
 .board-grid {
   display: grid;

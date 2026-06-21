@@ -1,11 +1,12 @@
 import type { GameState, GameStatus } from "./types.ts";
-import { REP_VALUE, DEBT_WEEKS_TO_BANKRUPTCY } from "./state.ts";
+import { REP_VALUE, OFFICE_VALUE, DEBT_WEEKS_TO_BANKRUPTCY } from "./state.ts";
 import { GOALS, type Goal, type GoalMetric } from "../data/goals.ts";
 
-// Firm valuation: cash plus the prestige value of reputation. This is the
-// number the player is ultimately trying to grow, and the win condition.
+// Firm valuation: cash, the prestige value of reputation, and the asset value
+// of every office. This is the number the player grows toward the win.
 export function computeValuation(state: GameState): number {
-  return state.money + state.reputation * REP_VALUE;
+  const offices = state.districts.filter((d) => d.hasOffice).length;
+  return state.money + state.reputation * REP_VALUE + offices * OFFICE_VALUE;
 }
 
 // The current value of a goal's tracked metric.
