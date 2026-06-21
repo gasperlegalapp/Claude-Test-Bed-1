@@ -1,6 +1,8 @@
 import type { CaseInstance, GameState, Outcome, Staff } from "../engine/types.ts";
 import { successChance } from "../engine/jobs.ts";
+import { computeValuation, evaluateGoals } from "../engine/scoring.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
+import type { GoalMetric } from "../data/goals.ts";
 
 // UI-only state, kept separate from the game state. Selection-driven, the way
 // 4X / squad-management games work: pick a case on the board, then staff it in
@@ -78,6 +80,16 @@ function hud(game: GameState): string {
           )}</span>
         </div>
         <div class="hud-stat">
+          <span class="hud-label">Reputation</span>
+          <span class="hud-value ${
+            game.reputation <= 3 ? "bad" : ""
+          }">${game.reputation}</span>
+        </div>
+        <div class="hud-stat">
+          <span class="hud-label">Valuation</span>
+          <span class="hud-value accent">${money(computeValuation(game))}</span>
+        </div>
+        <div class="hud-stat">
           <span class="hud-label">Idle Staff</span>
           <span class="hud-value ${idle > 0 ? "warn" : ""}">${idle}/${
             game.staff.length
@@ -86,6 +98,41 @@ function hud(game: GameState): string {
       </div>
       <button id="new-game" class="ghost">New Game</button>
     </header>`;
+}
+
+// ---- Goals panel — always show the player what they're working toward ----
+function goalMetricFormat(metric: GoalMetric, value: number): string {
+  return metric === "reputation" ? `${value}` : money(value);
+}
+
+function goalsPanel(game: GameState): string {
+  const rows = evaluateGoals(game)
+    .map(({ goal, current, done }) => {
+      const pctDone = Math.min(100, Math.round((current / goal.target) * 100));
+      return `
+        <li class="goal ${done ? "done" : ""}">
+          <div class="goal-top">
+            <span>${done ? "✓ " : ""}${goal.label}${
+              goal.isVictory ? ' <span class="crown">★</span>' : ""
+            }</span>
+          </div>
+          <div class="goal-bar"><div class="goal-fill ${
+            done ? "good" : ""
+          }" style="width:${pctDone}%"></div></div>
+          <div class="goal-meta muted small">
+            ${goalMetricFormat(goal.metric, current)} / ${goalMetricFormat(
+              goal.metric,
+              goal.target,
+            )}
+          </div>
+        </li>`;
+    })
+    .join("");
+  return `
+    <section class="panel goals">
+      <h2>Goals</h2>
+      <ul class="goal-list">${rows}</ul>
+    </section>`;
 }
 
 // ---- Left: personnel roster (Football Manager / XCOM barracks) ----
@@ -286,6 +333,12 @@ function actionBar(game: GameState): string {
     </footer>`;
 }
 
+function repBadge(rep: number): string {
+  if (rep === 0) return "";
+  const cls = rep > 0 ? "good" : "bad";
+  return `<span class="o-rep ${cls}">${rep > 0 ? "+" : ""}${rep} rep</span>`;
+}
+
 function summaryModal(game: GameState): string {
   const log = game.lastTurn;
   if (!log) return "";
@@ -298,9 +351,12 @@ function summaryModal(game: GameState): string {
             <li class="resolve-line ${r.outcome}">
               <span class="o-tag">${OUTCOME_LABEL[r.outcome]}</span>
               <span class="o-title">${r.caseTitle}</span>
-              <span class="o-money ${r.moneyDelta >= 0 ? "good" : "bad"}">${
-                r.moneyDelta >= 0 ? "+" : ""
-              }${money(r.moneyDelta)}</span>
+              <span class="o-deltas">
+                <span class="o-money ${r.moneyDelta >= 0 ? "good" : "bad"}">${
+                  r.moneyDelta >= 0 ? "+" : ""
+                }${money(r.moneyDelta)}</span>
+                ${repBadge(r.repDelta)}
+              </span>
             </li>`,
           )
           .join("");
@@ -320,21 +376,60 @@ function summaryModal(game: GameState): string {
     </div>`;
 }
 
+// ---- End-of-game overlay (win / loss) ----
+function endOverlay(game: GameState): string {
+  if (game.status === "playing") return "";
+  const won = game.status === "won";
+  return `
+    <div class="modal-backdrop">
+      <div class="modal end-modal ${game.status}">
+        <h2>${won ? "The Firm Prevails" : "The Firm Folds"}</h2>
+        <p class="end-reason">${game.statusReason}</p>
+        <div class="end-stats">
+          <div><span class="muted">Weeks survived</span><strong>${
+            game.week
+          }</strong></div>
+          <div><span class="muted">Final cash</span><strong>${money(
+            game.money,
+          )}</strong></div>
+          <div><span class="muted">Reputation</span><strong>${
+            game.reputation
+          }</strong></div>
+          <div><span class="muted">Valuation</span><strong class="accent">${money(
+            computeValuation(game),
+          )}</strong></div>
+        </div>
+        <button id="overlay-newgame" class="primary-wide">Start a New Firm</button>
+      </div>
+    </div>`;
+}
+
 export function renderApp(
   root: HTMLElement,
   game: GameState,
   ui: UiState,
   handlers: Handlers,
 ): void {
+  // The end overlay takes precedence over the weekly recap.
+  const overlay =
+    game.status !== "playing"
+      ? endOverlay(game)
+      : ui.showSummary
+        ? summaryModal(game)
+        : "";
+
   root.innerHTML = `
     ${hud(game)}
     <main class="layout">
-      ${rosterPanel(game)}
+      <div class="col">
+        ${rosterPanel(game)}
+        ${goalsPanel(game)}
+      </div>
       ${boardPanel(game, ui)}
       ${briefingPanel(game, ui)}
     </main>
     ${actionBar(game)}
-    ${ui.showSummary ? summaryModal(game) : ""}
+    ${overlay}
   `;
 
   root
@@ -361,4 +456,7 @@ export function renderApp(
 
   const close = root.querySelector<HTMLButtonElement>("#close-summary");
   if (close) close.addEventListener("click", handlers.closeSummary);
+
+  const overlayNew = root.querySelector<HTMLButtonElement>("#overlay-newgame");
+  if (overlayNew) overlayNew.addEventListener("click", handlers.newGame);
 }

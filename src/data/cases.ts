@@ -13,6 +13,7 @@ export interface CaseTemplate {
   durationWeeks: number;
   payoff: number; // money on a clean success
   riskCost: number; // money lost on outright failure (court costs, refunds)
+  reputation: number; // reputation gained on a clean success
 }
 
 export const CASE_TEMPLATES: CaseTemplate[] = [
@@ -26,6 +27,7 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     durationWeeks: 1,
     payoff: 4000,
     riskCost: 500,
+    reputation: 2,
   },
   {
     templateId: "fender-bender",
@@ -37,6 +39,7 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     durationWeeks: 2,
     payoff: 9000,
     riskCost: 1500,
+    reputation: 3,
   },
   {
     templateId: "will-they-wont-they",
@@ -48,6 +51,7 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     durationWeeks: 2,
     payoff: 12000,
     riskCost: 2000,
+    reputation: 4,
   },
   {
     templateId: "handshake-deal",
@@ -59,6 +63,7 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     durationWeeks: 3,
     payoff: 16000,
     riskCost: 3000,
+    reputation: 6,
   },
   {
     templateId: "small-claims-saga",
@@ -70,6 +75,7 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     durationWeeks: 1,
     payoff: 5500,
     riskCost: 800,
+    reputation: 2,
   },
   {
     templateId: "boilerplate-blowup",
@@ -81,5 +87,6 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     durationWeeks: 2,
     payoff: 10500,
     riskCost: 1800,
+    reputation: 4,
   },
 ];

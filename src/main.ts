@@ -62,6 +62,9 @@ window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement)?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
 
+  // Once the run is over, only the New Game button drives things.
+  if (game.status !== "playing") return;
+
   if (ui.showSummary) {
     if (e.key === "Enter" || e.key === "Escape" || e.key.toLowerCase() === "e") {
       ui.showSummary = false;

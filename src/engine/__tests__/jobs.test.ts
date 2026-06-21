@@ -33,6 +33,7 @@ function makeCase(over: Partial<CaseInstance> = {}): CaseInstance {
     durationWeeks: 1,
     payoff: 10000,
     riskCost: 1000,
+    reputation: 4,
     ...over,
   };
 }
@@ -83,6 +84,7 @@ describe("resolveCase", () => {
     const res = resolveCase(c, [staff({ litigation: 20 })], createRng(1));
     expect(["success", "critical"]).toContain(res.outcome);
     expect(res.moneyDelta).toBeGreaterThanOrEqual(c.payoff);
+    expect(res.repDelta).toBeGreaterThanOrEqual(c.reputation);
   });
 
   it("loses the risk cost on a failure", () => {
@@ -97,6 +99,7 @@ describe("resolveCase", () => {
     }
     expect(res.outcome).toBe("failure");
     expect(res.moneyDelta).toBe(-c.riskCost);
+    expect(res.repDelta).toBeLessThan(0);
   });
 
   it("is deterministic for a given rng state", () => {

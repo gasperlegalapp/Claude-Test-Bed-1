@@ -5,7 +5,14 @@ import { STARTING_STAFF, type StaffSeed } from "../data/staff.ts";
 import { rollNewCase } from "./jobs.ts";
 
 const STARTING_MONEY = 15000;
+const STARTING_REPUTATION = 10;
 export const CASE_POOL_TARGET = 5; // how many open cases to keep on offer
+
+// ---- Balance constants used by scoring / win-loss ----
+// Each reputation point this much firm valuation (prestige is worth money).
+export const REP_VALUE = 1500;
+// Lose if the firm can't make payroll (negative cash) this many weeks running.
+export const DEBT_WEEKS_TO_BANKRUPTCY = 4;
 
 // Expand a sparse staff seed into a full skill record (unset axes default to 1).
 function buildSkills(partial: StaffSeed["skills"]): Skills {
@@ -42,10 +49,14 @@ export function createInitialState(seed = 1): GameState {
     week: 0,
     rng,
     money: STARTING_MONEY,
+    reputation: STARTING_REPUTATION,
     staff,
     availableCases,
     activeJobs: [],
     lastTurn: null,
     nextId,
+    weeksInDebt: 0,
+    status: "playing",
+    statusReason: "",
   };
 }

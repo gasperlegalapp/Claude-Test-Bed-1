@@ -92,6 +92,19 @@ describe("END_TURN", () => {
     expect(s.availableCases.length).toBe(CASE_POOL_TARGET);
   });
 
+  it("ends the run in a win once valuation clears the target", () => {
+    let s = createInitialState(5);
+    s = { ...s, money: 300000 };
+    s = reduce(s, { type: "END_TURN" });
+    expect(s.status).toBe("won");
+    expect(s.statusReason).not.toBe("");
+  });
+
+  it("freezes the board once the game is over", () => {
+    const over = { ...createInitialState(5), status: "won" as const };
+    expect(reduce(over, { type: "END_TURN" })).toBe(over);
+  });
+
   it("keeps multi-week jobs running across turns", () => {
     let s = createInitialState(5);
     const long = s.availableCases.find((c) => c.durationWeeks >= 2);
