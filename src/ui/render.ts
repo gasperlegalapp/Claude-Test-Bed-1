@@ -8,6 +8,7 @@ import type {
 } from "../engine/types.ts";
 import { successChance, OFFICE_SCORE_BONUS } from "../engine/jobs.ts";
 import { computeValuation, evaluateGoals } from "../engine/scoring.ts";
+import { xpForLevel, MAX_SKILL } from "../engine/growth.ts";
 import { BUILD_COST, BUILD_WEEKS, SCOUT_WEEKS } from "../engine/state.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
 import type { GoalMetric } from "../data/goals.ts";
@@ -37,6 +38,7 @@ export interface Handlers {
   selectDistrict: (id: string) => void;
   selectCase: (id: string) => void;
   toggleStaff: (id: string) => void;
+  spendSkillPoint: (staffId: string, axis: SkillAxis) => void;
   assignCase: () => void;
   scout: () => void;
   buildOffice: () => void;
@@ -73,14 +75,17 @@ function selectedStaffList(game: GameState, ui: UiState): Staff[] {
 function skillTags(axes: SkillAxis[]): string {
   return axes.map((a) => `<span class="tag">${SKILL_LABELS[a]}</span>`).join("");
 }
-// All five skills, always shown (even at 0) so growth is visible.
-function allSkillsLine(s: Staff): string {
-  return SKILL_AXES.map(
-    (a) =>
-      `<span class="sk ${s.skills[a] === 0 ? "sk-zero" : ""}">${
-        SKILL_SHORT[a]
-      } ${s.skills[a]}</span>`,
-  ).join("");
+// All five skills, always shown (even at 0) so growth is visible. When the
+// staffer has skill points to spend, each raisable skill becomes a button.
+function allSkillsLine(s: Staff, spendable = false): string {
+  return SKILL_AXES.map((a) => {
+    const v = s.skills[a];
+    const canRaise = spendable && s.skillPoints > 0 && v < MAX_SKILL;
+    if (canRaise) {
+      return `<button class="sk sk-spend" data-spend="${s.id}|${a}">${SKILL_SHORT[a]} ${v} <span class="plus">+</span></button>`;
+    }
+    return `<span class="sk ${v === 0 ? "sk-zero" : ""}">${SKILL_SHORT[a]} ${v}</span>`;
+  }).join("");
 }
 function jobWeeks(game: GameState, jobId: string | null): number {
   const job = game.activeJobs.find((j) => j.id === jobId);
@@ -118,7 +123,7 @@ function hud(game: GameState): string {
           idle > 0 ? "warn" : ""
         }">${idle}/${game.staff.length}</span></div>
       </div>
-      <button id="open-practices" class="ghost">⚖ Practice Areas</button>
+      <button id="open-practices" class="ghost">Practice Areas</button>
       <button id="new-game" class="ghost">New Game</button>
     </header>`;
 }
@@ -131,6 +136,13 @@ function rosterPanel(game: GameState): string {
       const status = idle
         ? "Available"
         : `Assigned · ${jobWeeks(game, s.jobId)}w`;
+      const xpPct = Math.min(100, Math.round((s.xp / xpForLevel(s.level)) * 100));
+      const points =
+        s.skillPoints > 0
+          ? `<span class="sp-badge">${s.skillPoints} pt${
+              s.skillPoints > 1 ? "s" : ""
+            } to spend</span>`
+          : "";
       return `
         <li class="roster-row">
           <span class="dot ${idle ? "dot-idle" : "dot-busy"}"></span>
@@ -138,7 +150,14 @@ function rosterPanel(game: GameState): string {
             <div class="roster-top"><strong>${s.name}</strong><span class="role">${
               s.role
             }</span></div>
-            <div class="skill-line">${allSkillsLine(s)}</div>
+            <div class="lvl-line">
+              <span class="lvl">Lv ${s.level}</span>
+              <div class="xp-bar" title="${s.xp} / ${xpForLevel(
+                s.level,
+              )} XP"><div class="xp-fill" style="width:${xpPct}%"></div></div>
+              ${points}
+            </div>
+            <div class="skill-line">${allSkillsLine(s, true)}</div>
             <div class="roster-bottom small"><span class="${
               idle ? "good" : "warn"
             }">${status}</span><span class="muted">${money(s.salary)}/wk</span></div>
@@ -186,6 +205,29 @@ function cellJobLabel(game: GameState, d: District): string {
   return "";
 }
 
+// Cheap deterministic hash so each district's skyline is stable across renders.
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// A little CSS skyline: more and taller buildings for wealthier districts.
+function skyline(d: District): string {
+  const count = 4 + d.wealth * 2; // 6–10 buildings
+  let bars = "";
+  for (let i = 0; i < count; i++) {
+    const r = hashStr(`${d.id}:${i}`) % 100;
+    const h = Math.min(96, Math.round(28 + (r / 100) * 40 + d.wealth * 9));
+    bars += `<span class="bldg" style="height:${h}%"></span>`;
+  }
+  const kind = d.isHome ? "home" : d.hasOffice ? "office" : "";
+  return `<div class="skyline ${kind}">${bars}</div>`;
+}
+
 function mapCell(game: GameState, ui: UiState, d: District): string {
   const selected = ui.selectedDistrictId === d.id;
   const caseCount = game.availableCases.filter(
@@ -195,6 +237,7 @@ function mapCell(game: GameState, ui: UiState, d: District): string {
     "cell",
     d.discovered ? "discovered" : "fogged",
     d.hasOffice ? "office" : "",
+    d.isHome ? "home" : "",
     selected ? "selected" : "",
   ]
     .filter(Boolean)
@@ -204,22 +247,29 @@ function mapCell(game: GameState, ui: UiState, d: District): string {
     return `
       <button class="${classes}" data-district="${d.id}">
         <div class="cell-fog">?</div>
+        <div class="cell-fog-label">Unscouted</div>
         ${cellJobLabel(game, d)}
       </button>`;
   }
+
+  const marker = d.isHome
+    ? '<span class="hq">HQ</span>'
+    : d.hasOffice
+      ? '<span class="hq office-tag">Office</span>'
+      : caseCount > 0
+        ? `<span class="case-pip">${caseCount}</span>`
+        : "";
 
   return `
     <button class="${classes}" data-district="${d.id}">
       <div class="cell-top">
         <strong>${d.name}</strong>
-        ${d.isHome ? '<span class="hq">HQ</span>' : ""}
-        ${!d.isHome && d.hasOffice ? '<span class="hq office-tag">Office</span>' : ""}
+        ${marker}
       </div>
-      <div class="cell-wealth" title="Wealth">${stars(d.wealth)}</div>
-      <div class="cell-meta muted small">${SKILL_LABELS[d.dominantSkill]}</div>
-      <div class="cell-foot small">${
-        caseCount > 0 ? `${caseCount} case${caseCount > 1 ? "s" : ""}` : ""
-      }</div>
+      <div class="cell-meta muted small">${SKILL_LABELS[d.dominantSkill]} · <span class="wealth">${stars(
+        d.wealth,
+      )}</span></div>
+      ${skyline(d)}
       ${cellJobLabel(game, d)}
     </button>`;
 }
@@ -621,6 +671,14 @@ export function renderApp(
       el.addEventListener("click", () =>
         handlers.unlockPractice(el.dataset.unlock!),
       ),
+    );
+  root
+    .querySelectorAll<HTMLButtonElement>("[data-spend]")
+    .forEach((el) =>
+      el.addEventListener("click", () => {
+        const [id, axis] = el.dataset.spend!.split("|");
+        handlers.spendSkillPoint(id, axis as SkillAxis);
+      }),
     );
 
   bind("#confirm-assign", handlers.assignCase);

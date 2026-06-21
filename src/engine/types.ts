@@ -18,7 +18,9 @@ export interface Staff {
   name: string;
   role: StaffRole;
   skills: Skills;
-  xp: Skills; // experience banked toward the next point in each skill
+  xp: number; // experience toward the next level (any case earns it)
+  level: number;
+  skillPoints: number; // unspent points the player allocates to any skill
   salary: number; // weekly upkeep
   status: StaffStatus;
   jobId: string | null; // the active job this staffer is working, if any

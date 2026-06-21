@@ -38,6 +38,10 @@ function render(): void {
       else ui.selectedStaff.add(id);
       render();
     },
+    spendSkillPoint(staffId, axis) {
+      game = reduce(game, { type: "SPEND_SKILL_POINT", staffId, axis });
+      render();
+    },
     assignCase() {
       if (!ui.selectedCaseId || ui.selectedStaff.size === 0) return;
       game = reduce(game, {

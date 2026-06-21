@@ -148,6 +148,34 @@ describe("BUILD_OFFICE", () => {
   });
 });
 
+describe("SPEND_SKILL_POINT", () => {
+  it("raises a skill when the staffer has a point banked", () => {
+    let s = createInitialState(5);
+    const id = s.staff[0].id;
+    s = {
+      ...s,
+      staff: s.staff.map((x) =>
+        x.id === id ? { ...x, skillPoints: 1 } : x,
+      ),
+    };
+    const before = s.staff.find((x) => x.id === id)!.skills.networking;
+    s = reduce(s, { type: "SPEND_SKILL_POINT", staffId: id, axis: "networking" });
+    const after = s.staff.find((x) => x.id === id)!;
+    expect(after.skills.networking).toBe(before + 1);
+    expect(after.skillPoints).toBe(0);
+  });
+
+  it("is a no-op without a point to spend", () => {
+    const s = createInitialState(5);
+    const after = reduce(s, {
+      type: "SPEND_SKILL_POINT",
+      staffId: s.staff[0].id,
+      axis: "litigation",
+    });
+    expect(after).toBe(s);
+  });
+});
+
 describe("END_TURN", () => {
   it("advances the week and pays salaries", () => {
     const s0 = createInitialState(5);
