@@ -218,28 +218,119 @@ function roomEffect(t: RoomType): string {
   return parts.join(" · ") || "Amenity";
 }
 
+// A seated person, viewed from above: a chair with a coloured "head" when
+// occupied. Colour signals whether the staffer is idle or out on a case.
+function personHead(s: Staff | undefined): string {
+  if (!s)
+    return `<span class="chair"></span>`;
+  const cls = s.status === "idle" ? "idle" : "busy";
+  return `<span class="chair occupied" title="${s.name} — ${s.role} (${
+    s.status === "idle" ? "available" : "on a case"
+  })"><span class="phead ${cls}"></span></span>`;
+}
+
+// A single workstation: a desktop with a chair tucked under it.
+function workstation(occupant?: Staff): string {
+  return `<span class="ws"><span class="desk"></span>${personHead(occupant)}</span>`;
+}
+
+// Top-down furniture for a room, plus any staff seated in it.
+function furniture(typeId: string, occupants: Staff[]): string {
+  switch (typeId) {
+    case "office":
+      return `<div class="furn furn-office">${workstation(occupants[0])}</div>`;
+    case "bullpen": {
+      let cells = "";
+      for (let i = 0; i < 4; i++) cells += workstation(occupants[i]);
+      return `<div class="furn furn-bullpen">${cells}</div>`;
+    }
+    case "conference":
+      return `<div class="furn furn-conf">
+        <div class="chrow"><span class="chair sm"></span><span class="chair sm"></span><span class="chair sm"></span></div>
+        <div class="boardtable"></div>
+        <div class="chrow"><span class="chair sm"></span><span class="chair sm"></span><span class="chair sm"></span></div>
+      </div>`;
+    case "lobby":
+      return `<div class="furn furn-lobby"><span class="reception"></span><span class="sofa"></span><span class="plant"></span></div>`;
+    case "kitchen":
+      return `<div class="furn furn-kitchen"><span class="counter"></span><span class="fridge"></span></div>`;
+    case "breakroom":
+      return `<div class="furn furn-break"><span class="sofa"></span><span class="rtable"></span></div>`;
+    case "storage":
+      return `<div class="furn furn-storage"><span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span></div>`;
+    default:
+      return "";
+  }
+}
+
 function floorPlan(game: GameState, ui: UiState): string {
   const stats = officeStats(game);
+  const cols = Math.ceil(Math.sqrt(stats.slotsTotal));
+  const rows = Math.ceil(stats.slotsTotal / cols);
   const bySlot = new Map<number, Room>();
   for (const r of game.rooms) bySlot.set(r.slot, r);
 
+  // Seat staff into their rooms: lawyers fill offices, support fill bullpens.
+  const lawyers = game.staff.filter((s) => seatCategory(s.role) === "lawyer");
+  const support = game.staff.filter((s) => seatCategory(s.role) === "support");
+  let li = 0;
+  let si = 0;
+
   let cells = "";
   for (let slot = 0; slot < stats.slotsTotal; slot++) {
+    const col = slot % cols;
+    const row = Math.floor(slot / cols);
+    const ext = {
+      top: row === 0,
+      bottom: row === rows - 1,
+      left: col === 0,
+      right: col === cols - 1,
+    };
+    // Windows on exterior walls; a door on an interior wall when possible.
+    let windows = "";
+    if (ext.top) windows += '<span class="win win-top"></span>';
+    if (ext.bottom) windows += '<span class="win win-bottom"></span>';
+    if (ext.left) windows += '<span class="win win-left"></span>';
+    if (ext.right) windows += '<span class="win win-right"></span>';
+    const doorEdge = !ext.bottom
+      ? "door-bottom"
+      : !ext.top
+        ? "door-top"
+        : !ext.right
+          ? "door-right"
+          : "door-left";
+    const extClass = [
+      ext.top ? "ext-top" : "",
+      ext.bottom ? "ext-bottom" : "",
+      ext.left ? "ext-left" : "",
+      ext.right ? "ext-right" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     const room = bySlot.get(slot);
     if (room) {
       const t = roomType(room.typeId)!;
+      const occupants: Staff[] = [];
+      if (t.id === "office" && li < lawyers.length) occupants.push(lawyers[li++]);
+      if (t.id === "bullpen") {
+        for (let k = 0; k < 4 && si < support.length; k++) occupants.push(support[si++]);
+      }
       const selected = ui.selectedRoomId === room.id;
       cells += `
-        <button class="room ${t.id} ${selected ? "selected" : ""}" data-room="${room.id}">
-          <div class="room-name">${t.name}</div>
-          <div class="room-effect small">${roomEffect(t)}</div>
+        <button class="room ${t.id} ${extClass} ${selected ? "selected" : ""}" data-room="${room.id}">
+          ${windows}
+          <span class="door ${doorEdge}"></span>
+          <span class="room-label">${t.name}</span>
+          ${furniture(t.id, occupants)}
         </button>`;
     } else {
       const selected = ui.selectedSlot === slot;
       cells += `
-        <button class="room empty ${selected ? "selected" : ""}" data-slot="${slot}">
+        <button class="room empty ${extClass} ${selected ? "selected" : ""}" data-slot="${slot}">
+          ${windows}
           <span class="plus-big">+</span>
-          <span class="small muted">Build</span>
+          <span class="small">Build</span>
         </button>`;
     }
   }
@@ -259,11 +350,11 @@ function floorPlan(game: GameState, ui: UiState): string {
       </div>
       <div class="office-summary small muted">
         Rooms ${stats.slotsUsed}/${stats.slotsTotal} ·
-        Lawyer seats ${stats.lawyersHoused}/${stats.lawyerSeats} ·
+        Lawyer offices ${stats.lawyersHoused}/${stats.lawyerSeats} ·
         Bullpen ${stats.supportHoused}/${stats.supportSeats} ·
         Case odds +${stats.caseBonus}
       </div>
-      <div class="floor-grid">${cells}</div>
+      <div class="floor-plan" style="--cols:${cols}">${cells}</div>
     </section>`;
 }
 
