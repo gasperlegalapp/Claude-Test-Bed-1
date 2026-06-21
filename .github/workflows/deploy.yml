@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - claude/claude-md-mls2i0bnbzju8b2a-1AEh9
       - claude/firm-game-design-build-93ih6y
   workflow_dispatch:
 
