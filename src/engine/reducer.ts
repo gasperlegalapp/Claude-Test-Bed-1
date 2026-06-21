@@ -1,6 +1,7 @@
 import type { GameState, Job, ResolvedJob, Staff } from "./types.ts";
 import { resolveCase, rollNewCase } from "./jobs.ts";
 import { CASE_POOL_TARGET } from "./state.ts";
+import { checkStatus } from "./scoring.ts";
 
 // All game actions flow through this reducer: (state, action) -> new state.
 // Pure — never mutates the input, never touches the DOM. This is the entire
@@ -11,6 +12,9 @@ export type Action =
   | { type: "END_TURN" };
 
 export function reduce(state: GameState, action: Action): GameState {
+  // Once the run is over, the board is frozen until a new game.
+  if (state.status !== "playing") return state;
+
   switch (action.type) {
     case "ASSIGN":
       return assign(state, action.caseId, action.staffIds);
@@ -60,6 +64,7 @@ function endTurn(state: GameState): GameState {
   let rng = state.rng;
   let nextId = state.nextId;
   let money = state.money;
+  let reputation = state.reputation;
 
   // 1. Weekly salary drain — idle staff bleed money, creating pressure.
   const salariesPaid = state.staff.reduce((sum, s) => sum + s.salary, 0);
@@ -84,11 +89,13 @@ function endTurn(state: GameState): GameState {
     const res = resolveCase(job.case, assigned, rng);
     rng = res.rng;
     money += res.moneyDelta;
+    reputation += res.repDelta;
 
     resolved.push({
       caseTitle: job.case.title,
       outcome: res.outcome,
       moneyDelta: res.moneyDelta,
+      repDelta: res.repDelta,
       staffNames: assigned.map((s) => s.name),
     });
 
@@ -108,15 +115,24 @@ function endTurn(state: GameState): GameState {
     availableCases.push(rolled.caseInst);
   }
 
-  return {
+  // 5. Track how long the firm has been unable to make payroll.
+  const weeksInDebt = money < 0 ? state.weeksInDebt + 1 : 0;
+
+  const next: GameState = {
     ...state,
     week: state.week + 1,
     rng,
     nextId,
     money,
+    reputation,
     staff,
     activeJobs: stillActive,
     availableCases,
+    weeksInDebt,
     lastTurn: { week: state.week + 1, salariesPaid, resolved },
   };
+
+  // 6. Resolve win/loss against the freshly-updated firm.
+  const { status, reason } = checkStatus(next);
+  return { ...next, status, statusReason: reason };
 }

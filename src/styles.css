@@ -129,6 +129,55 @@ button.ghost {
   font-size: 17px;
   font-weight: 700;
 }
+.hud-value.accent {
+  color: var(--accent);
+}
+
+/* ---- Left column wrapper ---- */
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---- Goals ---- */
+.goal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.goal {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.goal:last-child {
+  border-bottom: 0;
+}
+.goal.done .goal-top {
+  color: var(--good);
+}
+.goal-top {
+  margin-bottom: 6px;
+}
+.crown {
+  color: var(--warn);
+}
+.goal-bar {
+  height: 6px;
+  background: var(--bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.goal-fill {
+  height: 100%;
+  background: var(--accent);
+}
+.goal-fill.good {
+  background: var(--good);
+}
+.goal-meta {
+  margin-top: 4px;
+}
 
 /* ---- Three-column body ---- */
 .layout {
@@ -503,6 +552,15 @@ button.ghost {
   padding: 8px 0;
   border-bottom: 1px solid var(--line);
 }
+.o-deltas {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.o-rep {
+  font-size: 11px;
+}
 .o-tag {
   font-size: 11px;
   text-transform: uppercase;
@@ -527,4 +585,46 @@ button.ghost {
   justify-content: space-between;
   align-items: center;
   margin-top: 16px;
+}
+
+/* ---- End-of-game overlay ---- */
+.end-modal {
+  text-align: center;
+}
+.end-modal.won {
+  border-color: var(--good);
+}
+.end-modal.lost {
+  border-color: var(--bad);
+}
+.end-modal.won h2 {
+  color: var(--good);
+}
+.end-modal.lost h2 {
+  color: var(--bad);
+}
+.end-reason {
+  color: var(--ink);
+  margin: 0 0 18px;
+}
+.end-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.end-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 9px 11px;
+}
+.end-stats strong {
+  font-size: 17px;
+}
+.end-stats strong.accent {
+  color: var(--accent);
 }

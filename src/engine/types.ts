@@ -35,6 +35,7 @@ export interface CaseInstance {
   durationWeeks: number;
   payoff: number;
   riskCost: number;
+  reputation: number; // reputation gained on a clean success
 }
 
 // An in-progress assignment of staff to a case.
@@ -52,6 +53,7 @@ export interface ResolvedJob {
   caseTitle: string;
   outcome: Outcome;
   moneyDelta: number;
+  repDelta: number;
   staffNames: string[];
 }
 
@@ -62,13 +64,20 @@ export interface TurnLog {
   resolved: ResolvedJob[];
 }
 
+// Whether the run is ongoing, won, or lost.
+export type GameStatus = "playing" | "won" | "lost";
+
 export interface GameState {
   week: number;
   rng: RngState;
   money: number;
+  reputation: number;
   staff: Staff[];
   availableCases: CaseInstance[];
   activeJobs: Job[];
   lastTurn: TurnLog | null;
   nextId: number; // deterministic counter for unique ids
+  weeksInDebt: number; // consecutive end-of-week with negative cash
+  status: GameStatus;
+  statusReason: string; // human-readable win/loss explanation
 }

@@ -46,6 +46,7 @@ export function successChance(
 export interface Resolution {
   outcome: Outcome;
   moneyDelta: number;
+  repDelta: number;
   rng: RngState;
 }
 
@@ -63,22 +64,28 @@ export function resolveCase(
 
   let outcome: Outcome;
   let moneyDelta: number;
+  let repDelta: number;
 
   if (margin >= 0.3) {
     outcome = "critical";
     moneyDelta = Math.round(caseInst.payoff * 1.5);
+    repDelta = Math.round(caseInst.reputation * 1.5);
   } else if (margin >= 0) {
     outcome = "success";
     moneyDelta = caseInst.payoff;
+    repDelta = caseInst.reputation;
   } else if (margin >= -0.15) {
     outcome = "partial";
     moneyDelta = Math.round(caseInst.payoff * 0.4);
+    repDelta = 0;
   } else {
     outcome = "failure";
     moneyDelta = -caseInst.riskCost;
+    // Botching a case costs roughly half the prestige that was at stake.
+    repDelta = -Math.max(1, Math.round(caseInst.reputation * 0.5));
   }
 
-  return { outcome, moneyDelta, rng: r.rng };
+  return { outcome, moneyDelta, repDelta, rng: r.rng };
 }
 
 // Instantiate a concrete, offered case from a template, with a unique id and
@@ -105,6 +112,7 @@ export function makeCaseFromTemplate(
       durationWeeks: template.durationWeeks,
       payoff,
       riskCost: template.riskCost,
+      reputation: template.reputation,
     },
     rng: diffRoll.rng,
   };
