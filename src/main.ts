@@ -6,12 +6,12 @@ import "./styles.css";
 
 function freshUi(): UiState {
   return {
-    selectedCaseId: null,
+    setupAreas: new Set(),
+    selectedMatterId: null,
     selectedSlot: null,
     selectedRoomId: null,
     selectedStaff: new Set(),
     showSummary: false,
-    showPractices: false,
     showHiring: false,
   };
 }
@@ -22,7 +22,7 @@ let ui: UiState = freshUi();
 const root = document.querySelector<HTMLDivElement>("#app")!;
 
 function clearSelection(): void {
-  ui.selectedCaseId = null;
+  ui.selectedMatterId = null;
   ui.selectedSlot = null;
   ui.selectedRoomId = null;
   ui.selectedStaff.clear();
@@ -30,10 +30,20 @@ function clearSelection(): void {
 
 function render(): void {
   renderApp(root, game, ui, {
-    selectCase(id) {
-      const same = ui.selectedCaseId === id;
+    toggleSetupArea(id) {
+      if (ui.setupAreas.has(id)) ui.setupAreas.delete(id);
+      else if (ui.setupAreas.size < 2) ui.setupAreas.add(id);
+      render();
+    },
+    startGame() {
+      if (ui.setupAreas.size === 0) return;
+      game = reduce(game, { type: "START_GAME", areas: [...ui.setupAreas] });
+      render();
+    },
+    selectMatter(id) {
+      const same = ui.selectedMatterId === id;
       clearSelection();
-      ui.selectedCaseId = same ? null : id;
+      ui.selectedMatterId = same ? null : id;
       render();
     },
     selectSlot(slot) {
@@ -57,11 +67,11 @@ function render(): void {
       game = reduce(game, { type: "SPEND_SKILL_POINT", staffId, axis });
       render();
     },
-    assignCase() {
-      if (!ui.selectedCaseId || ui.selectedStaff.size === 0) return;
+    takeMatter() {
+      if (!ui.selectedMatterId || ui.selectedStaff.size === 0) return;
       game = reduce(game, {
-        type: "ASSIGN_CASE",
-        caseId: ui.selectedCaseId,
+        type: "TAKE_MATTER",
+        matterId: ui.selectedMatterId,
         staffIds: [...ui.selectedStaff],
       });
       clearSelection();
@@ -69,11 +79,7 @@ function render(): void {
     },
     buildRoom(roomTypeId) {
       if (ui.selectedSlot === null) return;
-      game = reduce(game, {
-        type: "BUILD_ROOM",
-        slot: ui.selectedSlot,
-        roomTypeId,
-      });
+      game = reduce(game, { type: "BUILD_ROOM", slot: ui.selectedSlot, roomTypeId });
       clearSelection();
       render();
     },
@@ -91,18 +97,6 @@ function render(): void {
     },
     hire(candidateId) {
       game = reduce(game, { type: "HIRE", candidateId });
-      render();
-    },
-    openPractices() {
-      ui.showPractices = true;
-      render();
-    },
-    closePractices() {
-      ui.showPractices = false;
-      render();
-    },
-    unlockPractice(id) {
-      game = reduce(game, { type: "UNLOCK_PRACTICE", practiceId: id });
       render();
     },
     endTurn() {
@@ -123,16 +117,14 @@ function render(): void {
   });
 }
 
-// Keyboard: End Turn on E / Enter, dismiss overlays on Escape.
 window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement)?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
-  if (game.status !== "playing") return;
+  if (game.phase !== "playing" || game.status !== "playing") return;
 
-  if (ui.showHiring || ui.showPractices) {
+  if (ui.showHiring) {
     if (e.key === "Escape") {
       ui.showHiring = false;
-      ui.showPractices = false;
       render();
     }
     return;

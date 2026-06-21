@@ -13,13 +13,12 @@ function staff(over: Partial<Staff> = {}): Staff {
     id: "s",
     name: "Test",
     role: "Associate",
+    practiceAreas: ["civil"],
     skills: { litigation: 3, research: 0, negotiation: 0, diligence: 0, networking: 0 },
     xp: 0,
     level: 1,
     skillPoints: 0,
     salary: 1000,
-    status: "idle",
-    jobId: null,
     ...over,
   };
 }

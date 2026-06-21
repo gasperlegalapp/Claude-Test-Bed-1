@@ -1,40 +1,48 @@
-import type { GameState, Job, Outcome, Room, Staff, TurnEvent } from "./types.ts";
-import { resolveCase, rollNewCase } from "./jobs.ts";
-import { casePoolTarget, CANDIDATE_POOL } from "./state.ts";
+import type { GameState, Matter, Room, Staff, TurnEvent } from "./types.ts";
+import {
+  resolveLitigation,
+  resolveTransactional,
+  rollLead,
+  canStaffMatter,
+} from "./matters.ts";
+import {
+  maxActiveMatters,
+  CANDIDATE_POOL,
+  MAX_OFFERED,
+  LEAD_CHANCE,
+  WEEK_DAYS,
+} from "./state.ts";
 import { checkStatus } from "./scoring.ts";
 import { gainXp, spendSkillPoint } from "./growth.ts";
-import { officeStats, roomType, hasFreeSeat } from "./office.ts";
-import { generateCandidate } from "./recruit.ts";
+import { officeStats, roomType, hasFreeSeat, roleCount } from "./office.ts";
+import { generateCandidate, generateStartingStaff } from "./people.ts";
+import { nextFloat } from "./rng.ts";
 import { type SkillAxis } from "../data/skills.ts";
-import { PRACTICE_AREAS } from "../data/practices.ts";
+import { ROLE_DEFS } from "../data/staff.ts";
 import { BUILDINGS } from "../data/buildings.ts";
 
-// All game actions flow through this reducer: (state, action) -> new state.
-// Pure — never mutates the input, never touches the DOM.
-
 export type Action =
-  | { type: "ASSIGN_CASE"; caseId: string; staffIds: string[] }
+  | { type: "START_GAME"; areas: string[] }
+  | { type: "TAKE_MATTER"; matterId: string; staffIds: string[] }
   | { type: "BUILD_ROOM"; slot: number; roomTypeId: string }
   | { type: "UPGRADE_BUILDING" }
   | { type: "HIRE"; candidateId: string }
-  | { type: "UNLOCK_PRACTICE"; practiceId: string }
   | { type: "SPEND_SKILL_POINT"; staffId: string; axis: SkillAxis }
   | { type: "END_TURN" };
 
 export function reduce(state: GameState, action: Action): GameState {
-  if (state.status !== "playing") return state;
+  if (action.type === "START_GAME") return startGame(state, action.areas);
+  if (state.phase !== "playing" || state.status !== "playing") return state;
 
   switch (action.type) {
-    case "ASSIGN_CASE":
-      return assignCase(state, action.caseId, action.staffIds);
+    case "TAKE_MATTER":
+      return takeMatter(state, action.matterId, action.staffIds);
     case "BUILD_ROOM":
       return buildRoom(state, action.slot, action.roomTypeId);
     case "UPGRADE_BUILDING":
       return upgradeBuilding(state);
     case "HIRE":
       return hire(state, action.candidateId);
-    case "UNLOCK_PRACTICE":
-      return unlockPractice(state, action.practiceId);
     case "SPEND_SKILL_POINT":
       return spendPoint(state, action.staffId, action.axis);
     case "END_TURN":
@@ -44,50 +52,70 @@ export function reduce(state: GameState, action: Action): GameState {
   }
 }
 
-function assignCase(
+// Choose focus areas, seed the founding team and first leads, begin play.
+function startGame(state: GameState, areas: string[]): GameState {
+  if (state.phase !== "setup" || areas.length === 0) return state;
+
+  const seeded = generateStartingStaff(areas, state.nextId, state.rng);
+  let rng = seeded.rng;
+  let nextId = seeded.nextId;
+
+  const next: GameState = {
+    ...state,
+    phase: "playing",
+    focusAreas: areas,
+    staff: seeded.staff,
+    rng,
+    nextId,
+  };
+
+  // A few initial leads to get going.
+  const matters: Matter[] = [];
+  for (let i = 0; i < 3; i++) {
+    const lead = rollLead(next, `matter-${nextId++}`, rng);
+    if (!lead) break;
+    rng = lead.rng;
+    matters.push(lead.matter);
+  }
+
+  // Refresh candidates now that we know the focus.
+  const candidates = [];
+  for (let i = 0; i < CANDIDATE_POOL; i++) {
+    const c = generateCandidate(`cand-${nextId++}`, areas, rng);
+    rng = c.rng;
+    candidates.push(c.candidate);
+  }
+
+  return { ...next, matters, candidates, rng, nextId };
+}
+
+function takeMatter(
   state: GameState,
-  caseId: string,
+  matterId: string,
   staffIds: string[],
 ): GameState {
-  const caseInst = state.availableCases.find((c) => c.id === caseId);
-  if (!caseInst || staffIds.length === 0) return state;
+  const matter = state.matters.find((m) => m.id === matterId);
+  if (!matter || matter.status !== "offered") return state;
+  if (state.matters.filter((m) => m.status === "active").length >= maxActiveMatters(state))
+    return state;
+  if (!canStaffMatter(state, matter, staffIds)) return state;
 
-  const chosen = staffIds
-    .map((id) => state.staff.find((s) => s.id === id))
-    .filter((s): s is Staff => !!s && s.status === "idle");
-  if (chosen.length !== staffIds.length) return state;
-
-  const jobId = `job-${state.nextId}`;
-  const ids = new Set(chosen.map((s) => s.id));
-  const job: Job = {
-    id: jobId,
-    case: caseInst,
-    staffIds: [...ids],
-    weeksRemaining: caseInst.durationWeeks,
-  };
   return {
     ...state,
-    nextId: state.nextId + 1,
-    availableCases: state.availableCases.filter((c) => c.id !== caseId),
-    activeJobs: [...state.activeJobs, job],
-    staff: state.staff.map((s) =>
-      ids.has(s.id) ? { ...s, status: "assigned", jobId } : s,
+    matters: state.matters.map((m) =>
+      m.id === matterId
+        ? { ...m, status: "active", staffIds: [...staffIds] }
+        : m,
     ),
   };
 }
 
-// Build a room into an empty, in-bounds slot for cash. Instant.
-function buildRoom(
-  state: GameState,
-  slot: number,
-  roomTypeId: string,
-): GameState {
+function buildRoom(state: GameState, slot: number, roomTypeId: string): GameState {
   const stats = officeStats(state);
   if (slot < 0 || slot >= stats.slotsTotal) return state;
   if (state.rooms.some((r) => r.slot === slot)) return state;
   const t = roomType(roomTypeId);
   if (!t || state.money < t.buildCost) return state;
-
   const room: Room = { id: `room-${state.nextId}`, typeId: roomTypeId, slot };
   return {
     ...state,
@@ -97,7 +125,6 @@ function buildRoom(
   };
 }
 
-// Move up to the next, larger building tier for cash. Rooms carry over.
 function upgradeBuilding(state: GameState): GameState {
   const next = state.buildingTier + 1;
   if (next >= BUILDINGS.length) return state;
@@ -106,24 +133,24 @@ function upgradeBuilding(state: GameState): GameState {
   return { ...state, money: state.money - cost, buildingTier: next };
 }
 
-// Hire a candidate: needs a free seat of their type and the signing fee.
 function hire(state: GameState, candidateId: string): GameState {
   const cand = state.candidates.find((c) => c.id === candidateId);
   if (!cand) return state;
   if (state.money < cand.signingCost) return state;
   if (!hasFreeSeat(state, cand.role)) return state;
+  const max = ROLE_DEFS[cand.role].max;
+  if (max !== undefined && roleCount(state, cand.role) >= max) return state;
 
   const newHire: Staff = {
     id: `staff-${state.nextId}`,
     name: cand.name,
     role: cand.role,
+    practiceAreas: cand.practiceAreas,
     skills: cand.skills,
     xp: 0,
     level: 1,
     skillPoints: 0,
     salary: cand.salary,
-    status: "idle",
-    jobId: null,
   };
   return {
     ...state,
@@ -134,28 +161,7 @@ function hire(state: GameState, candidateId: string): GameState {
   };
 }
 
-function unlockPractice(state: GameState, practiceId: string): GameState {
-  const area = PRACTICE_AREAS.find((a) => a.id === practiceId);
-  if (!area || state.unlockedPractices.includes(practiceId)) return state;
-  if (!area.prereqs.every((p) => state.unlockedPractices.includes(p))) {
-    return state;
-  }
-  if (state.money < area.costMoney || state.reputation < area.costRep) {
-    return state;
-  }
-  return {
-    ...state,
-    money: state.money - area.costMoney,
-    reputation: state.reputation - area.costRep,
-    unlockedPractices: [...state.unlockedPractices, practiceId],
-  };
-}
-
-function spendPoint(
-  state: GameState,
-  staffId: string,
-  axis: SkillAxis,
-): GameState {
+function spendPoint(state: GameState, staffId: string, axis: SkillAxis): GameState {
   let changed = false;
   const staff = state.staff.map((s) => {
     if (s.id !== staffId) return s;
@@ -166,104 +172,124 @@ function spendPoint(
   return changed ? { ...state, staff } : state;
 }
 
-// Advance one week: pay salaries, resolve finished cases (firm-wide office
-// bonus applies), train staff, refill cases + candidates, record a recap.
 function endTurn(state: GameState): GameState {
   let rng = state.rng;
   let nextId = state.nextId;
   let money = state.money;
   let reputation = state.reputation;
+  const events: TurnEvent[] = [];
 
   const salariesPaid = state.staff.reduce((sum, s) => sum + s.salary, 0);
   money -= salariesPaid;
 
   const officeBonus = officeStats(state).caseBonus;
+  const staffById = new Map(state.staff.map((s) => [s.id, s]));
 
-  const stillActive: Job[] = [];
-  const events: TurnEvent[] = [];
-  const freedStaff = new Set<string>();
-  const training = new Map<string, { outcome: Outcome; difficulty: number }>();
-
-  for (const job of state.activeJobs) {
-    const weeksRemaining = job.weeksRemaining - 1;
-    if (weeksRemaining > 0) {
-      stillActive.push({ ...job, weeksRemaining });
+  // Progress and resolve active matters.
+  const remaining: Matter[] = [];
+  for (const m of state.matters) {
+    if (m.status !== "active") {
+      remaining.push(m);
+      continue;
+    }
+    const daysRemaining = m.daysRemaining - WEEK_DAYS;
+    if (daysRemaining > 0) {
+      remaining.push({ ...m, daysRemaining });
       continue;
     }
 
-    const assigned = job.staffIds
-      .map((id) => state.staff.find((s) => s.id === id))
+    const assigned = m.staffIds
+      .map((id) => staffById.get(id))
       .filter((s): s is Staff => !!s);
 
-    const res = resolveCase(job.case, assigned, rng, officeBonus);
-    rng = res.rng;
-    money += res.moneyDelta;
-    reputation += res.repDelta;
-    events.push({
-      kind: "case",
-      title: job.case.title,
-      outcome: res.outcome,
-      moneyDelta: res.moneyDelta,
-      repDelta: res.repDelta,
-      staffNames: assigned.map((s) => s.name),
-    });
-    for (const s of assigned) {
-      training.set(s.id, { outcome: res.outcome, difficulty: job.case.difficulty });
+    let outcome: TurnEvent["outcome"];
+    let moneyDelta: number;
+    let repDelta: number;
+    if (m.category === "litigation") {
+      const res = resolveLitigation(m, assigned, rng, officeBonus);
+      rng = res.rng;
+      outcome = res.outcome;
+      moneyDelta = res.moneyDelta;
+      repDelta = res.repDelta;
+    } else {
+      const res = resolveTransactional(m);
+      outcome = res.outcome;
+      moneyDelta = res.moneyDelta;
+      repDelta = res.repDelta;
     }
-    for (const id of job.staffIds) freedStaff.add(id);
-  }
+    money += moneyDelta;
+    reputation += repDelta;
+    events.push({
+      kind: "matter",
+      title: m.title,
+      category: m.category,
+      outcome,
+      moneyDelta,
+      repDelta,
+    });
 
-  const staff = state.staff.map((s) => {
-    let ns = freedStaff.has(s.id)
-      ? { ...s, status: "idle" as const, jobId: null }
-      : s;
-    const t = training.get(s.id);
-    if (t) {
-      const trained = gainXp(ns, t.outcome, t.difficulty);
-      ns = trained.staff;
+    // Everyone on the matter earns experience.
+    for (const s of assigned) {
+      const trained = gainXp(staffById.get(s.id)!, outcome!, m.difficulty);
+      staffById.set(s.id, trained.staff);
       if (trained.levels > 0) {
-        const pts = trained.levels;
         events.push({
           kind: "growth",
-          title: ns.name,
-          detail: `Reached level ${ns.level} — +${pts} skill point${
-            pts > 1 ? "s" : ""
+          title: trained.staff.name,
+          detail: `Reached level ${trained.staff.level} — +${trained.levels} skill point${
+            trained.levels > 1 ? "s" : ""
           }`,
-          staffNames: [],
         });
       }
     }
-    return ns;
-  });
+  }
+
+  // Age out stale leads.
+  const kept: Matter[] = [];
+  for (const m of remaining) {
+    if (m.status === "offered") {
+      const expiresInWeeks = m.expiresInWeeks - 1;
+      if (expiresInWeeks <= 0) continue; // lead went cold
+      kept.push({ ...m, expiresInWeeks });
+    } else {
+      kept.push(m);
+    }
+  }
 
   const next: GameState = {
     ...state,
     week: state.week + 1,
-    rng,
-    nextId,
     money,
     reputation,
-    staff,
-    activeJobs: stillActive,
-    lastTurn: { week: state.week + 1, salariesPaid, events },
+    staff: [...staffById.values()],
+    matters: kept,
+    rng,
+    nextId,
   };
 
-  // Refill open cases to capacity.
-  const target = casePoolTarget(next);
-  while (next.availableCases.length < target) {
-    const rolled = rollNewCase(next.unlockedPractices, `case-${next.nextId++}`, next.rng);
-    next.rng = rolled.rng;
-    next.availableCases.push(rolled.caseInst);
+  // New leads come in intermittently (an extra attempt per receptionist).
+  const attempts = 1 + officeStats(next).receptionHoused;
+  for (let i = 0; i < attempts; i++) {
+    if (next.matters.filter((m) => m.status === "offered").length >= MAX_OFFERED) break;
+    const roll = nextFloat(next.rng);
+    next.rng = roll.rng;
+    if (roll.value > LEAD_CHANCE) continue;
+    const lead = rollLead(next, `matter-${next.nextId++}`, next.rng);
+    if (!lead) break;
+    next.rng = lead.rng;
+    next.matters.push(lead.matter);
+    events.push({ kind: "lead", title: lead.matter.title, detail: "New lead" });
   }
 
-  // Refresh the candidate pool.
+  // Top up the candidate pool.
   while (next.candidates.length < CANDIDATE_POOL) {
-    const c = generateCandidate(`cand-${next.nextId++}`, next.rng);
+    const c = generateCandidate(`cand-${next.nextId++}`, next.focusAreas, next.rng);
     next.rng = c.rng;
     next.candidates.push(c.candidate);
   }
 
   next.weeksInDebt = money < 0 ? state.weeksInDebt + 1 : 0;
+  next.lastTurn = { week: state.week + 1, salariesPaid, events };
 
   const { status, reason } = checkStatus(next);
   next.status = status;
