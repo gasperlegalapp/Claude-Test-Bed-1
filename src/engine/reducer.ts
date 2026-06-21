@@ -2,6 +2,7 @@ import type {
   District,
   GameState,
   Job,
+  Outcome,
   Staff,
   TurnEvent,
 } from "./types.ts";
@@ -13,6 +14,9 @@ import {
   SCOUT_WEEKS,
 } from "./state.ts";
 import { checkStatus } from "./scoring.ts";
+import { trainStaff } from "./growth.ts";
+import { SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
+import { PRACTICE_AREAS } from "../data/practices.ts";
 
 // All game actions flow through this reducer: (state, action) -> new state.
 // Pure — never mutates the input, never touches the DOM.
@@ -21,6 +25,7 @@ export type Action =
   | { type: "ASSIGN_CASE"; caseId: string; staffIds: string[] }
   | { type: "SCOUT"; districtId: string; staffIds: string[] }
   | { type: "BUILD_OFFICE"; districtId: string; staffIds: string[] }
+  | { type: "UNLOCK_PRACTICE"; practiceId: string }
   | { type: "END_TURN" };
 
 export function reduce(state: GameState, action: Action): GameState {
@@ -33,11 +38,31 @@ export function reduce(state: GameState, action: Action): GameState {
       return scout(state, action.districtId, action.staffIds);
     case "BUILD_OFFICE":
       return buildOffice(state, action.districtId, action.staffIds);
+    case "UNLOCK_PRACTICE":
+      return unlockPractice(state, action.practiceId);
     case "END_TURN":
       return endTurn(state);
     default:
       return state;
   }
+}
+
+// Unlock a practice area: requires its prerequisites and enough money + rep.
+function unlockPractice(state: GameState, practiceId: string): GameState {
+  const area = PRACTICE_AREAS.find((a) => a.id === practiceId);
+  if (!area || state.unlockedPractices.includes(practiceId)) return state;
+  if (!area.prereqs.every((p) => state.unlockedPractices.includes(p))) {
+    return state;
+  }
+  if (state.money < area.costMoney || state.reputation < area.costRep) {
+    return state;
+  }
+  return {
+    ...state,
+    money: state.money - area.costMoney,
+    reputation: state.reputation - area.costRep,
+    unlockedPractices: [...state.unlockedPractices, practiceId],
+  };
 }
 
 // Validate a requested team: every id must exist and be idle. Returns the
@@ -168,6 +193,8 @@ function endTurn(state: GameState): GameState {
   const freedStaff = new Set<string>();
   const revealed = new Set<string>();
   const builtOffices = new Set<string>();
+  // Which case (skills + outcome) each freed staffer worked, so they can train.
+  const training = new Map<string, { axes: SkillAxis[]; outcome: Outcome }>();
 
   const staffNamesOf = (ids: string[]) =>
     ids.map((id) => state.staff.find((s) => s.id === id)?.name ?? "?");
@@ -200,6 +227,13 @@ function endTurn(state: GameState): GameState {
         repDelta: res.repDelta,
         staffNames: assigned.map((s) => s.name),
       });
+      // Everyone on the case trains the skills it exercised.
+      for (const s of assigned) {
+        training.set(s.id, {
+          axes: job.case.requiredSkills,
+          outcome: res.outcome,
+        });
+      }
     } else if (job.kind === "scout") {
       revealed.add(job.districtId);
       events.push({
@@ -221,9 +255,25 @@ function endTurn(state: GameState): GameState {
     for (const id of job.staffIds) freedStaff.add(id);
   }
 
-  const staff = state.staff.map((s) =>
-    freedStaff.has(s.id) ? { ...s, status: "idle" as const, jobId: null } : s,
-  );
+  const staff = state.staff.map((s) => {
+    let ns = freedStaff.has(s.id)
+      ? { ...s, status: "idle" as const, jobId: null }
+      : s;
+    const t = training.get(s.id);
+    if (t) {
+      const trained = trainStaff(ns, t.axes, t.outcome);
+      ns = trained.staff;
+      for (const lu of trained.levelUps) {
+        events.push({
+          kind: "growth",
+          title: ns.name,
+          detail: `${SKILL_LABELS[lu.axis]} → ${lu.newLevel}`,
+          staffNames: [],
+        });
+      }
+    }
+    return ns;
+  });
 
   // Apply map changes from completed scout/build jobs.
   const districts: District[] = state.districts.map((d) => {
@@ -236,7 +286,12 @@ function endTurn(state: GameState): GameState {
   const availableCases = [...state.availableCases];
   const target = casePoolTarget(districts);
   while (availableCases.length < target) {
-    const rolled = rollNewCase(districts, `case-${nextId++}`, rng);
+    const rolled = rollNewCase(
+      districts,
+      state.unlockedPractices,
+      `case-${nextId++}`,
+      rng,
+    );
     rng = rolled.rng;
     availableCases.push(rolled.caseInst);
   }

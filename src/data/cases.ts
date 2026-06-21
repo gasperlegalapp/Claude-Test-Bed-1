@@ -14,6 +14,7 @@ export interface CaseTemplate {
   payoff: number; // money on a clean success
   riskCost: number; // money lost on outright failure (court costs, refunds)
   reputation: number; // reputation gained on a clean success
+  practiceArea?: string; // if set, only offered once that practice is unlocked
 }
 
 export const CASE_TEMPLATES: CaseTemplate[] = [
@@ -124,5 +125,145 @@ export const CASE_TEMPLATES: CaseTemplate[] = [
     payoff: 9500,
     riskCost: 1600,
     reputation: 3,
+  },
+
+  // ---- Estate Planning ----
+  {
+    templateId: "trust-tussle",
+    title: "Trust Issues",
+    flavor:
+      "A revocable trust, an irrevocable grudge, and a golden retriever named as a primary beneficiary.",
+    requiredSkills: ["research", "diligence"],
+    difficulty: 12,
+    durationWeeks: 3,
+    payoff: 13000,
+    riskCost: 2200,
+    reputation: 5,
+    practiceArea: "estate",
+  },
+  {
+    templateId: "the-reading",
+    title: "The Reading of the Will",
+    flavor:
+      "Six heirs, one sealed envelope, and a clause everyone swears was added under duress.",
+    requiredSkills: ["diligence"],
+    difficulty: 9,
+    durationWeeks: 2,
+    payoff: 9000,
+    riskCost: 1500,
+    reputation: 4,
+    practiceArea: "estate",
+  },
+
+  // ---- Personal Injury ----
+  {
+    templateId: "slip-and-fall",
+    title: "Slip, Fall & Associates",
+    flavor:
+      "A grocery-store banana peel that may or may not have been there for the regulation fourteen minutes.",
+    requiredSkills: ["litigation", "negotiation"],
+    difficulty: 11,
+    durationWeeks: 2,
+    payoff: 14000,
+    riskCost: 2500,
+    reputation: 5,
+    practiceArea: "personal-injury",
+  },
+  {
+    templateId: "whiplash-windfall",
+    title: "The Whiplash Windfall",
+    flavor:
+      "A three-mile-per-hour parking-lot tap that has somehow generated a foot-high stack of MRI bills.",
+    requiredSkills: ["negotiation"],
+    difficulty: 9,
+    durationWeeks: 2,
+    payoff: 11000,
+    riskCost: 1800,
+    reputation: 4,
+    practiceArea: "personal-injury",
+  },
+
+  // ---- Real Estate ----
+  {
+    templateId: "zoning-zugzwang",
+    title: "Zoning Zugzwang",
+    flavor:
+      "A taqueria, a historical-preservation board, and a variance request the size of a phone book.",
+    requiredSkills: ["diligence", "negotiation"],
+    difficulty: 11,
+    durationWeeks: 2,
+    payoff: 12000,
+    riskCost: 2000,
+    reputation: 4,
+    practiceArea: "real-estate",
+  },
+  {
+    templateId: "the-closing",
+    title: "The Closing From Hell",
+    flavor:
+      "Forty-one signatures, one missing notary, and a wire transfer that's 'definitely on its way.'",
+    requiredSkills: ["diligence"],
+    difficulty: 8,
+    durationWeeks: 1,
+    payoff: 9500,
+    riskCost: 1400,
+    reputation: 3,
+    practiceArea: "real-estate",
+  },
+
+  // ---- Corporate ----
+  {
+    templateId: "merger-mayhem",
+    title: "Merger Mayhem",
+    flavor:
+      "Two mid-cap egos, one term sheet, and a due-diligence binder you could stop a door with.",
+    requiredSkills: ["negotiation", "networking"],
+    difficulty: 16,
+    durationWeeks: 3,
+    payoff: 28000,
+    riskCost: 5000,
+    reputation: 9,
+    practiceArea: "corporate",
+  },
+  {
+    templateId: "boardroom-brawl",
+    title: "Boardroom Brawl",
+    flavor:
+      "A proxy fight so bitter the catering order has been entered into evidence.",
+    requiredSkills: ["litigation", "negotiation"],
+    difficulty: 15,
+    durationWeeks: 3,
+    payoff: 24000,
+    riskCost: 4500,
+    reputation: 8,
+    practiceArea: "corporate",
+  },
+
+  // ---- Criminal Defense ----
+  {
+    templateId: "the-big-trial",
+    title: "The Big Trial",
+    flavor:
+      "Front-page coverage, a sequestered jury, and a prosecutor who clearly wants your job next.",
+    requiredSkills: ["litigation", "research"],
+    difficulty: 15,
+    durationWeeks: 3,
+    payoff: 26000,
+    riskCost: 5000,
+    reputation: 10,
+    practiceArea: "criminal",
+  },
+  {
+    templateId: "reasonable-doubt",
+    title: "Reasonable Doubt",
+    flavor:
+      "The whole case hinges on a gas-station receipt and the precise definition of 'allegedly.'",
+    requiredSkills: ["litigation"],
+    difficulty: 13,
+    durationWeeks: 2,
+    payoff: 18000,
+    riskCost: 3500,
+    reputation: 7,
+    practiceArea: "criminal",
   },
 ];

@@ -19,21 +19,35 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
-// The team's effective score: for each required skill axis take the best
-// assigned staffer's rating, then sum across axes.
+// Each extra staffer's skill in a required axis counts at this diminishing
+// weight (best counts fully, the next at 40%, then 16%, ...). Skilled help
+// stacks, but the strongest specialist still matters most.
+const SUPPORT_WEIGHT = 0.4;
+// Flat bonus per *additional* body on the job, regardless of their skills —
+// more hands always help a little (research, errands, moral support).
+const TEAMWORK_BONUS = 0.5;
+
+// The team's effective score for a case. For each required skill axis, the
+// best assigned staffer counts fully and each additional staffer adds a
+// diminishing share of their own rating. On top of that, every extra body
+// adds a flat teamwork bonus — so piling on more people always raises the
+// odds, and a second person who *also* has the skill raises them more.
 export function teamScore(
   caseInst: Pick<CaseInstance, "requiredSkills">,
   assigned: Staff[],
 ): number {
   let total = 0;
   for (const axis of caseInst.requiredSkills) {
-    let best = 0;
-    for (const s of assigned) {
-      const v = s.skills[axis] ?? 0;
-      if (v > best) best = v;
+    const vals = assigned
+      .map((s) => s.skills[axis] ?? 0)
+      .sort((a, b) => b - a);
+    let weight = 1;
+    for (const v of vals) {
+      total += v * weight;
+      weight *= SUPPORT_WEIGHT;
     }
-    total += best;
   }
+  total += Math.max(0, assigned.length - 1) * TEAMWORK_BONUS;
   return total;
 }
 
@@ -93,18 +107,27 @@ export function resolveCase(
   return { outcome, moneyDelta, repDelta, rng: r.rng };
 }
 
-// Instantiate a concrete case for a district: bias the template toward the
-// district's specialty, then scale payoff/difficulty by its wealth.
+// Templates the firm can currently be offered: always-available base work
+// plus anything unlocked through a practice area.
+export function availableTemplates(unlockedPractices: string[]): CaseTemplate[] {
+  return CASE_TEMPLATES.filter(
+    (t) => !t.practiceArea || unlockedPractices.includes(t.practiceArea),
+  );
+}
+
+// Instantiate a concrete case for a district from a candidate template pool:
+// bias toward the district's specialty, then scale payoff/difficulty by wealth.
 export function makeCaseForDistrict(
   district: District,
+  templates: CaseTemplate[],
   id: string,
   rng: RngState,
 ): { caseInst: CaseInstance; rng: RngState } {
   // Prefer templates that exercise the district's dominant skill.
-  const matching = CASE_TEMPLATES.filter((t) =>
+  const matching = templates.filter((t) =>
     t.requiredSkills.includes(district.dominantSkill),
   );
-  const pool = matching.length > 0 ? matching : CASE_TEMPLATES;
+  const pool = matching.length > 0 ? matching : templates;
   const picked = pick(rng, pool);
   const template: CaseTemplate = picked.value;
 
@@ -138,13 +161,16 @@ export function makeCaseForDistrict(
   };
 }
 
-// Pick a random discovered district to host a new case, then instantiate one.
+// Pick a random discovered district to host a new case, then instantiate one
+// from the currently-available templates.
 export function rollNewCase(
   districts: District[],
+  unlockedPractices: string[],
   id: string,
   rng: RngState,
 ): { caseInst: CaseInstance; rng: RngState } {
   const hosts = districts.filter((d) => d.discovered);
   const chosen = pick(rng, hosts);
-  return makeCaseForDistrict(chosen.value, id, chosen.rng);
+  const templates = availableTemplates(unlockedPractices);
+  return makeCaseForDistrict(chosen.value, templates, id, chosen.rng);
 }

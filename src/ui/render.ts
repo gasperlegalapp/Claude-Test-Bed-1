@@ -12,6 +12,16 @@ import { BUILD_COST, BUILD_WEEKS, SCOUT_WEEKS } from "../engine/state.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
 import type { GoalMetric } from "../data/goals.ts";
 import { CITY_COLS } from "../data/city.ts";
+import { PRACTICE_AREAS, type PracticeArea } from "../data/practices.ts";
+import { CASE_TEMPLATES } from "../data/cases.ts";
+
+const SKILL_SHORT: Record<SkillAxis, string> = {
+  litigation: "Lit",
+  research: "Res",
+  negotiation: "Neg",
+  diligence: "Dil",
+  networking: "Net",
+};
 
 // UI-only state. Selection-driven, like a 4X map: pick a district, then act on
 // it (scout it, build there, or staff one of its cases).
@@ -20,6 +30,7 @@ export interface UiState {
   selectedCaseId: string | null;
   selectedStaff: Set<string>;
   showSummary: boolean;
+  showPractices: boolean;
 }
 
 export interface Handlers {
@@ -29,6 +40,9 @@ export interface Handlers {
   assignCase: () => void;
   scout: () => void;
   buildOffice: () => void;
+  openPractices: () => void;
+  closePractices: () => void;
+  unlockPractice: (id: string) => void;
   endTurn: () => void;
   closeSummary: () => void;
   newGame: () => void;
@@ -59,12 +73,14 @@ function selectedStaffList(game: GameState, ui: UiState): Staff[] {
 function skillTags(axes: SkillAxis[]): string {
   return axes.map((a) => `<span class="tag">${SKILL_LABELS[a]}</span>`).join("");
 }
-function staffSkillSummary(s: Staff): string {
-  return SKILL_AXES.map((a) => ({ a, v: s.skills[a] }))
-    .sort((x, y) => y.v - x.v)
-    .slice(0, 2)
-    .map(({ a, v }) => `${SKILL_LABELS[a]} ${v}`)
-    .join(" · ");
+// All five skills, always shown (even at 0) so growth is visible.
+function allSkillsLine(s: Staff): string {
+  return SKILL_AXES.map(
+    (a) =>
+      `<span class="sk ${s.skills[a] === 0 ? "sk-zero" : ""}">${
+        SKILL_SHORT[a]
+      } ${s.skills[a]}</span>`,
+  ).join("");
 }
 function jobWeeks(game: GameState, jobId: string | null): number {
   const job = game.activeJobs.find((j) => j.id === jobId);
@@ -95,10 +111,14 @@ function hud(game: GameState): string {
           computeValuation(game),
         )}</span></div>
         <div class="hud-stat"><span class="hud-label">Offices</span><span class="hud-value">${offices}</span></div>
+        <div class="hud-stat"><span class="hud-label">Practices</span><span class="hud-value">${
+          game.unlockedPractices.length
+        }</span></div>
         <div class="hud-stat"><span class="hud-label">Idle</span><span class="hud-value ${
           idle > 0 ? "warn" : ""
         }">${idle}/${game.staff.length}</span></div>
       </div>
+      <button id="open-practices" class="ghost">⚖ Practice Areas</button>
       <button id="new-game" class="ghost">New Game</button>
     </header>`;
 }
@@ -118,7 +138,7 @@ function rosterPanel(game: GameState): string {
             <div class="roster-top"><strong>${s.name}</strong><span class="role">${
               s.role
             }</span></div>
-            <div class="muted small">${staffSkillSummary(s)}</div>
+            <div class="skill-line">${allSkillsLine(s)}</div>
             <div class="roster-bottom small"><span class="${
               idle ? "good" : "warn"
             }">${status}</span><span class="muted">${money(s.salary)}/wk</span></div>
@@ -261,8 +281,8 @@ function teamPicker(game: GameState, ui: UiState): string {
         .filter(Boolean)
         .join(" ");
       const status = idle
-        ? staffSkillSummary(s)
-        : `Busy · ${jobWeeks(game, s.jobId)}w left`;
+        ? `<span class="skill-line">${allSkillsLine(s)}</span>`
+        : `<span class="muted small">Busy · ${jobWeeks(game, s.jobId)}w left</span>`;
       return `
         <button class="${cls}" data-team="${s.id}" ${idle ? "" : "disabled"}>
           <span class="checkbox">${checked ? "✓" : ""}</span>
@@ -270,7 +290,7 @@ function teamPicker(game: GameState, ui: UiState): string {
             <span class="team-top"><strong>${s.name}</strong><span class="role">${
               s.role
             }</span></span>
-            <span class="muted small">${status}</span>
+            ${status}
           </span>
         </button>`;
     })
@@ -422,6 +442,14 @@ function eventLine(e: TurnEvent): string {
         </span>
       </li>`;
   }
+  if (e.kind === "growth") {
+    return `
+      <li class="resolve-line growth">
+        <span class="o-tag good">Trained</span>
+        <span class="o-title">${e.title}</span>
+        <span class="o-deltas good small">${e.detail ?? ""}</span>
+      </li>`;
+  }
   return `
     <li class="resolve-line ${e.kind}">
       <span class="o-tag accent">${e.kind === "scout" ? "Scouted" : "Office"}</span>
@@ -447,6 +475,61 @@ function summaryModal(game: GameState): string {
           )}</span></span>
           <button id="close-summary">Continue ▸</button>
         </div>
+      </div>
+    </div>`;
+}
+
+// ---- Practice-area tech tree ----
+function practiceCard(game: GameState, area: PracticeArea): string {
+  const unlocked = game.unlockedPractices.includes(area.id);
+  const prereqsMet = area.prereqs.every((p) =>
+    game.unlockedPractices.includes(p),
+  );
+  const affordable =
+    game.money >= area.costMoney && game.reputation >= area.costRep;
+
+  const unlocks = CASE_TEMPLATES.filter((t) => t.practiceArea === area.id)
+    .map((t) => t.title)
+    .join(", ");
+  const prereqNames = area.prereqs
+    .map((p) => PRACTICE_AREAS.find((a) => a.id === p)?.name ?? p)
+    .join(", ");
+
+  let stateTag: string;
+  let action: string;
+  if (unlocked) {
+    stateTag = `<span class="pa-tag good">Unlocked</span>`;
+    action = `<div class="muted small">Active</div>`;
+  } else if (!prereqsMet) {
+    stateTag = `<span class="pa-tag bad">Locked</span>`;
+    action = `<div class="muted small">Requires ${prereqNames}</div>`;
+  } else {
+    stateTag = `<span class="pa-tag warn">Available</span>`;
+    action = `<button class="pa-unlock" data-unlock="${area.id}" ${
+      affordable ? "" : "disabled"
+    }>Unlock — ${money(area.costMoney)} · ${area.costRep} rep</button>`;
+  }
+
+  return `
+    <div class="pa-card ${unlocked ? "done" : ""}">
+      <div class="pa-head"><strong>${area.name}</strong>${stateTag}</div>
+      <p class="flavor">${area.description}</p>
+      <div class="muted small">Opens: ${unlocks}</div>
+      <div class="pa-action">${action}</div>
+    </div>`;
+}
+
+function practicesModal(game: GameState): string {
+  const cards = PRACTICE_AREAS.map((a) => practiceCard(game, a)).join("");
+  return `
+    <div class="modal-backdrop">
+      <div class="modal practices-modal">
+        <div class="pm-head">
+          <h2>Practice Areas</h2>
+          <button id="close-practices" class="ghost">Close</button>
+        </div>
+        <p class="muted small">Spend cash and reputation to open new kinds of work. Each area adds prestige to your firm's valuation.</p>
+        <div class="pa-grid">${cards}</div>
       </div>
     </div>`;
 }
@@ -487,9 +570,11 @@ export function renderApp(
   const overlay =
     game.status !== "playing"
       ? endOverlay(game)
-      : ui.showSummary
-        ? summaryModal(game)
-        : "";
+      : ui.showPractices
+        ? practicesModal(game)
+        : ui.showSummary
+          ? summaryModal(game)
+          : "";
 
   root.innerHTML = `
     ${hud(game)}
@@ -530,9 +615,19 @@ export function renderApp(
     const el = root.querySelector<HTMLButtonElement>(sel);
     if (el) el.addEventListener("click", fn);
   };
+  root
+    .querySelectorAll<HTMLButtonElement>("[data-unlock]")
+    .forEach((el) =>
+      el.addEventListener("click", () =>
+        handlers.unlockPractice(el.dataset.unlock!),
+      ),
+    );
+
   bind("#confirm-assign", handlers.assignCase);
   bind("#scout-btn", handlers.scout);
   bind("#build-btn", handlers.buildOffice);
+  bind("#open-practices", handlers.openPractices);
+  bind("#close-practices", handlers.closePractices);
   bind("#end-turn", handlers.endTurn);
   bind("#new-game", handlers.newGame);
   bind("#close-summary", handlers.closeSummary);
