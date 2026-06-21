@@ -12,6 +12,7 @@ function freshUi(game: GameState): UiState {
     selectedCaseId: null,
     selectedStaff: new Set(),
     showSummary: false,
+    showPractices: false,
   };
 }
 
@@ -75,6 +76,18 @@ function render(): void {
       ui.showSummary = true;
       render();
     },
+    openPractices() {
+      ui.showPractices = true;
+      render();
+    },
+    closePractices() {
+      ui.showPractices = false;
+      render();
+    },
+    unlockPractice(id) {
+      game = reduce(game, { type: "UNLOCK_PRACTICE", practiceId: id });
+      render();
+    },
     closeSummary() {
       ui.showSummary = false;
       render();
@@ -92,6 +105,14 @@ window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement)?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
   if (game.status !== "playing") return;
+
+  if (ui.showPractices) {
+    if (e.key === "Escape") {
+      ui.showPractices = false;
+      render();
+    }
+    return;
+  }
 
   if (ui.showSummary) {
     if (e.key === "Enter" || e.key === "Escape" || e.key.toLowerCase() === "e") {

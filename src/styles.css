@@ -263,6 +263,26 @@ button.ghost {
   letter-spacing: 1px;
 }
 
+/* ---- Skill chips (all attributes, always shown) ---- */
+.skill-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 3px 0;
+}
+.sk {
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  color: var(--ink);
+}
+.sk-zero {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
 /* ---- City map ---- */
 .city-grid {
   display: grid;
@@ -731,6 +751,61 @@ button.ghost {
   justify-content: space-between;
   align-items: center;
   margin-top: 16px;
+}
+
+/* ---- Practice areas modal ---- */
+.practices-modal {
+  width: min(720px, 94vw);
+}
+.pm-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pa-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+@media (max-width: 620px) {
+  .pa-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.pa-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pa-card.done {
+  border-color: rgba(95, 184, 120, 0.5);
+}
+.pa-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.pa-tag {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 6px;
+}
+.pa-action {
+  margin-top: auto;
+  padding-top: 4px;
+}
+.pa-unlock {
+  width: 100%;
 }
 
 /* ---- End-of-game overlay ---- */

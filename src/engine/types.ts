@@ -18,6 +18,7 @@ export interface Staff {
   name: string;
   role: StaffRole;
   skills: Skills;
+  xp: Skills; // experience banked toward the next point in each skill
   salary: number; // weekly upkeep
   status: StaffStatus;
   jobId: string | null; // the active job this staffer is working, if any
@@ -79,13 +80,15 @@ export type Job = CaseJob | ScoutJob | BuildJob;
 export type Outcome = "critical" | "success" | "partial" | "failure";
 
 // One thing that happened during end-of-turn processing, for the recap.
+export type TurnEventKind = JobKind | "growth";
+
 export interface TurnEvent {
-  kind: JobKind;
-  title: string; // case title, or district name for scout/build
+  kind: TurnEventKind;
+  title: string; // case title, district name, or staff name (growth)
   outcome?: Outcome; // cases only
   moneyDelta?: number;
   repDelta?: number;
-  detail?: string; // e.g. "District revealed", "Office opened"
+  detail?: string; // e.g. "District revealed", "Litigation -> 7"
   staffNames: string[];
 }
 
@@ -106,6 +109,7 @@ export interface GameState {
   districts: District[];
   availableCases: CaseInstance[];
   activeJobs: Job[];
+  unlockedPractices: string[]; // ids of unlocked practice areas
   lastTurn: TurnLog | null;
   nextId: number; // deterministic counter for unique ids
   weeksInDebt: number; // consecutive end-of-week with negative cash

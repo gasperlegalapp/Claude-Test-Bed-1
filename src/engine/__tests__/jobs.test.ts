@@ -3,9 +3,10 @@ import { teamScore, successChance, resolveCase } from "../jobs.ts";
 import { createRng } from "../rng.ts";
 import type { CaseInstance, Staff } from "../types.ts";
 
+let staffSeq = 0;
 function staff(partial: Partial<Staff["skills"]>): Staff {
   return {
-    id: "s",
+    id: `s${staffSeq++}`,
     name: "Test",
     role: "Associate",
     skills: {
@@ -15,6 +16,13 @@ function staff(partial: Partial<Staff["skills"]>): Staff {
       diligence: 1,
       networking: 1,
       ...partial,
+    },
+    xp: {
+      litigation: 0,
+      research: 0,
+      negotiation: 0,
+      diligence: 0,
+      networking: 0,
     },
     salary: 1000,
     status: "idle",
@@ -41,15 +49,36 @@ function makeCase(over: Partial<CaseInstance> = {}): CaseInstance {
 }
 
 describe("teamScore", () => {
-  it("sums the best assigned skill per required axis", () => {
+  it("counts the best per axis fully and support staff at a discount", () => {
     const a = staff({ litigation: 6, research: 2 });
     const b = staff({ litigation: 3, research: 5 });
-    // best litigation (6) + best research (5) = 11
-    expect(teamScore(makeCase(), [a, b])).toBe(11);
+    // litigation: 6 + 3*0.4 = 7.2 ; research: 5 + 2*0.4 = 5.8
+    // plus teamwork (2-1)*0.5 = 0.5 -> 13.5
+    expect(teamScore(makeCase(), [a, b])).toBeCloseTo(13.5);
   });
 
   it("is zero with no staff", () => {
     expect(teamScore(makeCase(), [])).toBe(0);
+  });
+
+  it("rises when a second skilled person joins", () => {
+    const c = makeCase({ requiredSkills: ["litigation"] });
+    const solo = teamScore(c, [staff({ litigation: 6 })]);
+    const pair = teamScore(c, [
+      staff({ litigation: 6 }),
+      staff({ litigation: 6 }),
+    ]);
+    expect(pair).toBeGreaterThan(solo);
+  });
+
+  it("rises even when the extra body has no relevant skill", () => {
+    const c = makeCase({ requiredSkills: ["litigation"] });
+    const solo = teamScore(c, [staff({ litigation: 6 })]);
+    const helped = teamScore(c, [
+      staff({ litigation: 6 }),
+      staff({ litigation: 0 }),
+    ]);
+    expect(helped).toBeGreaterThan(solo);
   });
 });
 
