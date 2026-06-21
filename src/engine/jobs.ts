@@ -1,4 +1,4 @@
-import type { CaseInstance, District, Outcome, Staff } from "./types.ts";
+import type { CaseInstance, Outcome, Staff } from "./types.ts";
 import type { RngState } from "./rng.ts";
 import { nextFloat, nextInt, pick } from "./rng.ts";
 import { CASE_TEMPLATES, type CaseTemplate } from "../data/cases.ts";
@@ -7,13 +7,6 @@ import { CASE_TEMPLATES, type CaseTemplate } from "../data/cases.ts";
 const SKILL_WEIGHT = 0.07;
 const MIN_CHANCE = 0.05;
 const MAX_CHANCE = 0.95;
-
-// A built office adds this much to the team's effective score on cases run in
-// that district — the concrete payoff for expanding and putting down roots.
-export const OFFICE_SCORE_BONUS = 3;
-
-// Payoff/difficulty scaling by district wealth (index by wealth 1–3).
-const WEALTH_PAYOFF: Record<number, number> = { 1: 0.8, 2: 1.0, 3: 1.3 };
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
@@ -115,32 +108,17 @@ export function availableTemplates(unlockedPractices: string[]): CaseTemplate[] 
   );
 }
 
-// Instantiate a concrete case for a district from a candidate template pool:
-// bias toward the district's specialty, then scale payoff/difficulty by wealth.
-export function makeCaseForDistrict(
-  district: District,
-  templates: CaseTemplate[],
+// Instantiate a concrete case from a template, with mild randomized variation
+// so repeat offers don't feel identical.
+export function makeCase(
+  template: CaseTemplate,
   id: string,
   rng: RngState,
 ): { caseInst: CaseInstance; rng: RngState } {
-  // Prefer templates that exercise the district's dominant skill.
-  const matching = templates.filter((t) =>
-    t.requiredSkills.includes(district.dominantSkill),
-  );
-  const pool = matching.length > 0 ? matching : templates;
-  const picked = pick(rng, pool);
-  const template: CaseTemplate = picked.value;
-
-  // +/-15% payoff swing, +/-1 difficulty swing, then wealth scaling.
-  const payRoll = nextInt(picked.rng, 85, 115);
-  const diffRoll = nextInt(payRoll.rng, -1, 1);
-  const wealthMult = WEALTH_PAYOFF[district.wealth] ?? 1;
-  const payoff =
-    Math.round((template.payoff * payRoll.value * wealthMult) / 100 / 100) * 100;
-  const difficulty = Math.max(
-    1,
-    template.difficulty + diffRoll.value + (district.wealth - 2),
-  );
+  const payRoll = nextInt(rng, 85, 115); // +/-15% payoff swing
+  const diffRoll = nextInt(payRoll.rng, -1, 1); // +/-1 difficulty swing
+  const payoff = Math.round((template.payoff * payRoll.value) / 100 / 100) * 100;
+  const difficulty = Math.max(1, template.difficulty + diffRoll.value);
 
   return {
     caseInst: {
@@ -154,23 +132,18 @@ export function makeCaseForDistrict(
       payoff,
       riskCost: template.riskCost,
       reputation: template.reputation,
-      districtId: district.id,
-      districtName: district.name,
     },
     rng: diffRoll.rng,
   };
 }
 
-// Pick a random discovered district to host a new case, then instantiate one
-// from the currently-available templates.
+// Draw a random currently-available template and instantiate a case from it.
 export function rollNewCase(
-  districts: District[],
   unlockedPractices: string[],
   id: string,
   rng: RngState,
 ): { caseInst: CaseInstance; rng: RngState } {
-  const hosts = districts.filter((d) => d.discovered);
-  const chosen = pick(rng, hosts);
   const templates = availableTemplates(unlockedPractices);
-  return makeCaseForDistrict(chosen.value, templates, id, chosen.rng);
+  const picked = pick(rng, templates);
+  return makeCase(picked.value, id, picked.rng);
 }

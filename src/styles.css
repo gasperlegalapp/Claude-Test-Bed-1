@@ -330,212 +330,166 @@ button.ghost {
   padding: 1px 6px;
 }
 
-/* ---- City map ---- */
-.city-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 10px;
-  padding: 12px;
-  border-radius: 10px;
-  /* Asphalt + faint road grid: the gaps between blocks read as streets. */
-  background-color: #0c0e12;
-  background-image:
-    repeating-linear-gradient(0deg, transparent 0 46px, rgba(216, 162, 58, 0.06) 46px 48px),
-    repeating-linear-gradient(90deg, transparent 0 46px, rgba(216, 162, 58, 0.06) 46px 48px);
-  border: 1px solid #05060a;
-}
-.cell {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-height: 120px;
-  overflow: hidden;
-  text-align: left;
-  background: linear-gradient(180deg, #20252e 0%, #1a1e26 100%);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 9px 10px 0;
-  font: inherit;
-  font-weight: 400;
-  cursor: pointer;
-}
-.cell:hover {
-  border-color: var(--accent);
-  filter: none;
-}
-.cell.selected {
-  border-color: var(--accent);
-  box-shadow:
-    inset 0 0 0 1px var(--accent),
-    0 0 12px rgba(79, 157, 166, 0.35);
-}
-.cell.home {
-  background: linear-gradient(180deg, #2a2620 0%, #1e1c18 100%);
-}
-.cell.office {
-  border-color: rgba(95, 184, 120, 0.45);
-}
-.cell.fogged {
-  background:
-    repeating-linear-gradient(45deg, #14161b, #14161b 9px, #181b21 9px, #181b21 18px);
-  color: var(--muted);
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-.cell-fog {
-  font-size: 34px;
-  font-weight: 800;
-  color: #333a47;
-  line-height: 1;
-  margin-top: 24px;
-}
-.cell-fog-label {
-  font-size: 11px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: #3d4452;
-}
-.cell-top {
+/* ---- Office floor plan ---- */
+.office-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 6px;
-  z-index: 1;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
 }
-.cell-top strong {
-  font-size: 13px;
+.office-head h2 {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 15px;
 }
-.cell-meta {
-  z-index: 1;
+.office-summary {
+  margin-bottom: 10px;
 }
-.hq {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  color: var(--accent-ink);
-  background: var(--warn);
-  border-radius: 4px;
-  padding: 0 5px;
+.mini {
+  font-size: 12px;
+  padding: 5px 10px;
 }
-.hq.office-tag {
-  background: var(--good);
+.floor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  /* Office floor: carpet tone with a faint blueprint grid. */
+  background-color: #0e1116;
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 27px, rgba(79, 157, 166, 0.07) 27px 28px),
+    repeating-linear-gradient(90deg, transparent 0 27px, rgba(79, 157, 166, 0.07) 27px 28px);
+  border: 1px solid #06070b;
 }
-.case-pip {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-ink);
-  background: var(--accent);
-  border-radius: 50%;
-  min-width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-/* Skyline anchored to the bottom of the block */
-.skyline {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 56px;
-  margin-top: auto;
-}
-.bldg {
-  flex: 1;
-  min-width: 4px;
-  background: linear-gradient(180deg, #46566f 0%, #2c3647 100%);
-  border-radius: 1px 1px 0 0;
-  /* lit windows */
-  background-image: linear-gradient(
-    rgba(216, 226, 240, 0.18) 1px,
-    transparent 1px
-  );
-  background-size: 100% 6px;
-}
-.skyline.office .bldg {
-  background: linear-gradient(180deg, #4f8f63 0%, #2f5a3a 100%);
-  background-image: linear-gradient(rgba(220, 245, 225, 0.2) 1px, transparent 1px);
-  background-size: 100% 6px;
-}
-.skyline.home .bldg {
-  background: linear-gradient(180deg, #b89043 0%, #6e5523 100%);
-  background-image: linear-gradient(rgba(255, 244, 220, 0.22) 1px, transparent 1px);
-  background-size: 100% 6px;
-}
-.cell-job {
-  position: absolute;
-  right: 8px;
-  bottom: 7px;
-  z-index: 1;
-  background: rgba(12, 14, 18, 0.78);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-/* ---- District panel extras ---- */
-.wealth {
-  color: var(--warn);
-  letter-spacing: 2px;
-}
-.dcase-list {
+.room {
+  min-height: 78px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.dcase {
-  display: block;
+  justify-content: center;
+  gap: 4px;
   text-align: left;
-  background: var(--panel-2);
+  background: linear-gradient(180deg, #283041 0%, #1f2632 100%);
   color: var(--ink);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
   padding: 9px 10px;
   font: inherit;
   font-weight: 400;
   cursor: pointer;
 }
-.dcase:hover {
+.room:hover {
   border-color: var(--accent);
   filter: none;
 }
-.dcase.selected {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-  background: var(--panel-3);
+.room.selected {
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 10px rgba(79, 157, 166, 0.3);
 }
-.dcase-top {
+.room-name {
+  font-weight: 700;
+}
+.room-effect {
+  color: var(--accent);
+}
+/* Per-room accent colour by type */
+.room.office { border-left-color: #6ea8ff; }
+.room.bullpen { border-left-color: #c98be0; }
+.room.conference { border-left-color: var(--good); }
+.room.lobby { border-left-color: var(--warn); }
+.room.kitchen,
+.room.breakroom { border-left-color: #e08b8b; }
+.room.storage { border-left-color: #8b94a3; }
+.room.empty {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 2px;
+  background: transparent;
+  border: 1px dashed #39414f;
+  border-left: 1px dashed #39414f;
+  color: var(--muted);
+}
+.room.empty:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.plus-big {
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* ---- Build menu ---- */
+.build-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.build-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 9px 10px;
+}
+.build-info {
+  flex: 1;
+}
+.build-top {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 5px;
 }
-.build-block {
-  margin-top: 14px;
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
+.build-eff {
+  color: var(--accent);
+  margin-top: 3px;
 }
-.secondary-wide {
+.build-pick {
+  padding: 6px 12px;
+}
+
+/* ---- Hiring ---- */
+.hiring-modal {
+  width: min(680px, 94vw);
+}
+.cand-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+@media (max-width: 560px) {
+  .cand-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.cand-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.cand-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.cand-hire {
   width: 100%;
-  padding: 10px;
-  background: transparent;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-}
-.secondary-wide:disabled {
-  color: var(--muted);
-  border-color: var(--line);
-  background: transparent;
-}
-.office-note {
-  padding: 4px 0;
-}
-.o-tag.accent {
-  color: var(--accent);
 }
 
 /* ---- Case board ---- */

@@ -3,10 +3,7 @@ import type { SkillAxis } from "../data/skills.ts";
 import type { StaffRole } from "../data/staff.ts";
 
 // ---------------------------------------------------------------------------
-// Game state (through Milestone 3).
-//
-// One flat, JSON-serializable object. All game rules read and return this via
-// pure reducer functions — no DOM, no globals, no hidden mutation.
+// Game state. One flat, JSON-serializable object driven by pure reducers.
 // ---------------------------------------------------------------------------
 
 export type Skills = Record<SkillAxis, number>;
@@ -23,23 +20,27 @@ export interface Staff {
   skillPoints: number; // unspent points the player allocates to any skill
   salary: number; // weekly upkeep
   status: StaffStatus;
-  jobId: string | null; // the active job this staffer is working, if any
+  jobId: string | null;
 }
 
-// A district on the city map. Starts fogged unless it's home.
-export interface District {
+// A hireable candidate. Becomes a Staff member once hired.
+export interface Candidate {
   id: string;
   name: string;
-  x: number;
-  y: number;
-  wealth: number; // 1–3
-  dominantSkill: SkillAxis;
-  isHome: boolean;
-  discovered: boolean; // revealed by scouting (or home)
-  hasOffice: boolean; // built office: success bonus + more caseload here
+  role: StaffRole;
+  skills: Skills;
+  salary: number;
+  signingCost: number; // one-time fee to hire
 }
 
-// A concrete, offered case (instantiated from a CaseTemplate for a district).
+// A built room occupying one slot of the office floor plan.
+export interface Room {
+  id: string;
+  typeId: string; // references a RoomType in data
+  slot: number; // index into the floor-plan grid
+}
+
+// A concrete, offered case (instantiated from a CaseTemplate).
 export interface CaseInstance {
   id: string;
   templateId: string;
@@ -50,47 +51,30 @@ export interface CaseInstance {
   durationWeeks: number;
   payoff: number;
   riskCost: number;
-  reputation: number; // reputation gained on a clean success
-  districtId: string;
-  districtName: string;
+  reputation: number;
 }
 
-// In-progress assignments. Three kinds of work share the staff/timer shape.
-export type JobKind = "case" | "scout" | "build";
-
-interface JobBase {
+// An in-progress case assignment. (Building and hiring are instant, so cases
+// are the only timed jobs.)
+export interface Job {
   id: string;
+  case: CaseInstance;
   staffIds: string[];
   weeksRemaining: number;
 }
-export interface CaseJob extends JobBase {
-  kind: "case";
-  case: CaseInstance;
-}
-export interface ScoutJob extends JobBase {
-  kind: "scout";
-  districtId: string;
-  districtName: string;
-}
-export interface BuildJob extends JobBase {
-  kind: "build";
-  districtId: string;
-  districtName: string;
-}
-export type Job = CaseJob | ScoutJob | BuildJob;
 
 export type Outcome = "critical" | "success" | "partial" | "failure";
 
-// One thing that happened during end-of-turn processing, for the recap.
-export type TurnEventKind = JobKind | "growth";
+export type TurnEventKind = "case" | "growth";
 
+// One thing that happened during end-of-turn processing, for the recap.
 export interface TurnEvent {
   kind: TurnEventKind;
-  title: string; // case title, district name, or staff name (growth)
-  outcome?: Outcome; // cases only
+  title: string; // case title, or staff name for growth
+  outcome?: Outcome;
   moneyDelta?: number;
   repDelta?: number;
-  detail?: string; // e.g. "District revealed", "Litigation -> 7"
+  detail?: string;
   staffNames: string[];
 }
 
@@ -108,13 +92,15 @@ export interface GameState {
   money: number;
   reputation: number;
   staff: Staff[];
-  districts: District[];
+  rooms: Room[];
+  buildingTier: number; // index into BUILDINGS
+  candidates: Candidate[];
   availableCases: CaseInstance[];
   activeJobs: Job[];
-  unlockedPractices: string[]; // ids of unlocked practice areas
+  unlockedPractices: string[];
   lastTurn: TurnLog | null;
-  nextId: number; // deterministic counter for unique ids
-  weeksInDebt: number; // consecutive end-of-week with negative cash
+  nextId: number;
+  weeksInDebt: number;
   status: GameStatus;
   statusReason: string;
 }

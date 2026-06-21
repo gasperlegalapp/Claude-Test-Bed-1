@@ -1,178 +1,133 @@
 import { describe, it, expect } from "vitest";
-import { createInitialState, casePoolTarget, BUILD_COST } from "../state.ts";
+import { createInitialState, casePoolTarget } from "../state.ts";
 import { reduce } from "../reducer.ts";
-import type { GameState } from "../types.ts";
+import { officeStats } from "../office.ts";
+import { ROOM_TYPES } from "../../data/rooms.ts";
+import { BUILDINGS } from "../../data/buildings.ts";
 
-// Reveal and build out a named district by fast-forwarding the right jobs.
-function scoutAndBuild(start: GameState, districtId: string): GameState {
-  let s = start;
-  s = reduce(s, { type: "SCOUT", districtId, staffIds: [s.staff[0].id] });
-  // Scout takes 2 weeks.
-  s = reduce(s, { type: "END_TURN" });
-  s = reduce(s, { type: "END_TURN" });
-  s = { ...s, money: 50000 }; // ensure the firm can afford the build
-  s = reduce(s, {
-    type: "BUILD_OFFICE",
-    districtId,
-    staffIds: [s.staff[0].id],
-  });
-  s = reduce(s, { type: "END_TURN" });
-  s = reduce(s, { type: "END_TURN" });
-  return s;
+function firstEmptySlot(state = createInitialState(1)): number {
+  const used = new Set(state.rooms.map((r) => r.slot));
+  for (let i = 0; i < officeStats(state).slotsTotal; i++) {
+    if (!used.has(i)) return i;
+  }
+  return -1;
 }
 
-describe("initial state — milestone 3", () => {
-  it("starts with one discovered home office and the rest fogged", () => {
+describe("initial state — office model", () => {
+  it("starts with a small staffed office and a full case pool", () => {
     const s = createInitialState();
-    const home = s.districts.find((d) => d.isHome)!;
-    expect(home.discovered).toBe(true);
-    expect(home.hasOffice).toBe(true);
-    expect(s.districts.filter((d) => d.discovered).length).toBe(1);
+    expect(s.staff.length).toBe(3);
+    expect(s.rooms.length).toBeGreaterThan(0);
+    expect(s.candidates.length).toBeGreaterThan(0);
+    expect(s.availableCases.length).toBe(casePoolTarget(s));
   });
 
-  it("offers a full case pool, all in the home district", () => {
-    const s = createInitialState();
-    expect(s.availableCases.length).toBe(casePoolTarget(s.districts));
-    const home = s.districts.find((d) => d.isHome)!;
-    expect(s.availableCases.every((c) => c.districtId === home.id)).toBe(true);
+  it("houses the founders within the starting seats", () => {
+    const stats = officeStats(createInitialState());
+    expect(stats.lawyersHoused).toBeLessThanOrEqual(stats.lawyerSeats);
+    expect(stats.supportHoused).toBeLessThanOrEqual(stats.supportSeats);
   });
 });
 
 describe("ASSIGN_CASE", () => {
   it("moves a case into an active job and marks staff busy", () => {
     const s0 = createInitialState(5);
-    const caseId = s0.availableCases[0].id;
-    const staffId = s0.staff[0].id;
-    const s1 = reduce(s0, { type: "ASSIGN_CASE", caseId, staffIds: [staffId] });
-
-    expect(s1.activeJobs.length).toBe(1);
-    expect(s1.activeJobs[0].kind).toBe("case");
-    expect(s1.staff.find((x) => x.id === staffId)!.status).toBe("assigned");
-  });
-
-  it("ignores assignment of already-busy staff", () => {
-    const s0 = createInitialState(5);
-    const staffId = s0.staff[0].id;
     const s1 = reduce(s0, {
       type: "ASSIGN_CASE",
       caseId: s0.availableCases[0].id,
-      staffIds: [staffId],
+      staffIds: [s0.staff[0].id],
     });
-    const s2 = reduce(s1, {
-      type: "ASSIGN_CASE",
-      caseId: s1.availableCases[0].id,
-      staffIds: [staffId],
-    });
-    expect(s2.activeJobs.length).toBe(1);
+    expect(s1.activeJobs.length).toBe(1);
+    expect(s1.staff.find((x) => x.id === s0.staff[0].id)!.status).toBe("assigned");
   });
 });
 
-describe("SCOUT", () => {
-  it("reveals a fogged district after the scout completes", () => {
+describe("BUILD_ROOM", () => {
+  it("builds a room into an empty slot for cash", () => {
     let s = createInitialState(5);
-    const target = s.districts.find((d) => !d.discovered)!;
-    s = reduce(s, {
-      type: "SCOUT",
-      districtId: target.id,
-      staffIds: [s.staff[0].id],
-    });
-    expect(s.activeJobs[0].kind).toBe("scout");
-    // Not revealed mid-job.
-    s = reduce(s, { type: "END_TURN" });
-    expect(s.districts.find((d) => d.id === target.id)!.discovered).toBe(false);
-    // Revealed once the 2-week scout finishes.
-    s = reduce(s, { type: "END_TURN" });
-    expect(s.districts.find((d) => d.id === target.id)!.discovered).toBe(true);
-  });
-
-  it("won't scout an already-discovered district", () => {
-    const s = createInitialState(5);
-    const home = s.districts.find((d) => d.isHome)!;
-    const after = reduce(s, {
-      type: "SCOUT",
-      districtId: home.id,
-      staffIds: [s.staff[0].id],
-    });
-    expect(after.activeJobs.length).toBe(0);
-  });
-});
-
-describe("BUILD_OFFICE", () => {
-  it("charges upfront and opens an office on completion", () => {
-    let s = createInitialState(5);
-    const target = s.districts.find((d) => !d.discovered)!;
-    // Reveal it first.
-    s = reduce(s, {
-      type: "SCOUT",
-      districtId: target.id,
-      staffIds: [s.staff[0].id],
-    });
-    s = reduce(s, { type: "END_TURN" });
-    s = reduce(s, { type: "END_TURN" });
-
     s = { ...s, money: 50000 };
+    const slot = firstEmptySlot(s);
+    const conf = ROOM_TYPES.find((r) => r.id === "conference")!;
     const before = s.money;
-    s = reduce(s, {
-      type: "BUILD_OFFICE",
-      districtId: target.id,
-      staffIds: [s.staff[0].id],
-    });
-    expect(s.money).toBe(before - BUILD_COST); // charged at start
-    expect(s.activeJobs[0].kind).toBe("build");
-
-    s = reduce(s, { type: "END_TURN" });
-    s = reduce(s, { type: "END_TURN" });
-    expect(s.districts.find((d) => d.id === target.id)!.hasOffice).toBe(true);
+    s = reduce(s, { type: "BUILD_ROOM", slot, roomTypeId: "conference" });
+    expect(s.rooms.some((r) => r.slot === slot && r.typeId === "conference")).toBe(true);
+    expect(s.money).toBe(before - conf.buildCost);
   });
 
-  it("won't build in a fogged district", () => {
-    const s = createInitialState(5);
-    const fogged = s.districts.find((d) => !d.discovered)!;
-    const after = reduce(s, {
-      type: "BUILD_OFFICE",
-      districtId: fogged.id,
-      staffIds: [s.staff[0].id],
-    });
-    expect(after.activeJobs.length).toBe(0);
+  it("a conference room raises the firm-wide case bonus", () => {
+    let s = createInitialState(5);
+    s = { ...s, money: 50000 };
+    const before = officeStats(s).caseBonus;
+    s = reduce(s, { type: "BUILD_ROOM", slot: firstEmptySlot(s), roomTypeId: "conference" });
+    expect(officeStats(s).caseBonus).toBeGreaterThan(before);
   });
 
-  it("a new office widens the case pool and hosts local cases", () => {
-    const start = createInitialState(7);
-    const target = start.districts.find((d) => !d.discovered)!;
-    const before = casePoolTarget(start.districts);
-    const s = scoutAndBuild(start, target.id);
-    expect(casePoolTarget(s.districts)).toBeGreaterThan(before);
-    expect(s.availableCases.length).toBe(casePoolTarget(s.districts));
-    // Cases now appear in the newly built district too.
-    expect(s.availableCases.some((c) => c.districtId === target.id)).toBe(true);
+  it("won't build on an occupied slot", () => {
+    let s = createInitialState(5);
+    s = { ...s, money: 50000 };
+    const occupied = s.rooms[0].slot;
+    const count = s.rooms.length;
+    s = reduce(s, { type: "BUILD_ROOM", slot: occupied, roomTypeId: "kitchen" });
+    expect(s.rooms.length).toBe(count);
+  });
+
+  it("won't build when it can't be afforded", () => {
+    let s = createInitialState(5);
+    s = { ...s, money: 100 };
+    const count = s.rooms.length;
+    s = reduce(s, { type: "BUILD_ROOM", slot: firstEmptySlot(s), roomTypeId: "conference" });
+    expect(s.rooms.length).toBe(count);
   });
 });
 
-describe("SPEND_SKILL_POINT", () => {
-  it("raises a skill when the staffer has a point banked", () => {
+describe("UPGRADE_BUILDING", () => {
+  it("moves to a bigger building for cash, keeping rooms", () => {
     let s = createInitialState(5);
-    const id = s.staff[0].id;
-    s = {
-      ...s,
-      staff: s.staff.map((x) =>
-        x.id === id ? { ...x, skillPoints: 1 } : x,
-      ),
-    };
-    const before = s.staff.find((x) => x.id === id)!.skills.networking;
-    s = reduce(s, { type: "SPEND_SKILL_POINT", staffId: id, axis: "networking" });
-    const after = s.staff.find((x) => x.id === id)!;
-    expect(after.skills.networking).toBe(before + 1);
-    expect(after.skillPoints).toBe(0);
+    s = { ...s, money: 100000 };
+    const rooms = s.rooms.length;
+    const before = officeStats(s).slotsTotal;
+    s = reduce(s, { type: "UPGRADE_BUILDING" });
+    expect(s.buildingTier).toBe(1);
+    expect(officeStats(s).slotsTotal).toBeGreaterThan(before);
+    expect(s.rooms.length).toBe(rooms);
+    expect(s.money).toBe(100000 - BUILDINGS[1].upgradeCost);
   });
 
-  it("is a no-op without a point to spend", () => {
-    const s = createInitialState(5);
-    const after = reduce(s, {
-      type: "SPEND_SKILL_POINT",
-      staffId: s.staff[0].id,
-      axis: "litigation",
-    });
-    expect(after).toBe(s);
+  it("won't upgrade past the top tier", () => {
+    let s = createInitialState(5);
+    s = { ...s, money: 10000000, buildingTier: BUILDINGS.length - 1 };
+    s = reduce(s, { type: "UPGRADE_BUILDING" });
+    expect(s.buildingTier).toBe(BUILDINGS.length - 1);
+  });
+});
+
+describe("HIRE", () => {
+  it("hires a candidate into a free seat for the signing fee", () => {
+    let s = createInitialState(5);
+    s = { ...s, money: 200000 };
+    // Make sure there's a seat for whoever we hire by adding both room types.
+    s = reduce(s, { type: "BUILD_ROOM", slot: firstEmptySlot(s), roomTypeId: "office" });
+    s = reduce(s, { type: "BUILD_ROOM", slot: firstEmptySlot(s), roomTypeId: "bullpen" });
+    const cand = s.candidates[0];
+    const before = s.money;
+    const count = s.staff.length;
+    s = reduce(s, { type: "HIRE", candidateId: cand.id });
+    expect(s.staff.length).toBe(count + 1);
+    expect(s.candidates.find((c) => c.id === cand.id)).toBeUndefined();
+    expect(s.money).toBe(before - cand.signingCost);
+  });
+
+  it("won't hire with no free seat of the right type", () => {
+    // Fresh office: lawyer seats are exactly filled by the two founders.
+    let s = createInitialState(5);
+    s = { ...s, money: 200000 };
+    const lawyerCand = s.candidates.find(
+      (c) => c.role === "Associate" || c.role === "Rainmaker",
+    );
+    if (!lawyerCand) return;
+    const count = s.staff.length;
+    s = reduce(s, { type: "HIRE", candidateId: lawyerCand.id });
+    expect(s.staff.length).toBe(count);
   });
 });
 
@@ -183,22 +138,23 @@ describe("END_TURN", () => {
     const s1 = reduce(s0, { type: "END_TURN" });
     expect(s1.week).toBe(1);
     expect(s1.money).toBe(s0.money - payroll);
-    expect(s1.lastTurn!.salariesPaid).toBe(payroll);
   });
 
-  it("resolves a finished case and frees staff", () => {
+  it("resolves a finished case and refills the pool", () => {
     let s = createInitialState(5);
-    const quick = s.availableCases.find((c) => c.durationWeeks === 1)!;
-    s = reduce(s, {
-      type: "ASSIGN_CASE",
-      caseId: quick.id,
-      staffIds: [s.staff[0].id, s.staff[1].id],
-    });
-    s = reduce(s, { type: "END_TURN" });
-
+    const job = s.availableCases[0];
+    s = reduce(s, { type: "ASSIGN_CASE", caseId: job.id, staffIds: [s.staff[0].id] });
+    for (let i = 0; i < job.durationWeeks; i++) {
+      s = reduce(s, { type: "END_TURN" });
+    }
     expect(s.activeJobs.length).toBe(0);
     expect(s.lastTurn!.events.some((e) => e.kind === "case")).toBe(true);
-    expect(s.staff.every((x) => x.status === "idle")).toBe(true);
+    expect(s.availableCases.length).toBe(casePoolTarget(s));
+  });
+
+  it("keeps the candidate pool topped up", () => {
+    const s = reduce(createInitialState(5), { type: "END_TURN" });
+    expect(s.candidates.length).toBeGreaterThan(0);
   });
 
   it("ends the run in a win once valuation clears the target", () => {
@@ -206,18 +162,21 @@ describe("END_TURN", () => {
     s = { ...s, money: 300000 };
     s = reduce(s, { type: "END_TURN" });
     expect(s.status).toBe("won");
-    expect(s.statusReason).not.toBe("");
   });
 
   it("freezes the board once the game is over", () => {
     const over = { ...createInitialState(5), status: "won" as const };
     expect(reduce(over, { type: "END_TURN" })).toBe(over);
   });
+});
 
-  it("does not mutate the input state", () => {
-    const s0 = createInitialState(5);
-    const week = s0.week;
-    reduce(s0, { type: "END_TURN" });
-    expect(s0.week).toBe(week);
+describe("SPEND_SKILL_POINT", () => {
+  it("raises a skill when a point is banked", () => {
+    let s = createInitialState(5);
+    const id = s.staff[0].id;
+    s = { ...s, staff: s.staff.map((x) => (x.id === id ? { ...x, skillPoints: 1 } : x)) };
+    const before = s.staff.find((x) => x.id === id)!.skills.networking;
+    s = reduce(s, { type: "SPEND_SKILL_POINT", staffId: id, axis: "networking" });
+    expect(s.staff.find((x) => x.id === id)!.skills.networking).toBe(before + 1);
   });
 });

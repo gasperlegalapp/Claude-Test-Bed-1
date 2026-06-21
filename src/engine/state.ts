@@ -1,52 +1,36 @@
 import { createRng } from "./rng.ts";
-import type { District, GameState, Skills, Staff } from "./types.ts";
+import type { GameState, Room, Skills, Staff } from "./types.ts";
 import { SKILL_AXES } from "../data/skills.ts";
 import { STARTING_STAFF, type StaffSeed } from "../data/staff.ts";
-import { CITY } from "../data/city.ts";
 import { rollNewCase } from "./jobs.ts";
+import { generateCandidate } from "./recruit.ts";
+import { officeStats } from "./office.ts";
 
 const STARTING_MONEY = 15000;
 const STARTING_REPUTATION = 10;
 
 // ---- Balance constants ----
 export const REP_VALUE = 1500; // firm valuation per reputation point
-export const OFFICE_VALUE = 10000; // firm valuation per office (asset value)
-export const PRACTICE_VALUE = 12000; // firm valuation per unlocked practice area
+export const PRACTICE_VALUE = 12000; // valuation per unlocked practice area
 export const DEBT_WEEKS_TO_BANKRUPTCY = 4;
-export const SCOUT_WEEKS = 2;
-export const BUILD_WEEKS = 2;
-export const BUILD_COST = 8000;
+export const BASE_CASE_POOL = 3; // open cases before any room capacity
+export const CANDIDATE_POOL = 3; // hireable candidates on offer
 
-// How many open cases to keep on offer: a base, plus capacity for each
-// district you've revealed and each office you've built. Expanding the firm
-// literally widens the funnel of work.
-export function casePoolTarget(districts: District[]): number {
-  const discovered = districts.filter((d) => d.discovered).length;
-  const offices = districts.filter((d) => d.hasOffice).length;
-  return 5 + (discovered - 1) + (offices - 1);
+// Where the firm starts: a small walk-up with a lobby, two lawyer offices,
+// and a bullpen — enough to house the three founders with room to grow.
+const STARTING_ROOMS: Array<Room["typeId"]> = ["lobby", "office", "office", "bullpen"];
+
+// How many open cases to keep on offer: a base plus room-provided capacity.
+export function casePoolTarget(state: GameState): number {
+  return BASE_CASE_POOL + officeStats(state).caseCapacity;
 }
 
 function buildSkills(partial: StaffSeed["skills"]): Skills {
   const skills = {} as Skills;
   for (const axis of SKILL_AXES) {
-    // Unset axes start at 0 — staff can train them up over time.
     skills[axis] = partial[axis] ?? 0;
   }
   return skills;
-}
-
-function buildDistricts(): District[] {
-  return CITY.map((seed) => ({
-    id: seed.id,
-    name: seed.name,
-    x: seed.x,
-    y: seed.y,
-    wealth: seed.wealth,
-    dominantSkill: seed.dominantSkill,
-    isHome: !!seed.isHome,
-    discovered: !!seed.isHome, // only home starts revealed
-    hasOffice: !!seed.isHome, // ...with an office
-  }));
 }
 
 // Builds a fresh game. Pass a seed for reproducible runs.
@@ -67,25 +51,31 @@ export function createInitialState(seed = 1): GameState {
     jobId: null,
   }));
 
-  const districts = buildDistricts();
+  const rooms: Room[] = STARTING_ROOMS.map((typeId, slot) => ({
+    id: `room-${nextId++}`,
+    typeId,
+    slot,
+  }));
+
   const unlockedPractices: string[] = [];
 
-  const availableCases = [];
-  const target = casePoolTarget(districts);
-  for (let i = 0; i < target; i++) {
-    const rolled = rollNewCase(districts, unlockedPractices, `case-${nextId++}`, rng);
-    rng = rolled.rng;
-    availableCases.push(rolled.caseInst);
+  const candidates = [];
+  for (let i = 0; i < CANDIDATE_POOL; i++) {
+    const c = generateCandidate(`cand-${nextId++}`, rng);
+    rng = c.rng;
+    candidates.push(c.candidate);
   }
 
-  return {
+  const state: GameState = {
     week: 0,
     rng,
     money: STARTING_MONEY,
     reputation: STARTING_REPUTATION,
     staff,
-    districts,
-    availableCases,
+    rooms,
+    buildingTier: 0,
+    candidates,
+    availableCases: [],
     activeJobs: [],
     unlockedPractices,
     lastTurn: null,
@@ -94,4 +84,13 @@ export function createInitialState(seed = 1): GameState {
     status: "playing",
     statusReason: "",
   };
+
+  const target = casePoolTarget(state);
+  for (let i = 0; i < target; i++) {
+    const rolled = rollNewCase(unlockedPractices, `case-${state.nextId++}`, state.rng);
+    state.rng = rolled.rng;
+    state.availableCases.push(rolled.caseInst);
+  }
+
+  return state;
 }
