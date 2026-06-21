@@ -25,6 +25,7 @@ import { LAW_AREAS, lawArea } from "../data/areas.ts";
 import { ROOM_TYPES, type RoomType } from "../data/rooms.ts";
 import { BUILDINGS } from "../data/buildings.ts";
 import { ROLE_DEFS } from "../data/staff.ts";
+import { floorPlanArt } from "../data/floorplan.ts";
 import type { GoalMetric } from "../data/goals.ts";
 
 const SKILL_SHORT: Record<SkillAxis, string> = {
@@ -330,6 +331,84 @@ function furniture(game: GameState, typeId: string, occ: Staff[]): string {
   }
   return `<span class="furn">${inner}</span>`;
 }
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+function staffToken(game: GameState, s: Staff, seat: { x: number; y: number }): string {
+  const free = ROLE_DEFS[s.role].casework && spareCapacity(game, s.id) > 0;
+  return `<span class="fp-token ${free ? "free" : "busy"}" style="left:${seat.x}%;top:${
+    seat.y
+  }%" title="${s.name} — ${s.role}">${initials(s.name)}</span>`;
+}
+
+// Renders the office as YOUR floor-plan image with room/staff overlays. Falls
+// back to the built-in plan until artwork + zone coordinates are supplied.
+function floorPlanGraphic(game: GameState, ui: UiState): string {
+  const stats = officeStats(game);
+  const art = floorPlanArt(game.buildingTier);
+  if (!art.image || art.zones.length < stats.slotsTotal) return floorPlan(game, ui);
+
+  const bySlot = new Map<number, Room>();
+  for (const r of game.rooms) bySlot.set(r.slot, r);
+  const attorneys = game.staff.filter((s) => seatKind(s.role) === "office");
+  const support = game.staff.filter((s) => seatKind(s.role) === "bullpen");
+  const reception = game.staff.filter((s) => seatKind(s.role) === "reception");
+  let ai = 0;
+  let si = 0;
+  let ri = 0;
+
+  let zones = "";
+  let tokens = "";
+  for (let slot = 0; slot < stats.slotsTotal; slot++) {
+    const z = art.zones[slot];
+    const style = `left:${z.x}%;top:${z.y}%;width:${z.w}%;height:${z.h}%`;
+    const room = bySlot.get(slot);
+    if (room) {
+      const t = roomType(room.typeId)!;
+      const occ: Staff[] = [];
+      if (t.id === "office" && ai < attorneys.length) occ.push(attorneys[ai++]);
+      if (t.id === "bullpen") for (let k = 0; k < 4 && si < support.length; k++) occ.push(support[si++]);
+      if (t.id === "lobby" && ri < reception.length) occ.push(reception[ri++]);
+      const sel = ui.selectedRoomId === room.id;
+      zones += `<button class="fp-zone ${sel ? "selected" : ""}" style="${style}" data-room="${room.id}" title="${t.name}"></button>`;
+      occ.forEach((s, i) => {
+        if (z.seats[i]) tokens += staffToken(game, s, z.seats[i]);
+      });
+    } else {
+      const sel = ui.selectedSlot === slot;
+      zones += `<button class="fp-zone empty ${sel ? "selected" : ""}" style="${style}" data-slot="${slot}"><span class="fp-build">+ Build</span></button>`;
+    }
+  }
+
+  const next = BUILDINGS[game.buildingTier + 1];
+  const upgrade = next
+    ? `<button id="upgrade-building" class="mini" ${game.money < next.upgradeCost ? "disabled" : ""}>Lease ${
+        next.name
+      } — ${money(next.upgradeCost)}</button>`
+    : `<span class="muted small">Top-tier building</span>`;
+
+  return `
+    <section class="panel office-panel">
+      <div class="office-head"><h2>${BUILDINGS[game.buildingTier].name}</h2>${upgrade}</div>
+      <div class="office-summary small muted">
+        Attorneys ${stats.attorneysHoused}/${stats.attorneySeats} ·
+        Bullpen ${stats.supportHoused}/${stats.supportSeats} ·
+        Reception ${stats.receptionHoused}/${stats.receptionSeats} ·
+        Case odds +${stats.caseBonus}
+      </div>
+      <div class="fp-graphic" style="aspect-ratio:${art.aspect}">
+        <img class="fp-img" src="${art.image}" alt="office floor plan" />
+        ${zones}
+        ${tokens}
+      </div>
+    </section>`;
+}
+
 function floorPlan(game: GameState, ui: UiState): string {
   const stats = officeStats(game);
   const cols = Math.ceil(Math.sqrt(stats.slotsTotal));
@@ -682,7 +761,7 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
     ${hud(game)}
     <main class="layout">
       <div class="col">${rosterPanel(game)}${goalsPanel(game)}</div>
-      <div class="col">${floorPlan(game, ui)}${leadsPanel(game, ui)}${activePanel(game, ui)}</div>
+      <div class="col">${floorPlanGraphic(game, ui)}${leadsPanel(game, ui)}${activePanel(game, ui)}</div>
       ${contextPanel(game, ui)}
     </main>
     ${actionBar(game)}
