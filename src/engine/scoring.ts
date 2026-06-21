@@ -1,21 +1,16 @@
 import type { GameState, GameStatus } from "./types.ts";
-import {
-  REP_VALUE,
-  OFFICE_VALUE,
-  PRACTICE_VALUE,
-  DEBT_WEEKS_TO_BANKRUPTCY,
-} from "./state.ts";
+import { REP_VALUE, PRACTICE_VALUE, DEBT_WEEKS_TO_BANKRUPTCY } from "./state.ts";
+import { officeStats } from "./office.ts";
 import { GOALS, type Goal, type GoalMetric } from "../data/goals.ts";
 
-// Firm valuation: cash, the prestige value of reputation, the asset value of
-// every office, and the goodwill of each practice area. The number the player
-// grows toward the win.
+// Firm valuation: cash, the prestige value of reputation, the invested value
+// of the office (building + rooms), and the goodwill of each practice area.
+// The number the player grows toward the win.
 export function computeValuation(state: GameState): number {
-  const offices = state.districts.filter((d) => d.hasOffice).length;
   return (
     state.money +
     state.reputation * REP_VALUE +
-    offices * OFFICE_VALUE +
+    officeStats(state).assetValue +
     state.unlockedPractices.length * PRACTICE_VALUE
   );
 }

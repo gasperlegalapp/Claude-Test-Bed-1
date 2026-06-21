@@ -38,8 +38,6 @@ function makeCase(over: Partial<CaseInstance> = {}): CaseInstance {
     payoff: 10000,
     riskCost: 1000,
     reputation: 4,
-    districtId: "downtown",
-    districtName: "Old Downtown",
     ...over,
   };
 }

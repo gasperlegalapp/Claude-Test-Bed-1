@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { createInitialState, REP_VALUE, OFFICE_VALUE } from "../state.ts";
+import { createInitialState, REP_VALUE } from "../state.ts";
 import { computeValuation, evaluateGoals, checkStatus } from "../scoring.ts";
+import { officeStats } from "../office.ts";
 import type { GameState } from "../types.ts";
 
 function withState(over: Partial<GameState>): GameState {
@@ -8,10 +9,11 @@ function withState(over: Partial<GameState>): GameState {
 }
 
 describe("computeValuation", () => {
-  it("is cash plus reputation prestige plus office asset value", () => {
-    // A fresh firm has exactly one office (home).
+  it("is cash plus reputation prestige plus the office's asset value", () => {
     const s = withState({ money: 20000, reputation: 5 });
-    expect(computeValuation(s)).toBe(20000 + 5 * REP_VALUE + 1 * OFFICE_VALUE);
+    expect(computeValuation(s)).toBe(
+      20000 + 5 * REP_VALUE + officeStats(s).assetValue,
+    );
   });
 });
 
