@@ -235,41 +235,100 @@ function roomEffect(t: RoomType): string {
   if (t.caseCapacity) parts.push(`+${t.caseCapacity} open matters`);
   return parts.join(" · ") || "Amenity";
 }
-function personHead(game: GameState, s: Staff | undefined): string {
-  if (!s) return `<span class="chair"></span>`;
+// Furniture is drawn top-down with absolutely-positioned pieces inside the
+// room's interior, so each room reads like an architectural floor plan.
+function fHead(game: GameState, s: Staff | undefined, pos: string): string {
+  if (!s) return `<span class="fp chair" style="${pos}"></span>`;
   const free = ROLE_DEFS[s.role].casework && spareCapacity(game, s.id) > 0;
-  return `<span class="chair occupied" title="${s.name} — ${s.role}"><span class="phead ${
+  return `<span class="fp chair occ" style="${pos}" title="${s.name} — ${s.role}"><i class="phead ${
     free ? "idle" : "busy"
-  }"></span></span>`;
+  }"></i></span>`;
 }
-function workstation(game: GameState, occupant?: Staff): string {
-  return `<span class="ws"><span class="desk"></span>${personHead(game, occupant)}</span>`;
+function fDesk(pos: string): string {
+  return `<span class="fp desk" style="${pos}"><i class="mon"></i></span>`;
 }
-function furniture(game: GameState, typeId: string, occupants: Staff[]): string {
+function fItem(cls: string, pos: string): string {
+  return `<span class="fp ${cls}" style="${pos}"></span>`;
+}
+
+function furniture(game: GameState, typeId: string, occ: Staff[]): string {
+  let inner = "";
   switch (typeId) {
     case "office":
-      return `<div class="furn furn-office">${workstation(game, occupants[0])}</div>`;
+      inner =
+        fItem("cabinet", "left:6%;top:8%;") +
+        fDesk("left:12%;top:30%;width:46%;height:13px;") +
+        fHead(game, occ[0], "left:28%;top:50%;") +
+        fItem("chair guest", "left:66%;top:30%;") +
+        fItem("chair guest", "left:66%;top:56%;") +
+        fItem("plant", "right:7%;bottom:8%;");
+      break;
     case "bullpen": {
-      let c = "";
-      for (let i = 0; i < 4; i++) c += workstation(game, occupants[i]);
-      return `<div class="furn furn-bullpen">${c}</div>`;
+      const cells = [
+        ["8%", "12%"],
+        ["54%", "12%"],
+        ["8%", "56%"],
+        ["54%", "56%"],
+      ];
+      inner = cells
+        .map(
+          ([l, t], i) =>
+            fDesk(`left:${l};top:${t};width:36%;height:11px;`) +
+            fHead(game, occ[i], `left:calc(${l} + 11%);top:calc(${t} + 17%);`),
+        )
+        .join("");
+      break;
     }
     case "lobby":
-      return `<div class="furn furn-lobby"><span class="reception"></span>${personHead(
-        game,
-        occupants[0],
-      )}<span class="sofa"></span></div>`;
+      inner =
+        fItem("recdesk", "left:8%;top:16%;width:54%;height:15px;") +
+        fHead(game, occ[0], "left:30%;top:5%;") +
+        fItem("sofa", "left:8%;bottom:12%;width:42%;height:13px;") +
+        fItem("ctable", "left:20%;bottom:33%;") +
+        fItem("cooler", "right:9%;top:20%;") +
+        fItem("plant", "right:9%;bottom:12%;");
+      break;
     case "conference":
-      return `<div class="furn furn-conf"><div class="chrow"><span class="chair sm"></span><span class="chair sm"></span><span class="chair sm"></span></div><div class="boardtable"></div><div class="chrow"><span class="chair sm"></span><span class="chair sm"></span><span class="chair sm"></span></div></div>`;
+      inner =
+        fItem("screen", "left:50%;top:4%;transform:translateX(-50%);") +
+        fItem("boardtable", "left:24%;top:30%;right:24%;bottom:26%;") +
+        fItem("chair sm", "left:24%;top:16%;") +
+        fItem("chair sm", "left:45%;top:16%;") +
+        fItem("chair sm", "right:24%;top:16%;") +
+        fItem("chair sm", "left:24%;bottom:12%;") +
+        fItem("chair sm", "left:45%;bottom:12%;") +
+        fItem("chair sm", "right:24%;bottom:12%;");
+      break;
     case "kitchen":
-      return `<div class="furn furn-kitchen"><span class="counter"></span><span class="fridge"></span></div>`;
+      inner =
+        fItem("counter", "left:8%;top:10%;right:8%;height:14px;") +
+        fItem("fridge", "left:8%;top:34%;") +
+        fItem("ctable", "left:42%;top:52%;") +
+        fItem("chair sm", "left:32%;top:54%;") +
+        fItem("chair sm", "right:30%;top:54%;") +
+        fItem("plant", "right:9%;bottom:10%;");
+      break;
     case "breakroom":
-      return `<div class="furn furn-break"><span class="sofa"></span><span class="rtable"></span></div>`;
+      inner =
+        fItem("sofa", "left:10%;top:18%;width:46%;height:13px;") +
+        fItem("screen", "right:10%;top:14%;") +
+        fItem("ctable", "left:26%;top:46%;") +
+        fItem("plant", "left:9%;bottom:12%;") +
+        fItem("cooler", "right:12%;bottom:12%;");
+      break;
     case "storage":
-      return `<div class="furn furn-storage"><span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span></div>`;
+      inner =
+        fItem("shelf", "left:8%;top:12%;right:8%;height:12px;") +
+        fItem("shelf", "left:8%;top:42%;right:8%;height:12px;") +
+        fItem("box", "left:12%;bottom:14%;") +
+        fItem("box", "left:30%;bottom:14%;") +
+        fItem("box", "left:48%;bottom:14%;") +
+        fItem("box", "left:66%;bottom:14%;");
+      break;
     default:
       return "";
   }
+  return `<span class="furn">${inner}</span>`;
 }
 function floorPlan(game: GameState, ui: UiState): string {
   const stats = officeStats(game);

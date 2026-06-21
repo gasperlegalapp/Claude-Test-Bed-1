@@ -367,7 +367,7 @@ button.ghost:hover {
   padding: 1px 6px;
 }
 
-/* ---- Office floor plan (top-down) ---- */
+/* ---- Office floor plan (top-down, architectural) ---- */
 .office-head {
   display: flex;
   justify-content: space-between;
@@ -392,231 +392,126 @@ button.ghost:hover {
   padding: 6px 11px;
 }
 
-/* The floor: an exterior wall around a tiled grid of rooms. */
+/* The slab + exterior wall wrapping a grid of rooms. */
 .floor-plan {
   display: grid;
   grid-template-columns: repeat(var(--cols, 3), 1fr);
   gap: 0;
-  background: #c7ccd1; /* wall colour shows through as inner partitions */
-  border: 6px solid #3a4250; /* exterior building wall */
-  border-radius: 4px;
-  overflow: hidden;
+  background: #b9c0c7;            /* interior partition colour */
+  border: 7px solid #5b6470;     /* exterior building wall */
+  border-radius: 5px;
+  box-shadow: 0 6px 18px rgba(15, 17, 17, 0.18);
 }
 .room {
   position: relative;
-  min-height: 116px;
-  display: flex;
-  flex-direction: column;
+  min-height: 150px;
+  display: block;
   text-align: left;
-  /* hardwood-ish floor */
-  background: #f3ede1;
+  background: #eef0ec;
   color: var(--ink);
-  border: 2px solid #aab0b6; /* interior partition walls */
+  border: 3px solid #aeb4bb;     /* partition walls */
   padding: 0;
   font: inherit;
   font-weight: 400;
   cursor: pointer;
+  overflow: hidden;
 }
-.room:hover {
-  filter: brightness(0.98);
-  z-index: 2;
-}
-.room.selected {
-  outline: 3px solid var(--accent);
-  outline-offset: -3px;
-  z-index: 3;
-}
-/* Carpet tints by room purpose */
-.room.office { background: #eef4fb; }
-.room.bullpen { background: #f4eefb; }
-.room.conference { background: #eafaf2; }
-.room.lobby { background: #fff6e6; }
-.room.kitchen,
-.room.breakroom { background: #fdeeee; }
-.room.storage { background: #eef0f2; }
+.room:hover { filter: brightness(0.985); z-index: 2; }
+.room.selected { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 3; }
+
+/* Carpet tones per room purpose (muted, like a real plan) */
+.room.office     { background: #d6dfcb; }   /* sage */
+.room.bullpen    { background: #cfd8e2; }   /* cool grey-blue */
+.room.lobby      { background: #e3d4b6; }   /* wood/reception */
+.room.conference { background: #c9d8d2; }   /* teal */
+.room.kitchen    { background: #dde1e4; }   /* tile */
+.room.breakroom  { background: #e0d6c6; }   /* warm */
+.room.storage    { background: #d3d6da; }   /* grey */
+.room.empty      { background: #dedacb; }
 
 .room-label {
   position: absolute;
-  top: 4px;
-  left: 6px;
+  top: 5px;
+  left: 7px;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.3px;
-  color: #6b7178;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
+  color: #5c636b;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 0 4px;
+  border-radius: 3px;
   pointer-events: none;
+  z-index: 2;
 }
 
-/* Doors: a light gap punched through a partition wall. */
-.door {
+/* Doors: a swing arc punched through a partition. */
+.door { position: absolute; z-index: 1; }
+.door::before { /* the opening */
+  content: "";
   position: absolute;
-  background: #f3ede1;
-  z-index: 1;
+  background: var(--panel);
 }
-.door-bottom { bottom: -2px; left: 50%; transform: translateX(-50%); width: 26px; height: 4px; }
-.door-top { top: -2px; left: 50%; transform: translateX(-50%); width: 26px; height: 4px; }
-.door-left { left: -2px; top: 50%; transform: translateY(-50%); height: 26px; width: 4px; }
-.door-right { right: -2px; top: 50%; transform: translateY(-50%); height: 26px; width: 4px; }
+.door::after { /* the swing arc */
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid #9aa1a9;
+  border-radius: 0 0 0 18px;
+  opacity: 0.5;
+}
+.door-bottom { left: 50%; bottom: 0; transform: translateX(-50%); }
+.door-bottom::before { left: -13px; bottom: -3px; width: 26px; height: 5px; }
+.door-bottom::after { left: -13px; bottom: 1px; }
+.door-top { left: 50%; top: 0; transform: translateX(-50%); }
+.door-top::before { left: -13px; top: -3px; width: 26px; height: 5px; }
+.door-top::after { left: -13px; top: 1px; transform: scaleY(-1); }
+.door-left { left: 0; top: 50%; transform: translateY(-50%); }
+.door-left::before { top: -13px; left: -3px; height: 26px; width: 5px; }
+.door-left::after { top: -13px; left: 1px; }
+.door-right { right: 0; top: 50%; transform: translateY(-50%); }
+.door-right::before { top: -13px; right: -3px; height: 26px; width: 5px; }
+.door-right::after { top: -13px; right: 1px; transform: scaleX(-1); }
 
-/* Windows: light-blue ticks on exterior walls. */
-.win {
-  position: absolute;
-  background: #9ec9e8;
-  box-shadow: 0 0 0 1px #6aa6d0;
-  z-index: 1;
-}
-.win-top { top: -5px; left: 22%; right: 22%; height: 3px; }
-.win-bottom { bottom: -5px; left: 22%; right: 22%; height: 3px; }
-.win-left { left: -5px; top: 22%; bottom: 22%; width: 3px; }
-.win-right { right: -5px; top: 22%; bottom: 22%; width: 3px; }
+/* Windows: light double-line breaks on exterior walls. */
+.win { position: absolute; background: #bfe0f4; box-shadow: 0 0 0 1px #7fb4d8; z-index: 1; }
+.win-top    { top: -6px; left: 24%; right: 24%; height: 4px; }
+.win-bottom { bottom: -6px; left: 24%; right: 24%; height: 4px; }
+.win-left   { left: -6px; top: 24%; bottom: 24%; width: 4px; }
+.win-right  { right: -6px; top: 24%; bottom: 24%; width: 4px; }
 
 /* Empty, build-able floor space */
-.room.empty {
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 2px;
-  background: #e7e2d6;
-  color: var(--muted);
-}
-.room.empty:hover {
-  background: #dde7f1;
-  color: var(--accent);
-}
-.plus-big {
-  font-size: 26px;
-  font-weight: 300;
-  line-height: 1;
-}
+.room.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--muted); }
+.room.empty:hover { background: #d3e0ef; color: var(--accent); }
+.plus-big { font-size: 26px; font-weight: 300; line-height: 1; }
 
 /* ---- Furniture (top-down) ---- */
-.furn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 16px 6px 8px;
-  pointer-events: none;
-}
-.furn-bullpen {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-}
-.furn-conf {
-  flex-direction: column;
-  gap: 3px;
-}
-/* Workstation: a desk with a chair beneath it */
-.ws {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-}
-.desk {
-  width: 30px;
-  height: 11px;
-  background: #c79a5c;
-  border: 1px solid #a97f44;
-  border-radius: 2px;
-}
-.chair {
-  width: 16px;
-  height: 16px;
-  background: #ffffff;
-  border: 1.5px solid #9aa0a6;
-  border-radius: 5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.chair.sm {
-  width: 12px;
-  height: 12px;
-  border-radius: 4px;
-}
-/* A seated person's head, viewed from above */
-.phead {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  display: block;
-}
-.phead.idle {
-  background: var(--good);
-  box-shadow: 0 0 0 1px #045c48;
-}
-.phead.busy {
-  background: var(--accent);
-  box-shadow: 0 0 0 1px #0e5183;
-}
-/* Conference table + flanking chairs */
-.boardtable {
-  width: 70%;
-  height: 16px;
-  background: #b98a52;
-  border: 1px solid #97703f;
-  border-radius: 3px;
-}
-.chrow {
-  display: flex;
-  gap: 10px;
-}
-/* Amenity furniture motifs */
-.sofa {
-  width: 40px;
-  height: 14px;
-  background: #8fa6c4;
-  border-radius: 5px;
-}
-.reception {
-  width: 26px;
-  height: 16px;
-  background: #c79a5c;
-  border: 1px solid #a97f44;
-  border-radius: 3px;
-}
-.plant {
-  width: 12px;
-  height: 12px;
-  background: #4f9d6b;
-  border-radius: 50%;
-}
-.counter {
-  width: 46px;
-  height: 12px;
-  background: #cfd4d8;
-  border: 1px solid #aab0b6;
-  border-radius: 2px;
-}
-.fridge {
-  width: 14px;
-  height: 18px;
-  background: #e6eaed;
-  border: 1px solid #aab0b6;
-  border-radius: 2px;
-}
-.rtable {
-  width: 18px;
-  height: 18px;
-  background: #c79a5c;
-  border: 1px solid #a97f44;
-  border-radius: 50%;
-}
-.furn-storage {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-}
-.box {
-  width: 18px;
-  height: 14px;
-  background: #d2b48c;
-  border: 1px solid #b3966f;
-  border-radius: 2px;
-}
+.furn { position: absolute; inset: 9px; pointer-events: none; }
+.fp { position: absolute; box-shadow: 0 1px 1px rgba(0,0,0,0.18); }
+/* desks (wood) with a monitor */
+.desk { background: #b98a52; border: 1px solid #936a38; border-radius: 2px; }
+.desk .mon { position: absolute; top: -3px; left: 50%; transform: translateX(-50%); width: 14px; height: 4px; background: #2b3440; border-radius: 1px; }
+.recdesk { background: #b98a52; border: 1px solid #936a38; border-radius: 3px 3px 8px 3px; }
+/* chairs (top-down): rounded square, occupied shows a head */
+.chair { width: 15px; height: 15px; background: #fbfbfc; border: 1.5px solid #9aa0a6; border-radius: 5px; display: flex; align-items: center; justify-content: center; box-shadow: none; }
+.chair.guest { background: #eef1f4; }
+.chair.sm { width: 12px; height: 12px; border-radius: 4px; }
+.phead { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.phead.idle { background: var(--good); box-shadow: 0 0 0 1px #045c48; }
+.phead.busy { background: var(--accent); box-shadow: 0 0 0 1px #0e5183; }
+/* shared pieces */
+.boardtable { background: #a9794a; border: 1px solid #875f37; border-radius: 4px; }
+.sofa { background: #8fa6c4; border: 1px solid #6f8aad; border-radius: 6px; }
+.ctable { width: 20px; height: 13px; background: #c79a5c; border: 1px solid #a97f44; border-radius: 4px; }
+.screen { width: 22px; height: 5px; background: #2b3440; border-radius: 1px; }
+.plant { width: 13px; height: 13px; background: #4f9d6b; border: 1px solid #3c7d53; border-radius: 50%; }
+.cooler { width: 11px; height: 14px; background: #bfe0f4; border: 1px solid #7fb4d8; border-radius: 3px; }
+.cabinet { width: 16px; height: 20px; background: #d7dade; border: 1px solid #aab0b6; border-radius: 2px; }
+.counter { background: #cfd4d8; border: 1px solid #aab0b6; border-radius: 2px; }
+.fridge { width: 15px; height: 19px; background: #eef1f3; border: 1px solid #aab0b6; border-radius: 2px; }
+.shelf { background: #c9b08a; border: 1px solid #a98f63; border-radius: 2px; }
+.box { width: 16px; height: 13px; background: #d2b48c; border: 1px solid #b3966f; border-radius: 2px; }
 
 /* ---- Build menu ---- */
 .build-list {
