@@ -2,7 +2,20 @@ import { describe, it, expect } from "vitest";
 import { createInitialState, maxActiveMatters } from "../state.ts";
 import { reduce } from "../reducer.ts";
 import { officeStats, spareCapacity, staffLoad } from "../office.ts";
+import {
+  weeklyOverhead,
+  weeklyExpenses,
+  availableCredit,
+  creditLimit,
+  LOAN_CHUNK,
+  MARKETING_TIERS,
+} from "../state.ts";
+import { computeValuation } from "../scoring.ts";
 import { ROLE_DEFS } from "../../data/staff.ts";
+
+function salariesOf(s: ReturnType<typeof started>): number {
+  return s.staff.reduce((sum, x) => sum + x.salary, 0);
+}
 
 // Start a game focused on criminal + family law.
 function started(seed = 5) {
@@ -130,5 +143,55 @@ describe("HIRE", () => {
       s = reduce(s, { type: "HIRE", candidateId: mgrCand.id });
       expect(s.staff.filter((x) => x.role === "Managing Attorney").length).toBe(before);
     }
+  });
+});
+
+describe("finances", () => {
+  it("deducts rent and utilities at the end of the week", () => {
+    const s0 = { ...started(), money: 100000 };
+    const expected = s0.money - salariesOf(s0) - weeklyOverhead(s0);
+    const s1 = reduce(s0, { type: "END_TURN" });
+    // No active matters at the start, so the only cash movement is expenses.
+    expect(s1.money).toBe(expected);
+  });
+
+  it("raising the marketing budget increases weekly expenses", () => {
+    const s0 = started();
+    const base = weeklyExpenses(s0);
+    const s1 = reduce(s0, { type: "SET_MARKETING", level: 2 });
+    expect(s1.marketingLevel).toBe(2);
+    expect(weeklyExpenses(s1)).toBe(base + MARKETING_TIERS[2].weeklyCost);
+  });
+
+  it("borrows against the line of credit and repays it", () => {
+    let s = { ...started(), money: 1000 };
+    expect(availableCredit(s)).toBeGreaterThan(0);
+    s = reduce(s, { type: "TAKE_LOAN" });
+    expect(s.debt).toBe(LOAN_CHUNK);
+    expect(s.money).toBe(1000 + LOAN_CHUNK);
+    s = reduce(s, { type: "REPAY_LOAN" });
+    expect(s.debt).toBe(0);
+    expect(s.money).toBe(1000);
+  });
+
+  it("won't lend beyond the credit limit", () => {
+    let s = started();
+    const limit = creditLimit(s);
+    let guard = 0;
+    while (availableCredit(s) >= 1 && guard++ < 50) s = reduce(s, { type: "TAKE_LOAN" });
+    expect(s.debt).toBeLessThanOrEqual(limit);
+    expect(reduce(s, { type: "TAKE_LOAN" }).debt).toBe(s.debt);
+  });
+
+  it("counts debt against valuation and charges weekly interest", () => {
+    let s = { ...started(), money: 100000 };
+    const v0 = computeValuation(s);
+    s = reduce(s, { type: "TAKE_LOAN" });
+    // Borrowed cash is offset by the new debt, so valuation is unchanged.
+    expect(computeValuation(s)).toBe(v0);
+    const interest = Math.round(s.debt * 0.04);
+    const expected = s.money - salariesOf(s) - weeklyOverhead(s) - interest;
+    const s1 = reduce(s, { type: "END_TURN" });
+    expect(s1.money).toBe(expected);
   });
 });

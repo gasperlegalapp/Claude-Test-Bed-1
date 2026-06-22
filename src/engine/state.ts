@@ -15,9 +15,52 @@ export const MAX_OFFERED = 6; // leads waiting to be taken
 export const LEAD_CHANCE = 0.55; // weekly chance an intake attempt lands work
 export const WEEK_DAYS = 7;
 
+// ---- Finances ----
+export const OFFICE_RENT = 2500; // weekly rent for the office
+export const UTILITY_PER_HEAD = 150; // weekly utilities per staff member
+export const WEEKLY_INTEREST = 0.04; // interest charged weekly on outstanding debt
+export const LOAN_CHUNK = 10000; // borrow / repay in this increment
+export const CREDIT_BASE = 25000; // base borrowing limit
+export const CREDIT_PER_REP = 1500; // extra borrowing limit per reputation point
+
+export interface MarketingTier {
+  label: string;
+  weeklyCost: number;
+  extraAttempts: number; // additional lead-intake attempts per week
+  chanceBonus: number; // added to each attempt's chance of landing a lead
+}
+
+export const MARKETING_TIERS: MarketingTier[] = [
+  { label: "None", weeklyCost: 0, extraAttempts: 0, chanceBonus: 0 },
+  { label: "Modest", weeklyCost: 1200, extraAttempts: 1, chanceBonus: 0.05 },
+  { label: "Aggressive", weeklyCost: 3000, extraAttempts: 2, chanceBonus: 0.12 },
+];
+
 // How many matters the firm can actively work at once.
 export function maxActiveMatters(state: GameState): number {
   return BASE_ACTIVE_MATTERS + officeStats(state).caseCapacity;
+}
+
+// Weekly rent + utilities the firm owes regardless of casework.
+export function weeklyOverhead(state: GameState): number {
+  return OFFICE_RENT + state.staff.length * UTILITY_PER_HEAD;
+}
+export function marketingTier(state: GameState): MarketingTier {
+  return MARKETING_TIERS[state.marketingLevel] ?? MARKETING_TIERS[0];
+}
+export function weeklyInterest(state: GameState): number {
+  return Math.round(state.debt * WEEKLY_INTEREST);
+}
+export function creditLimit(state: GameState): number {
+  return CREDIT_BASE + state.reputation * CREDIT_PER_REP;
+}
+export function availableCredit(state: GameState): number {
+  return Math.max(0, creditLimit(state) - state.debt);
+}
+// Total cash the firm will pay out at the end of the week.
+export function weeklyExpenses(state: GameState): number {
+  const salaries = state.staff.reduce((sum, s) => sum + s.salary, 0);
+  return salaries + weeklyOverhead(state) + marketingTier(state).weeklyCost + weeklyInterest(state);
 }
 
 export function createInitialState(seed = 1): GameState {
@@ -38,6 +81,8 @@ export function createInitialState(seed = 1): GameState {
     rng,
     money: STARTING_MONEY,
     reputation: STARTING_REPUTATION,
+    debt: 0,
+    marketingLevel: 0,
     staff: [],
     candidates,
     matters: [],

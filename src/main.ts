@@ -61,6 +61,18 @@ function render(): void {
       clearSelection();
       render();
     },
+    setMarketing(level) {
+      game = reduce(game, { type: "SET_MARKETING", level });
+      render();
+    },
+    takeLoan() {
+      game = reduce(game, { type: "TAKE_LOAN" });
+      render();
+    },
+    repayLoan() {
+      game = reduce(game, { type: "REPAY_LOAN" });
+      render();
+    },
     openHiring() {
       ui.showHiring = true;
       render();

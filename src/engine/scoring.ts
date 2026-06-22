@@ -4,9 +4,9 @@ import { officeStats } from "./office.ts";
 import { GOALS, type Goal, type GoalMetric } from "../data/goals.ts";
 
 // Firm valuation: cash, the prestige value of reputation, and the invested
-// value of the office (building + rooms). The number the player grows.
+// value of the office, less any outstanding debt. The number the player grows.
 export function computeValuation(state: GameState): number {
-  return state.money + state.reputation * REP_VALUE + officeStats(state).assetValue;
+  return state.money + state.reputation * REP_VALUE + officeStats(state).assetValue - state.debt;
 }
 
 export function metricValue(state: GameState, metric: GoalMetric): number {
