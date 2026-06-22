@@ -8,8 +8,7 @@ function freshUi(): UiState {
   return {
     setupAreas: new Set(),
     selectedMatterId: null,
-    selectedSlot: null,
-    selectedRoomId: null,
+    selectedFloorId: null,
     selectedStaff: new Set(),
     showSummary: false,
     showHiring: false,
@@ -23,8 +22,7 @@ const root = document.querySelector<HTMLDivElement>("#app")!;
 
 function clearSelection(): void {
   ui.selectedMatterId = null;
-  ui.selectedSlot = null;
-  ui.selectedRoomId = null;
+  ui.selectedFloorId = null;
   ui.selectedStaff.clear();
 }
 
@@ -46,16 +44,10 @@ function render(): void {
       ui.selectedMatterId = same ? null : id;
       render();
     },
-    selectSlot(slot) {
-      const same = ui.selectedSlot === slot;
+    selectFloor(id) {
+      const same = ui.selectedFloorId === id;
       clearSelection();
-      ui.selectedSlot = same ? null : slot;
-      render();
-    },
-    selectRoom(id) {
-      const same = ui.selectedRoomId === id;
-      clearSelection();
-      ui.selectedRoomId = same ? null : id;
+      ui.selectedFloorId = same ? null : id;
       render();
     },
     toggleStaff(id) {
@@ -77,14 +69,10 @@ function render(): void {
       clearSelection();
       render();
     },
-    buildRoom(roomTypeId) {
-      if (ui.selectedSlot === null) return;
-      game = reduce(game, { type: "BUILD_ROOM", slot: ui.selectedSlot, roomTypeId });
+    buildRoom(floorId) {
+      if (!floorId) return;
+      game = reduce(game, { type: "BUILD_ROOM", floorId });
       clearSelection();
-      render();
-    },
-    upgradeBuilding() {
-      game = reduce(game, { type: "UPGRADE_BUILDING" });
       render();
     },
     openHiring() {

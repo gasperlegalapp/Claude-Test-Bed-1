@@ -2,17 +2,17 @@ import { describe, it, expect } from "vitest";
 import { createInitialState, maxActiveMatters } from "../state.ts";
 import { reduce } from "../reducer.ts";
 import { officeStats, spareCapacity, staffLoad } from "../office.ts";
-import { ROOM_TYPES } from "../../data/rooms.ts";
+import { FLOOR } from "../../data/floor.ts";
 import { ROLE_DEFS } from "../../data/staff.ts";
 
 // Start a game focused on criminal + family law.
 function started(seed = 5) {
   return reduce(createInitialState(seed), { type: "START_GAME", areas: ["criminal", "family"] });
 }
-function emptySlot(s = started()): number {
-  const used = new Set(s.rooms.map((r) => r.slot));
-  for (let i = 0; i < officeStats(s).slotsTotal; i++) if (!used.has(i)) return i;
-  return -1;
+// A floor room of a given type that isn't built yet.
+function unbuiltOfType(s: ReturnType<typeof started>, typeId: string): string {
+  const built = new Set(s.rooms.map((r) => r.floorId));
+  return FLOOR.find((f) => f.typeId === typeId && !built.has(f.id))!.id;
 }
 function attorneyOf(s: ReturnType<typeof started>) {
   return s.staff.find((x) => ROLE_DEFS[x.role].attorney)!;
@@ -98,12 +98,20 @@ describe("END_TURN", () => {
 });
 
 describe("BUILD_ROOM and HIRE", () => {
-  it("builds a room and hires into a freed-up seat", () => {
+  it("builds an unbuilt floor room and frees up its seats", () => {
     let s = { ...started(), money: 200000 };
-    s = reduce(s, { type: "BUILD_ROOM", slot: emptySlot(s), roomTypeId: "office" });
-    s = reduce(s, { type: "BUILD_ROOM", slot: emptySlot(s), roomTypeId: "bullpen" });
+    const office = unbuiltOfType(s, "office");
+    const before = officeStats(s).attorneySeats;
+    s = reduce(s, { type: "BUILD_ROOM", floorId: office });
+    expect(s.rooms.some((r) => r.floorId === office)).toBe(true);
+    expect(officeStats(s).attorneySeats).toBe(before + 1);
+  });
+
+  it("hires into a freed-up attorney seat", () => {
+    let s = { ...started(), money: 200000 };
+    s = reduce(s, { type: "BUILD_ROOM", floorId: unbuiltOfType(s, "office") });
+    s = reduce(s, { type: "BUILD_ROOM", floorId: unbuiltOfType(s, "office") });
     const before = s.staff.length;
-    // Hire any candidate that now has a free seat.
     const cand = s.candidates.find((c) => {
       const stats = officeStats(s);
       const k = ROLE_DEFS[c.role].seat;
@@ -119,14 +127,12 @@ describe("BUILD_ROOM and HIRE", () => {
 
   it("enforces the single Managing Attorney cap", () => {
     let s = { ...started(), money: 500000 };
-    // Make room for more attorneys.
-    s = reduce(s, { type: "BUILD_ROOM", slot: emptySlot(s), roomTypeId: "office" });
+    s = reduce(s, { type: "BUILD_ROOM", floorId: unbuiltOfType(s, "office") });
     const mgrCand = s.candidates.find((c) => c.role === "Managing Attorney");
     if (mgrCand) {
       const before = s.staff.filter((x) => x.role === "Managing Attorney").length;
       s = reduce(s, { type: "HIRE", candidateId: mgrCand.id });
-      const after = s.staff.filter((x) => x.role === "Managing Attorney").length;
-      expect(after).toBe(before); // already have one
+      expect(s.staff.filter((x) => x.role === "Managing Attorney").length).toBe(before);
     }
   });
 });
@@ -135,8 +141,7 @@ describe("conference room", () => {
   it("raises the firm-wide case bonus", () => {
     let s = { ...started(), money: 200000 };
     const before = officeStats(s).caseBonus;
-    const conf = ROOM_TYPES.find((r) => r.id === "conference")!;
-    s = reduce(s, { type: "BUILD_ROOM", slot: emptySlot(s), roomTypeId: conf.id });
+    s = reduce(s, { type: "BUILD_ROOM", floorId: unbuiltOfType(s, "conference") });
     expect(officeStats(s).caseBonus).toBeGreaterThan(before);
   });
 });

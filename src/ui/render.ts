@@ -22,9 +22,10 @@ import {
 import { maxActiveMatters } from "../engine/state.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
 import { LAW_AREAS, lawArea } from "../data/areas.ts";
-import { ROOM_TYPES, type RoomType } from "../data/rooms.ts";
-import { BUILDINGS } from "../data/buildings.ts";
+import { type RoomType } from "../data/rooms.ts";
 import { ROLE_DEFS } from "../data/staff.ts";
+import { FLOOR, floorRoom } from "../data/floor.ts";
+import { FLOORPLAN } from "../data/floorplan.ts";
 import type { GoalMetric } from "../data/goals.ts";
 
 const SKILL_SHORT: Record<SkillAxis, string> = {
@@ -38,8 +39,7 @@ const SKILL_SHORT: Record<SkillAxis, string> = {
 export interface UiState {
   setupAreas: Set<string>;
   selectedMatterId: string | null;
-  selectedSlot: number | null;
-  selectedRoomId: string | null;
+  selectedFloorId: string | null;
   selectedStaff: Set<string>;
   showSummary: boolean;
   showHiring: boolean;
@@ -49,13 +49,11 @@ export interface Handlers {
   toggleSetupArea: (id: string) => void;
   startGame: () => void;
   selectMatter: (id: string) => void;
-  selectSlot: (slot: number) => void;
-  selectRoom: (id: string) => void;
+  selectFloor: (id: string) => void;
   toggleStaff: (id: string) => void;
   spendSkillPoint: (staffId: string, axis: SkillAxis) => void;
   takeMatter: () => void;
-  buildRoom: (roomTypeId: string) => void;
-  upgradeBuilding: () => void;
+  buildRoom: (floorId: string) => void;
   openHiring: () => void;
   closeHiring: () => void;
   hire: (candidateId: string) => void;
@@ -235,107 +233,22 @@ function roomEffect(t: RoomType): string {
   if (t.caseCapacity) parts.push(`+${t.caseCapacity} open matters`);
   return parts.join(" · ") || "Amenity";
 }
-// Furniture is drawn top-down with absolutely-positioned pieces inside the
-// room's interior, so each room reads like an architectural floor plan.
-function fHead(game: GameState, s: Staff | undefined, pos: string): string {
-  if (!s) return `<span class="fp chair" style="${pos}"></span>`;
+function initials(name: string): string {
+  return name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+}
+function staffToken(game: GameState, s: Staff, seat: { x: number; y: number }): string {
   const free = ROLE_DEFS[s.role].casework && spareCapacity(game, s.id) > 0;
-  return `<span class="fp chair occ" style="${pos}" title="${s.name} — ${s.role}"><i class="phead ${
-    free ? "idle" : "busy"
-  }"></i></span>`;
-}
-function fDesk(pos: string): string {
-  return `<span class="fp desk" style="${pos}"><i class="mon"></i></span>`;
-}
-function fItem(cls: string, pos: string): string {
-  return `<span class="fp ${cls}" style="${pos}"></span>`;
+  return `<span class="fp-token ${free ? "free" : "busy"}" style="left:${seat.x}%;top:${seat.y}%" title="${s.name} — ${s.role}">${initials(
+    s.name,
+  )}</span>`;
 }
 
-function furniture(game: GameState, typeId: string, occ: Staff[]): string {
-  let inner = "";
-  switch (typeId) {
-    case "office":
-      inner =
-        fItem("cabinet", "left:6%;top:8%;") +
-        fDesk("left:12%;top:30%;width:46%;height:13px;") +
-        fHead(game, occ[0], "left:28%;top:50%;") +
-        fItem("chair guest", "left:66%;top:30%;") +
-        fItem("chair guest", "left:66%;top:56%;") +
-        fItem("plant", "right:7%;bottom:8%;");
-      break;
-    case "bullpen": {
-      const cells = [
-        ["8%", "12%"],
-        ["54%", "12%"],
-        ["8%", "56%"],
-        ["54%", "56%"],
-      ];
-      inner = cells
-        .map(
-          ([l, t], i) =>
-            fDesk(`left:${l};top:${t};width:36%;height:11px;`) +
-            fHead(game, occ[i], `left:calc(${l} + 11%);top:calc(${t} + 17%);`),
-        )
-        .join("");
-      break;
-    }
-    case "lobby":
-      inner =
-        fItem("recdesk", "left:8%;top:16%;width:54%;height:15px;") +
-        fHead(game, occ[0], "left:30%;top:5%;") +
-        fItem("sofa", "left:8%;bottom:12%;width:42%;height:13px;") +
-        fItem("ctable", "left:20%;bottom:33%;") +
-        fItem("cooler", "right:9%;top:20%;") +
-        fItem("plant", "right:9%;bottom:12%;");
-      break;
-    case "conference":
-      inner =
-        fItem("screen", "left:50%;top:4%;transform:translateX(-50%);") +
-        fItem("boardtable", "left:24%;top:30%;right:24%;bottom:26%;") +
-        fItem("chair sm", "left:24%;top:16%;") +
-        fItem("chair sm", "left:45%;top:16%;") +
-        fItem("chair sm", "right:24%;top:16%;") +
-        fItem("chair sm", "left:24%;bottom:12%;") +
-        fItem("chair sm", "left:45%;bottom:12%;") +
-        fItem("chair sm", "right:24%;bottom:12%;");
-      break;
-    case "kitchen":
-      inner =
-        fItem("counter", "left:8%;top:10%;right:8%;height:14px;") +
-        fItem("fridge", "left:8%;top:34%;") +
-        fItem("ctable", "left:42%;top:52%;") +
-        fItem("chair sm", "left:32%;top:54%;") +
-        fItem("chair sm", "right:30%;top:54%;") +
-        fItem("plant", "right:9%;bottom:10%;");
-      break;
-    case "breakroom":
-      inner =
-        fItem("sofa", "left:10%;top:18%;width:46%;height:13px;") +
-        fItem("screen", "right:10%;top:14%;") +
-        fItem("ctable", "left:26%;top:46%;") +
-        fItem("plant", "left:9%;bottom:12%;") +
-        fItem("cooler", "right:12%;bottom:12%;");
-      break;
-    case "storage":
-      inner =
-        fItem("shelf", "left:8%;top:12%;right:8%;height:12px;") +
-        fItem("shelf", "left:8%;top:42%;right:8%;height:12px;") +
-        fItem("box", "left:12%;bottom:14%;") +
-        fItem("box", "left:30%;bottom:14%;") +
-        fItem("box", "left:48%;bottom:14%;") +
-        fItem("box", "left:66%;bottom:14%;");
-      break;
-    default:
-      return "";
-  }
-  return `<span class="furn">${inner}</span>`;
-}
-function floorPlan(game: GameState, ui: UiState): string {
+// The office: the floor-plan artwork with clickable room zones and staff tokens
+// laid over the desks. Built rooms are live; unbuilt rooms dim with a build cue.
+function floorPlanGraphic(game: GameState, ui: UiState): string {
   const stats = officeStats(game);
-  const cols = Math.ceil(Math.sqrt(stats.slotsTotal));
-  const rows = Math.ceil(stats.slotsTotal / cols);
-  const bySlot = new Map<number, Room>();
-  for (const r of game.rooms) bySlot.set(r.slot, r);
+  const builtByFloor = new Map<string, Room>();
+  for (const r of game.rooms) builtByFloor.set(r.floorId, r);
 
   const attorneys = game.staff.filter((s) => seatKind(s.role) === "office");
   const support = game.staff.filter((s) => seatKind(s.role) === "bullpen");
@@ -344,61 +257,44 @@ function floorPlan(game: GameState, ui: UiState): string {
   let si = 0;
   let ri = 0;
 
-  let cells = "";
-  for (let slot = 0; slot < stats.slotsTotal; slot++) {
-    const col = slot % cols;
-    const row = Math.floor(slot / cols);
-    const ext = { top: row === 0, bottom: row === rows - 1, left: col === 0, right: col === cols - 1 };
-    let windows = "";
-    if (ext.top) windows += '<span class="win win-top"></span>';
-    if (ext.bottom) windows += '<span class="win win-bottom"></span>';
-    if (ext.left) windows += '<span class="win win-left"></span>';
-    if (ext.right) windows += '<span class="win win-right"></span>';
-    const doorEdge = !ext.bottom ? "door-bottom" : !ext.top ? "door-top" : !ext.right ? "door-right" : "door-left";
-    const extClass = [ext.top && "ext-top", ext.bottom && "ext-bottom", ext.left && "ext-left", ext.right && "ext-right"]
-      .filter(Boolean)
-      .join(" ");
-
-    const room = bySlot.get(slot);
-    if (room) {
-      const t = roomType(room.typeId)!;
+  let zones = "";
+  let tokens = "";
+  for (const f of FLOOR) {
+    const z = FLOORPLAN.zones[f.id];
+    if (!z) continue;
+    const style = `left:${z.x}%;top:${z.y}%;width:${z.w}%;height:${z.h}%`;
+    const t = roomType(f.typeId)!;
+    const built = builtByFloor.get(f.id);
+    const sel = ui.selectedFloorId === f.id;
+    if (built) {
       const occ: Staff[] = [];
       if (t.id === "office" && ai < attorneys.length) occ.push(attorneys[ai++]);
-      if (t.id === "bullpen") for (let k = 0; k < 4 && si < support.length; k++) occ.push(support[si++]);
+      if (t.id === "openwork")
+        for (let k = 0; k < z.seats.length && si < support.length; k++) occ.push(support[si++]);
       if (t.id === "lobby" && ri < reception.length) occ.push(reception[ri++]);
-      const sel = ui.selectedRoomId === room.id;
-      cells += `
-        <button class="room ${t.id} ${extClass} ${sel ? "selected" : ""}" data-room="${room.id}">
-          ${windows}<span class="door ${doorEdge}"></span>
-          <span class="room-label">${t.name}</span>
-          ${furniture(game, t.id, occ)}
-        </button>`;
+      zones += `<button class="fp-zone ${sel ? "selected" : ""}" style="${style}" data-floor="${f.id}" title="${t.name}"></button>`;
+      occ.forEach((s, i) => {
+        if (z.seats[i]) tokens += staffToken(game, s, z.seats[i]);
+      });
     } else {
-      const sel = ui.selectedSlot === slot;
-      cells += `
-        <button class="room empty ${extClass} ${sel ? "selected" : ""}" data-slot="${slot}">
-          ${windows}<span class="plus-big">+</span><span class="small">Build</span>
-        </button>`;
+      zones += `<button class="fp-zone empty ${sel ? "selected" : ""}" style="${style}" data-floor="${f.id}"><span class="fp-build">+ ${t.name}</span></button>`;
     }
   }
 
-  const next = BUILDINGS[game.buildingTier + 1];
-  const upgrade = next
-    ? `<button id="upgrade-building" class="mini" ${game.money < next.upgradeCost ? "disabled" : ""}>Lease ${
-        next.name
-      } — ${money(next.upgradeCost)}</button>`
-    : `<span class="muted small">Top-tier building</span>`;
-
   return `
     <section class="panel office-panel">
-      <div class="office-head"><h2>${BUILDINGS[game.buildingTier].name}</h2>${upgrade}</div>
+      <div class="office-head"><h2>The Office</h2><span class="muted small">${game.rooms.length}/${FLOOR.length} rooms built</span></div>
       <div class="office-summary small muted">
         Attorneys ${stats.attorneysHoused}/${stats.attorneySeats} ·
-        Bullpen ${stats.supportHoused}/${stats.supportSeats} ·
+        Support ${stats.supportHoused}/${stats.supportSeats} ·
         Reception ${stats.receptionHoused}/${stats.receptionSeats} ·
         Case odds +${stats.caseBonus}
       </div>
-      <div class="floor-plan" style="--cols:${cols}">${cells}</div>
+      <div class="fp-graphic" style="aspect-ratio:${FLOORPLAN.aspect}">
+        <img class="fp-img" src="${FLOORPLAN.image}" alt="office floor plan" />
+        ${zones}
+        ${tokens}
+      </div>
     </section>`;
 }
 
@@ -540,35 +436,30 @@ function matterPanel(game: GameState, ui: UiState): string {
       }</button>
     </aside>`;
 }
-function buildMenu(game: GameState, ui: UiState): string {
-  const rows = ROOM_TYPES.map((t) => {
-    const afford = game.money >= t.buildCost;
-    return `
-      <div class="build-row">
-        <div class="build-info">
-          <div class="build-top"><strong>${t.name}</strong><span class="muted small">${money(t.buildCost)}</span></div>
-          <div class="muted small">${t.description}</div>
-          <div class="build-eff small">${roomEffect(t)}</div>
-        </div>
-        <button class="build-pick" data-build="${t.id}" ${afford ? "" : "disabled"}>Build</button>
-      </div>`;
-  }).join("");
-  return `<aside class="panel briefing"><h2>Build a Room</h2><p class="muted small">Slot ${
-    ui.selectedSlot! + 1
-  } · pick what to put here.</p><div class="build-list">${rows}</div></aside>`;
-}
-function roomInfo(game: GameState, ui: UiState): string {
-  const room = game.rooms.find((r) => r.id === ui.selectedRoomId)!;
-  const t = roomType(room.typeId)!;
-  return `<aside class="panel briefing"><h2>${t.name}</h2><p class="flavor">${t.description}</p><div class="brief-meta small">${roomEffect(
-    t,
-  )}</div><p class="muted small">Built value: ${money(t.buildCost)}.</p></aside>`;
+function floorRoomPanel(game: GameState, ui: UiState): string {
+  const f = floorRoom(ui.selectedFloorId!)!;
+  const t = roomType(f.typeId)!;
+  const built = game.rooms.some((r) => r.floorId === f.id);
+  if (built) {
+    return `<aside class="panel briefing"><h2>${t.name}</h2><p class="flavor">${t.description}</p><div class="brief-meta small">${roomEffect(
+      t,
+    )}</div><p class="muted small">Built · value ${money(t.buildCost)}.</p></aside>`;
+  }
+  const afford = game.money >= t.buildCost;
+  return `
+    <aside class="panel briefing">
+      <h2>Build: ${t.name}</h2>
+      <p class="flavor">${t.description}</p>
+      <div class="brief-meta small">${roomEffect(t)}</div>
+      <button id="build-room" class="primary-wide" ${afford ? "" : "disabled"}>${
+        afford ? `Build for ${money(t.buildCost)}` : `Need ${money(t.buildCost)}`
+      }</button>
+    </aside>`;
 }
 function contextPanel(game: GameState, ui: UiState): string {
   if (ui.selectedMatterId && game.matters.some((m) => m.id === ui.selectedMatterId)) return matterPanel(game, ui);
-  if (ui.selectedSlot !== null) return buildMenu(game, ui);
-  if (ui.selectedRoomId && game.rooms.some((r) => r.id === ui.selectedRoomId)) return roomInfo(game, ui);
-  return `<aside class="panel briefing"><h2>The Firm</h2><p class="muted">Pick a lead to staff it, an open matter to check on it, an empty slot to build, or a room to inspect.</p><p class="hint small">Press <kbd>E</kbd> or <kbd>Enter</kbd> to end the week.</p></aside>`;
+  if (ui.selectedFloorId && floorRoom(ui.selectedFloorId)) return floorRoomPanel(game, ui);
+  return `<aside class="panel briefing"><h2>The Firm</h2><p class="muted">Pick a lead to staff it, an open matter to check on it, or a room on the floor plan to build or inspect.</p><p class="hint small">Press <kbd>E</kbd> or <kbd>Enter</kbd> to end the week.</p></aside>`;
 }
 
 function actionBar(game: GameState): string {
@@ -682,7 +573,7 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
     ${hud(game)}
     <main class="layout">
       <div class="col">${rosterPanel(game)}${goalsPanel(game)}</div>
-      <div class="col">${floorPlan(game, ui)}${leadsPanel(game, ui)}${activePanel(game, ui)}</div>
+      <div class="col">${floorPlanGraphic(game, ui)}${leadsPanel(game, ui)}${activePanel(game, ui)}</div>
       ${contextPanel(game, ui)}
     </main>
     ${actionBar(game)}
@@ -697,10 +588,8 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
   };
 
   all("[data-matter]", (el) => el.addEventListener("click", () => handlers.selectMatter(el.dataset.matter!)));
-  all("[data-slot]", (el) => el.addEventListener("click", () => handlers.selectSlot(Number(el.dataset.slot))));
-  all("[data-room]", (el) => el.addEventListener("click", () => handlers.selectRoom(el.dataset.room!)));
+  all("[data-floor]", (el) => el.addEventListener("click", () => handlers.selectFloor(el.dataset.floor!)));
   all("[data-team]", (el) => el.addEventListener("click", () => handlers.toggleStaff(el.dataset.team!)));
-  all("[data-build]", (el) => el.addEventListener("click", () => handlers.buildRoom(el.dataset.build!)));
   all("[data-hire]", (el) => el.addEventListener("click", () => handlers.hire(el.dataset.hire!)));
   all("[data-spend]", (el) =>
     el.addEventListener("click", () => {
@@ -710,7 +599,7 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
   );
 
   bind("#take-matter", handlers.takeMatter);
-  bind("#upgrade-building", handlers.upgradeBuilding);
+  bind("#build-room", () => handlers.buildRoom(ui.selectedFloorId ?? ""));
   bind("#open-hiring", handlers.openHiring);
   bind("#close-hiring", handlers.closeHiring);
   bind("#end-turn", handlers.endTurn);
