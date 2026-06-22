@@ -2,6 +2,7 @@ import { createRng } from "./rng.ts";
 import type { GameState, Room } from "./types.ts";
 import { generateCandidate } from "./people.ts";
 import { officeStats } from "./office.ts";
+import { FLOOR } from "../data/floor.ts";
 
 const STARTING_MONEY = 35000;
 const STARTING_REPUTATION = 10;
@@ -15,9 +16,6 @@ export const MAX_OFFERED = 6; // leads waiting to be taken
 export const LEAD_CHANCE = 0.55; // weekly chance an intake attempt lands work
 export const WEEK_DAYS = 7;
 
-// A freshly-leased satellite office: lobby, two attorney offices, a bullpen.
-const STARTING_ROOMS: string[] = ["lobby", "office", "office", "bullpen"];
-
 // How many matters the firm can actively work at once.
 export function maxActiveMatters(state: GameState): number {
   return BASE_ACTIVE_MATTERS + officeStats(state).caseCapacity;
@@ -27,10 +25,11 @@ export function createInitialState(seed = 1): GameState {
   let rng = createRng(seed);
   let nextId = 1;
 
-  const rooms: Room[] = STARTING_ROOMS.map((typeId, slot) => ({
+  // Build out the rooms the office starts with (from the fixed floor plan).
+  const rooms: Room[] = FLOOR.filter((f) => f.startBuilt).map((f) => ({
     id: `room-${nextId++}`,
-    typeId,
-    slot,
+    typeId: f.typeId,
+    floorId: f.id,
   }));
 
   const candidates = [];
@@ -49,7 +48,6 @@ export function createInitialState(seed = 1): GameState {
     reputation: STARTING_REPUTATION,
     staff: [],
     rooms,
-    buildingTier: 0,
     candidates,
     matters: [],
     lastTurn: null,

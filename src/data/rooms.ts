@@ -98,4 +98,27 @@ export const ROOM_TYPES: RoomType[] = [
     caseBonus: 0,
     caseCapacity: 2,
   },
+  {
+    id: "openwork",
+    name: "Open Work Area",
+    description:
+      "A bright bullpen of workstations for paralegals and legal assistants. Seats six.",
+    buildCost: 7000,
+    attorneySeats: 0,
+    supportSeats: 6,
+    receptionSeats: 0,
+    caseBonus: 0,
+    caseCapacity: 0,
+  },
+  {
+    id: "bathroom",
+    name: "Bathroom",
+    description: "Basic, necessary, and quietly good for morale.",
+    buildCost: 3000,
+    attorneySeats: 0,
+    supportSeats: 0,
+    receptionSeats: 0,
+    caseBonus: 1,
+    caseCapacity: 0,
+  },
 ];

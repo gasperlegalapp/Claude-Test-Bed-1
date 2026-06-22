@@ -1,53 +1,54 @@
-// ---------------------------------------------------------------------------
-// Floor-plan artwork + overlay configuration.
-//
-// The plan is rendered as YOUR top-down floor-plan image with staff figures
-// and room states overlaid on top. This file is the bridge between the art and
-// the game: for each office (building tier) it holds the image and, for every
-// room zone, where it sits on the image and where people sit inside it.
-//
-// HOW TO PLUG IN YOUR ART
-// 1. Drop the image in src/assets/ (e.g. office-small.png). PNG or SVG.
-// 2. At the top of this file:  import officeSmall from "../assets/office-small.png";
-// 3. Set `image: officeSmall` and `aspect` (image width / height).
-// 4. Fill `zones` — one per room, in the order the game should fill them.
-//    All coordinates are PERCENTAGES of the image (0–100), origin top-left.
-//      x,y,w,h  -> the room's rectangle (used for clicking + dimming)
-//      seats[]  -> {x,y} for each desk/chair where a staffer appears
-//    Send me the image and I'll measure these for you if you'd rather not.
-//
-// While `image` is null the game falls back to the built-in plan, so nothing
-// breaks before the art lands.
-// ---------------------------------------------------------------------------
+import officeFloor from "../assets/office-floor.png";
+
+// Floor-plan artwork + overlay coordinates. Zones are keyed by FloorRoom id.
+// All numbers are PERCENTAGES of the image (0–100), origin top-left:
+//   x,y,w,h  -> the room's clickable rectangle (also used to dim if unbuilt)
+//   seats[]  -> where each staff token sits inside the room
+// (Approximate — easy to nudge once seen in the browser.)
 
 export interface FpSeat {
   x: number;
   y: number;
 }
-
 export interface FpZone {
   x: number;
   y: number;
   w: number;
   h: number;
-  labelX?: number;
-  labelY?: number;
   seats: FpSeat[];
 }
-
 export interface FloorPlanArt {
-  image: string | null;
-  aspect: number; // image width / height
-  zones: FpZone[]; // one per room slot, in fill order
+  image: string;
+  aspect: number; // width / height
+  zones: Record<string, FpZone>;
 }
 
-// One entry per building tier (Walk-Up, Midtown Suite, Downtown Tower).
-export const FLOORPLANS: FloorPlanArt[] = [
-  { image: null, aspect: 1.4, zones: [] },
-  { image: null, aspect: 1.4, zones: [] },
-  { image: null, aspect: 1.4, zones: [] },
-];
-
-export function floorPlanArt(tier: number): FloorPlanArt {
-  return FLOORPLANS[tier] ?? FLOORPLANS[0];
-}
+export const FLOORPLAN: FloorPlanArt = {
+  image: officeFloor,
+  aspect: 1.3333,
+  zones: {
+    office1: { x: 3, y: 6, w: 22, h: 20, seats: [{ x: 15, y: 16 }] },
+    office2: { x: 3, y: 27, w: 22, h: 19, seats: [{ x: 15, y: 37 }] },
+    office3: { x: 3, y: 48, w: 22, h: 19, seats: [{ x: 15, y: 58 }] },
+    office4: { x: 3, y: 68, w: 22, h: 21, seats: [{ x: 15, y: 79 }] },
+    kitchen: { x: 32, y: 6, w: 19, h: 15, seats: [] },
+    storage: { x: 32, y: 23, w: 19, h: 13, seats: [] },
+    bathroom: { x: 32, y: 39, w: 19, h: 13, seats: [] },
+    conference: { x: 29, y: 54, w: 24, h: 28, seats: [] },
+    reception: { x: 31, y: 84, w: 23, h: 13, seats: [{ x: 42, y: 90 }] },
+    openwork: {
+      x: 55,
+      y: 6,
+      w: 42,
+      h: 83,
+      seats: [
+        { x: 66, y: 18 },
+        { x: 86, y: 18 },
+        { x: 66, y: 45 },
+        { x: 86, y: 45 },
+        { x: 66, y: 72 },
+        { x: 86, y: 72 },
+      ],
+    },
+  },
+};

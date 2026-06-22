@@ -19,13 +19,12 @@ import { generateCandidate, generateStartingStaff } from "./people.ts";
 import { nextFloat } from "./rng.ts";
 import { type SkillAxis } from "../data/skills.ts";
 import { ROLE_DEFS } from "../data/staff.ts";
-import { BUILDINGS } from "../data/buildings.ts";
+import { FLOOR } from "../data/floor.ts";
 
 export type Action =
   | { type: "START_GAME"; areas: string[] }
   | { type: "TAKE_MATTER"; matterId: string; staffIds: string[] }
-  | { type: "BUILD_ROOM"; slot: number; roomTypeId: string }
-  | { type: "UPGRADE_BUILDING" }
+  | { type: "BUILD_ROOM"; floorId: string }
   | { type: "HIRE"; candidateId: string }
   | { type: "SPEND_SKILL_POINT"; staffId: string; axis: SkillAxis }
   | { type: "END_TURN" };
@@ -38,9 +37,7 @@ export function reduce(state: GameState, action: Action): GameState {
     case "TAKE_MATTER":
       return takeMatter(state, action.matterId, action.staffIds);
     case "BUILD_ROOM":
-      return buildRoom(state, action.slot, action.roomTypeId);
-    case "UPGRADE_BUILDING":
-      return upgradeBuilding(state);
+      return buildRoom(state, action.floorId);
     case "HIRE":
       return hire(state, action.candidateId);
     case "SPEND_SKILL_POINT":
@@ -110,27 +107,20 @@ function takeMatter(
   };
 }
 
-function buildRoom(state: GameState, slot: number, roomTypeId: string): GameState {
-  const stats = officeStats(state);
-  if (slot < 0 || slot >= stats.slotsTotal) return state;
-  if (state.rooms.some((r) => r.slot === slot)) return state;
-  const t = roomType(roomTypeId);
+// Build out one of the fixed floor rooms (if not already built and affordable).
+function buildRoom(state: GameState, floorId: string): GameState {
+  const f = FLOOR.find((x) => x.id === floorId);
+  if (!f) return state;
+  if (state.rooms.some((r) => r.floorId === floorId)) return state;
+  const t = roomType(f.typeId);
   if (!t || state.money < t.buildCost) return state;
-  const room: Room = { id: `room-${state.nextId}`, typeId: roomTypeId, slot };
+  const room: Room = { id: `room-${state.nextId}`, typeId: f.typeId, floorId };
   return {
     ...state,
     nextId: state.nextId + 1,
     money: state.money - t.buildCost,
     rooms: [...state.rooms, room],
   };
-}
-
-function upgradeBuilding(state: GameState): GameState {
-  const next = state.buildingTier + 1;
-  if (next >= BUILDINGS.length) return state;
-  const cost = BUILDINGS[next].upgradeCost;
-  if (state.money < cost) return state;
-  return { ...state, money: state.money - cost, buildingTier: next };
 }
 
 function hire(state: GameState, candidateId: string): GameState {

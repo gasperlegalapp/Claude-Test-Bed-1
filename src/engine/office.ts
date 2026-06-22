@@ -1,7 +1,6 @@
 import type { GameState } from "./types.ts";
 import { ROLE_DEFS, type SeatKind, type StaffRole } from "../data/staff.ts";
 import { ROOM_TYPES, type RoomType } from "../data/rooms.ts";
-import { BUILDINGS } from "../data/buildings.ts";
 
 export function seatKind(role: StaffRole): SeatKind {
   return ROLE_DEFS[role].seat;
@@ -12,9 +11,6 @@ export function roomType(typeId: string): RoomType | undefined {
 }
 
 export interface OfficeStats {
-  slotsTotal: number;
-  slotsUsed: number;
-  slotsFree: number;
   attorneySeats: number;
   supportSeats: number;
   receptionSeats: number;
@@ -27,7 +23,6 @@ export interface OfficeStats {
 }
 
 export function officeStats(state: GameState): OfficeStats {
-  const building = BUILDINGS[state.buildingTier];
   let attorneySeats = 0;
   let supportSeats = 0;
   let receptionSeats = 0;
@@ -46,9 +41,6 @@ export function officeStats(state: GameState): OfficeStats {
     roomsValue += t.buildCost;
   }
 
-  let buildingValue = 0;
-  for (let i = 1; i <= state.buildingTier; i++) buildingValue += BUILDINGS[i].upgradeCost;
-
   let attorneysHoused = 0;
   let supportHoused = 0;
   let receptionHoused = 0;
@@ -60,9 +52,6 @@ export function officeStats(state: GameState): OfficeStats {
   }
 
   return {
-    slotsTotal: building.slots,
-    slotsUsed: state.rooms.length,
-    slotsFree: building.slots - state.rooms.length,
     attorneySeats,
     supportSeats,
     receptionSeats,
@@ -71,7 +60,7 @@ export function officeStats(state: GameState): OfficeStats {
     receptionHoused,
     caseBonus,
     caseCapacity,
-    assetValue: roomsValue + buildingValue,
+    assetValue: roomsValue,
   };
 }
 
