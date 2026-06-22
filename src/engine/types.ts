@@ -64,6 +64,9 @@ export interface TurnEvent {
 export interface TurnLog {
   week: number;
   salariesPaid: number;
+  overheadPaid: number;
+  marketingPaid: number;
+  interestPaid: number;
   events: TurnEvent[];
 }
 
@@ -77,6 +80,8 @@ export interface GameState {
   rng: RngState;
   money: number;
   reputation: number;
+  debt: number; // outstanding loan principal; accrues weekly interest
+  marketingLevel: number; // index into MARKETING_TIERS
   staff: Staff[];
   candidates: Candidate[];
   matters: Matter[];

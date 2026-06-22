@@ -11,7 +11,16 @@ import {
   spareCapacity,
   roleCount,
 } from "../engine/office.ts";
-import { maxActiveMatters } from "../engine/state.ts";
+import {
+  maxActiveMatters,
+  weeklyOverhead,
+  weeklyExpenses,
+  weeklyInterest,
+  marketingTier,
+  availableCredit,
+  MARKETING_TIERS,
+  LOAN_CHUNK,
+} from "../engine/state.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
 import { LAW_AREAS, lawArea } from "../data/areas.ts";
 import { ROLE_DEFS } from "../data/staff.ts";
@@ -42,6 +51,9 @@ export interface Handlers {
   toggleStaff: (id: string) => void;
   spendSkillPoint: (staffId: string, axis: SkillAxis) => void;
   takeMatter: () => void;
+  setMarketing: (level: number) => void;
+  takeLoan: () => void;
+  repayLoan: () => void;
   openHiring: () => void;
   closeHiring: () => void;
   hire: (candidateId: string) => void;
@@ -134,6 +146,13 @@ function hud(game: GameState): string {
         <div class="hud-stat"><span class="hud-label">Cash</span><span class="hud-value ${
           game.money < 0 ? "bad" : "good"
         }">${money(game.money)}</span></div>
+        ${
+          game.debt > 0
+            ? `<div class="hud-stat"><span class="hud-label">Debt</span><span class="hud-value bad">${money(
+                game.debt,
+              )}</span></div>`
+            : ""
+        }
         <div class="hud-stat"><span class="hud-label">Reputation</span><span class="hud-value ${
           game.reputation <= 3 ? "bad" : ""
         }">${game.reputation}</span></div>
@@ -186,6 +205,59 @@ function rosterPanel(game: GameState): string {
     })
     .join("");
   return `<aside class="panel roster"><h2>Personnel</h2><ul class="roster-list">${rows}</ul></aside>`;
+}
+
+// ---- Left: finances ----
+function financesPanel(game: GameState): string {
+  const salaries = game.staff.reduce((sum, s) => sum + s.salary, 0);
+  const overhead = weeklyOverhead(game);
+  const mkt = marketingTier(game);
+  const interest = weeklyInterest(game);
+  const total = weeklyExpenses(game);
+  const avail = availableCredit(game);
+
+  const expense = (label: string, val: number, cls = "") =>
+    `<div class="fin-row"><span class="muted small">${label}</span><span class="small ${cls}">-${money(val)}</span></div>`;
+
+  const tiers = MARKETING_TIERS.map((t, i) => {
+    const on = i === game.marketingLevel;
+    return `<button class="mkt-opt ${on ? "on" : ""}" data-marketing="${i}">
+      <span class="mkt-name">${t.label}</span>
+      <span class="mkt-cost muted small">${t.weeklyCost === 0 ? "free" : `${money(t.weeklyCost)}/wk`}</span>
+    </button>`;
+  }).join("");
+
+  return `
+    <aside class="panel finances">
+      <h2>Finances</h2>
+      <div class="fin-block">
+        <div class="fin-sub muted small">Weekly expenses</div>
+        ${expense("Salaries", salaries)}
+        ${expense("Rent & utilities", overhead)}
+        ${mkt.weeklyCost > 0 ? expense("Marketing", mkt.weeklyCost) : ""}
+        ${interest > 0 ? expense("Loan interest", interest, "bad") : ""}
+        <div class="fin-row total"><span>Total / week</span><span class="bad">-${money(total)}</span></div>
+      </div>
+      <div class="fin-block">
+        <div class="fin-sub muted small">Marketing budget</div>
+        <div class="mkt-opts">${tiers}</div>
+        <div class="muted small">More budget brings in more — and likelier — leads.</div>
+      </div>
+      <div class="fin-block">
+        <div class="fin-sub muted small">Line of credit</div>
+        <div class="fin-row"><span class="muted small">Debt</span><span class="small ${
+          game.debt > 0 ? "bad" : ""
+        }">${money(game.debt)}</span></div>
+        <div class="fin-row"><span class="muted small">Available</span><span class="small">${money(avail)}</span></div>
+        <div class="fin-actions">
+          <button id="take-loan" class="mini" ${avail < 1 ? "disabled" : ""}>Borrow ${money(LOAN_CHUNK)}</button>
+          <button id="repay-loan" class="mini" ${
+            game.debt <= 0 || game.money <= 0 ? "disabled" : ""
+          }>Repay ${money(LOAN_CHUNK)}</button>
+        </div>
+        ${game.debt > 0 ? `<div class="muted small">Interest accrues at 4%/week on the balance.</div>` : ""}
+      </div>
+    </aside>`;
 }
 
 function goalMetricFormat(metric: GoalMetric, value: number): string {
@@ -407,10 +479,10 @@ function contextPanel(game: GameState, ui: UiState): string {
 }
 
 function actionBar(game: GameState): string {
-  const payroll = game.staff.reduce((sum, s) => sum + s.salary, 0);
+  const total = weeklyExpenses(game);
   return `<footer class="actionbar"><span class="muted small">Ending the week pays <span class="bad">-${money(
-    payroll,
-  )}</span> in salaries and advances every open matter by a week.</span><button id="end-turn" class="end-turn">End Week ▸ <kbd>E</kbd></button></footer>`;
+    total,
+  )}</span> in salaries &amp; overhead and advances every open matter by a week.</span><button id="end-turn" class="end-turn">End Week ▸ <kbd>E</kbd></button></footer>`;
 }
 
 // ---- Modals ----
@@ -439,10 +511,21 @@ function summaryModal(game: GameState): string {
   if (!log) return "";
   const lines =
     log.events.length === 0 ? `<li class="muted">A quiet week. Nothing resolved.</li>` : log.events.map(eventLine).join("");
+  const expenses = log.salariesPaid + log.overheadPaid + log.marketingPaid + log.interestPaid;
+  const part = (label: string, val: number) =>
+    val > 0 ? `<span class="muted">${label} <span class="bad">-${money(val)}</span></span>` : "";
+  const breakdown = [
+    part("Salaries", log.salariesPaid),
+    part("Overhead", log.overheadPaid),
+    part("Marketing", log.marketingPaid),
+    part("Interest", log.interestPaid),
+  ]
+    .filter(Boolean)
+    .join('<span class="recap-dot">·</span>');
   return `<div class="modal-backdrop"><div class="modal"><h2>Week ${
     log.week
-  } — Recap</h2><ul class="resolve-list">${lines}</ul><div class="recap-foot"><span class="muted">Salaries paid: <span class="bad">-${money(
-    log.salariesPaid,
+  } — Recap</h2><ul class="resolve-list">${lines}</ul><div class="recap-expenses small">${breakdown}</div><div class="recap-foot"><span class="muted">Total expenses: <span class="bad">-${money(
+    expenses,
   )}</span></span><button id="close-summary">Continue ▸</button></div></div></div>`;
 }
 function hiringModal(game: GameState): string {
@@ -516,7 +599,7 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
   root.innerHTML = `
     ${hud(game)}
     <main class="layout">
-      <div class="col">${rosterPanel(game)}${goalsPanel(game)}</div>
+      <div class="col">${rosterPanel(game)}${financesPanel(game)}${goalsPanel(game)}</div>
       <div class="col">${floorPlanGraphic(game)}${leadsPanel(game, ui)}${activePanel(game, ui)}</div>
       ${contextPanel(game, ui)}
     </main>
@@ -541,7 +624,12 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
     }),
   );
 
+  all("[data-marketing]", (el) =>
+    el.addEventListener("click", () => handlers.setMarketing(Number(el.dataset.marketing))),
+  );
   bind("#take-matter", handlers.takeMatter);
+  bind("#take-loan", handlers.takeLoan);
+  bind("#repay-loan", handlers.repayLoan);
   bind("#open-hiring", handlers.openHiring);
   bind("#close-hiring", handlers.closeHiring);
   bind("#end-turn", handlers.endTurn);

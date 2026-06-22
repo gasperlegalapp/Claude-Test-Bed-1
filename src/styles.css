@@ -392,6 +392,85 @@ button.ghost:hover {
   padding: 6px 11px;
 }
 
+/* ---- Finances panel ---- */
+.fin-block {
+  padding: 10px 0;
+  border-top: 1px solid var(--panel-3);
+}
+.fin-block:first-of-type {
+  border-top: 0;
+  padding-top: 4px;
+}
+.fin-sub {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.fin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.fin-row.total {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--panel-3);
+  font-weight: 700;
+}
+.mkt-opts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.mkt-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--panel-3);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.mkt-opt:hover {
+  border-color: var(--accent);
+}
+.mkt-opt.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.mkt-opt.on .mkt-cost {
+  color: rgba(255, 255, 255, 0.85);
+}
+.mkt-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+.fin-actions {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0;
+}
+.fin-actions .mini {
+  flex: 1;
+}
+.recap-expenses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 10px 0 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-3);
+}
+.recap-dot {
+  color: var(--panel-3);
+}
+
 /* The slab + exterior wall wrapping a grid of rooms. */
 .floor-plan {
   display: grid;

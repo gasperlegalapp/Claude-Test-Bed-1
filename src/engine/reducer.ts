@@ -11,6 +11,12 @@ import {
   MAX_OFFERED,
   LEAD_CHANCE,
   WEEK_DAYS,
+  MARKETING_TIERS,
+  LOAN_CHUNK,
+  weeklyOverhead,
+  marketingTier,
+  weeklyInterest,
+  availableCredit,
 } from "./state.ts";
 import { checkStatus } from "./scoring.ts";
 import { gainXp, spendSkillPoint } from "./growth.ts";
@@ -25,6 +31,9 @@ export type Action =
   | { type: "TAKE_MATTER"; matterId: string; staffIds: string[] }
   | { type: "HIRE"; candidateId: string }
   | { type: "SPEND_SKILL_POINT"; staffId: string; axis: SkillAxis }
+  | { type: "SET_MARKETING"; level: number }
+  | { type: "TAKE_LOAN" }
+  | { type: "REPAY_LOAN" }
   | { type: "END_TURN" };
 
 export function reduce(state: GameState, action: Action): GameState {
@@ -38,6 +47,12 @@ export function reduce(state: GameState, action: Action): GameState {
       return hire(state, action.candidateId);
     case "SPEND_SKILL_POINT":
       return spendPoint(state, action.staffId, action.axis);
+    case "SET_MARKETING":
+      return setMarketing(state, action.level);
+    case "TAKE_LOAN":
+      return takeLoan(state);
+    case "REPAY_LOAN":
+      return repayLoan(state);
     case "END_TURN":
       return endTurn(state);
     default:
@@ -142,6 +157,27 @@ function spendPoint(state: GameState, staffId: string, axis: SkillAxis): GameSta
   return changed ? { ...state, staff } : state;
 }
 
+// Set the weekly marketing budget tier. The cost applies at end of week.
+function setMarketing(state: GameState, level: number): GameState {
+  if (level < 0 || level >= MARKETING_TIERS.length) return state;
+  if (level === state.marketingLevel) return state;
+  return { ...state, marketingLevel: level };
+}
+
+// Draw down the line of credit in fixed increments, up to the credit limit.
+function takeLoan(state: GameState): GameState {
+  const amount = Math.min(LOAN_CHUNK, availableCredit(state));
+  if (amount <= 0) return state;
+  return { ...state, money: state.money + amount, debt: state.debt + amount };
+}
+
+// Pay down principal in fixed increments (limited by debt and cash on hand).
+function repayLoan(state: GameState): GameState {
+  const amount = Math.min(LOAN_CHUNK, state.debt, state.money);
+  if (amount <= 0) return state;
+  return { ...state, money: state.money - amount, debt: state.debt - amount };
+}
+
 function endTurn(state: GameState): GameState {
   let rng = state.rng;
   let nextId = state.nextId;
@@ -150,7 +186,10 @@ function endTurn(state: GameState): GameState {
   const events: TurnEvent[] = [];
 
   const salariesPaid = state.staff.reduce((sum, s) => sum + s.salary, 0);
-  money -= salariesPaid;
+  const overheadPaid = weeklyOverhead(state);
+  const marketingPaid = marketingTier(state).weeklyCost;
+  const interestPaid = weeklyInterest(state);
+  money -= salariesPaid + overheadPaid + marketingPaid + interestPaid;
 
   const officeBonus = officeStats(state).caseBonus;
   const staffById = new Map(state.staff.map((s) => [s.id, s]));
@@ -237,13 +276,15 @@ function endTurn(state: GameState): GameState {
     nextId,
   };
 
-  // New leads come in intermittently (an extra attempt per receptionist).
-  const attempts = 1 + officeStats(next).receptionHoused;
+  // New leads come in intermittently. A receptionist works the phones; a
+  // marketing budget adds extra intake attempts and improves each one's odds.
+  const mkt = marketingTier(state);
+  const attempts = 1 + officeStats(next).receptionHoused + mkt.extraAttempts;
   for (let i = 0; i < attempts; i++) {
     if (next.matters.filter((m) => m.status === "offered").length >= MAX_OFFERED) break;
     const roll = nextFloat(next.rng);
     next.rng = roll.rng;
-    if (roll.value > LEAD_CHANCE) continue;
+    if (roll.value > LEAD_CHANCE + mkt.chanceBonus) continue;
     const lead = rollLead(next, `matter-${next.nextId++}`, next.rng);
     if (!lead) break;
     next.rng = lead.rng;
@@ -259,7 +300,14 @@ function endTurn(state: GameState): GameState {
   }
 
   next.weeksInDebt = money < 0 ? state.weeksInDebt + 1 : 0;
-  next.lastTurn = { week: state.week + 1, salariesPaid, events };
+  next.lastTurn = {
+    week: state.week + 1,
+    salariesPaid,
+    overheadPaid,
+    marketingPaid,
+    interestPaid,
+    events,
+  };
 
   const { status, reason } = checkStatus(next);
   next.status = status;
