@@ -8,7 +8,6 @@ function freshUi(): UiState {
   return {
     setupAreas: new Set(),
     selectedMatterId: null,
-    selectedFloorId: null,
     selectedStaff: new Set(),
     showSummary: false,
     showHiring: false,
@@ -22,7 +21,6 @@ const root = document.querySelector<HTMLDivElement>("#app")!;
 
 function clearSelection(): void {
   ui.selectedMatterId = null;
-  ui.selectedFloorId = null;
   ui.selectedStaff.clear();
 }
 
@@ -44,12 +42,6 @@ function render(): void {
       ui.selectedMatterId = same ? null : id;
       render();
     },
-    selectFloor(id) {
-      const same = ui.selectedFloorId === id;
-      clearSelection();
-      ui.selectedFloorId = same ? null : id;
-      render();
-    },
     toggleStaff(id) {
       if (ui.selectedStaff.has(id)) ui.selectedStaff.delete(id);
       else ui.selectedStaff.add(id);
@@ -66,12 +58,6 @@ function render(): void {
         matterId: ui.selectedMatterId,
         staffIds: [...ui.selectedStaff],
       });
-      clearSelection();
-      render();
-    },
-    buildRoom(floorId) {
-      if (!floorId) return;
-      game = reduce(game, { type: "BUILD_ROOM", floorId });
       clearSelection();
       render();
     },

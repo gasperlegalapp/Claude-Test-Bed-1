@@ -27,12 +27,6 @@ export interface Candidate {
   signingCost: number;
 }
 
-export interface Room {
-  id: string;
-  typeId: string;
-  floorId: string; // which fixed floor room this is (matches data/floor.ts)
-}
-
 // A client matter. Offered matters are leads; active matters are being worked.
 export interface Matter {
   id: string;
@@ -84,7 +78,6 @@ export interface GameState {
   money: number;
   reputation: number;
   staff: Staff[];
-  rooms: Room[]; // built rooms (subset of the fixed floor)
   candidates: Candidate[];
   matters: Matter[];
   lastTurn: TurnLog | null;

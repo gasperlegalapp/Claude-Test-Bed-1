@@ -1,4 +1,4 @@
-import type { GameState, Matter, Room, Staff, TurnEvent } from "./types.ts";
+import type { GameState, Matter, Staff, TurnEvent } from "./types.ts";
 import {
   resolveLitigation,
   resolveTransactional,
@@ -14,17 +14,15 @@ import {
 } from "./state.ts";
 import { checkStatus } from "./scoring.ts";
 import { gainXp, spendSkillPoint } from "./growth.ts";
-import { officeStats, roomType, hasFreeSeat, roleCount } from "./office.ts";
+import { officeStats, hasFreeSeat, roleCount } from "./office.ts";
 import { generateCandidate, generateStartingStaff } from "./people.ts";
 import { nextFloat } from "./rng.ts";
 import { type SkillAxis } from "../data/skills.ts";
 import { ROLE_DEFS } from "../data/staff.ts";
-import { FLOOR } from "../data/floor.ts";
 
 export type Action =
   | { type: "START_GAME"; areas: string[] }
   | { type: "TAKE_MATTER"; matterId: string; staffIds: string[] }
-  | { type: "BUILD_ROOM"; floorId: string }
   | { type: "HIRE"; candidateId: string }
   | { type: "SPEND_SKILL_POINT"; staffId: string; axis: SkillAxis }
   | { type: "END_TURN" };
@@ -36,8 +34,6 @@ export function reduce(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "TAKE_MATTER":
       return takeMatter(state, action.matterId, action.staffIds);
-    case "BUILD_ROOM":
-      return buildRoom(state, action.floorId);
     case "HIRE":
       return hire(state, action.candidateId);
     case "SPEND_SKILL_POINT":
@@ -104,22 +100,6 @@ function takeMatter(
         ? { ...m, status: "active", staffIds: [...staffIds] }
         : m,
     ),
-  };
-}
-
-// Build out one of the fixed floor rooms (if not already built and affordable).
-function buildRoom(state: GameState, floorId: string): GameState {
-  const f = FLOOR.find((x) => x.id === floorId);
-  if (!f) return state;
-  if (state.rooms.some((r) => r.floorId === floorId)) return state;
-  const t = roomType(f.typeId);
-  if (!t || state.money < t.buildCost) return state;
-  const room: Room = { id: `room-${state.nextId}`, typeId: f.typeId, floorId };
-  return {
-    ...state,
-    nextId: state.nextId + 1,
-    money: state.money - t.buildCost,
-    rooms: [...state.rooms, room],
   };
 }
 

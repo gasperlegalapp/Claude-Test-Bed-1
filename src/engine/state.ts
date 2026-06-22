@@ -1,8 +1,7 @@
 import { createRng } from "./rng.ts";
-import type { GameState, Room } from "./types.ts";
+import type { GameState } from "./types.ts";
 import { generateCandidate } from "./people.ts";
 import { officeStats } from "./office.ts";
-import { FLOOR } from "../data/floor.ts";
 
 const STARTING_MONEY = 35000;
 const STARTING_REPUTATION = 10;
@@ -25,13 +24,6 @@ export function createInitialState(seed = 1): GameState {
   let rng = createRng(seed);
   let nextId = 1;
 
-  // Build out the rooms the office starts with (from the fixed floor plan).
-  const rooms: Room[] = FLOOR.filter((f) => f.startBuilt).map((f) => ({
-    id: `room-${nextId++}`,
-    typeId: f.typeId,
-    floorId: f.id,
-  }));
-
   const candidates = [];
   for (let i = 0; i < CANDIDATE_POOL; i++) {
     const c = generateCandidate(`cand-${nextId++}`, [], rng);
@@ -47,7 +39,6 @@ export function createInitialState(seed = 1): GameState {
     money: STARTING_MONEY,
     reputation: STARTING_REPUTATION,
     staff: [],
-    rooms,
     candidates,
     matters: [],
     lastTurn: null,

@@ -1,6 +1,7 @@
 import type { GameState } from "./types.ts";
 import { ROLE_DEFS, type SeatKind, type StaffRole } from "../data/staff.ts";
 import { ROOM_TYPES, type RoomType } from "../data/rooms.ts";
+import { FLOOR } from "../data/floor.ts";
 
 export function seatKind(role: StaffRole): SeatKind {
   return ROLE_DEFS[role].seat;
@@ -30,8 +31,8 @@ export function officeStats(state: GameState): OfficeStats {
   let caseCapacity = 0;
   let roomsValue = 0;
 
-  for (const room of state.rooms) {
-    const t = roomType(room.typeId);
+  for (const f of FLOOR) {
+    const t = roomType(f.typeId);
     if (!t) continue;
     attorneySeats += t.attorneySeats;
     supportSeats += t.supportSeats;
