@@ -530,39 +530,6 @@ button.ghost:hover {
   -webkit-user-drag: none;
   user-select: none;
 }
-.fp-zone {
-  position: absolute;
-  background: transparent;
-  border: 0;
-  border-radius: 4px;
-  padding: 0;
-  cursor: pointer;
-}
-.fp-zone:hover {
-  background: rgba(20, 110, 180, 0.1);
-  outline: 1px solid rgba(20, 110, 180, 0.5);
-}
-.fp-zone.selected {
-  outline: 2px solid var(--accent);
-  background: rgba(20, 110, 180, 0.12);
-}
-.fp-zone.empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(180, 185, 190, 0.55);
-  outline: 1px dashed #8a9098;
-  color: #3d4450;
-  backdrop-filter: grayscale(0.6);
-}
-.fp-zone.empty:hover {
-  background: rgba(20, 110, 180, 0.18);
-  color: var(--accent);
-}
-.fp-build {
-  font-size: 12px;
-  font-weight: 700;
-}
 /* Staff figures placed at desk coordinates on the image */
 .fp-token {
   position: absolute;

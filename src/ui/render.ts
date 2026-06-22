@@ -1,17 +1,9 @@
-import type {
-  GameState,
-  Matter,
-  Outcome,
-  Room,
-  Staff,
-  TurnEvent,
-} from "../engine/types.ts";
+import type { GameState, Matter, Outcome, Staff, TurnEvent } from "../engine/types.ts";
 import { successChance, canStaffMatter } from "../engine/matters.ts";
 import { computeValuation, evaluateGoals } from "../engine/scoring.ts";
 import { xpForLevel, MAX_SKILL } from "../engine/growth.ts";
 import {
   officeStats,
-  roomType,
   seatKind,
   hasFreeSeat,
   staffLoad,
@@ -22,9 +14,8 @@ import {
 import { maxActiveMatters } from "../engine/state.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
 import { LAW_AREAS, lawArea } from "../data/areas.ts";
-import { type RoomType } from "../data/rooms.ts";
 import { ROLE_DEFS } from "../data/staff.ts";
-import { FLOOR, floorRoom } from "../data/floor.ts";
+import { FLOOR } from "../data/floor.ts";
 import { FLOORPLAN } from "../data/floorplan.ts";
 import type { GoalMetric } from "../data/goals.ts";
 
@@ -39,7 +30,6 @@ const SKILL_SHORT: Record<SkillAxis, string> = {
 export interface UiState {
   setupAreas: Set<string>;
   selectedMatterId: string | null;
-  selectedFloorId: string | null;
   selectedStaff: Set<string>;
   showSummary: boolean;
   showHiring: boolean;
@@ -49,11 +39,9 @@ export interface Handlers {
   toggleSetupArea: (id: string) => void;
   startGame: () => void;
   selectMatter: (id: string) => void;
-  selectFloor: (id: string) => void;
   toggleStaff: (id: string) => void;
   spendSkillPoint: (staffId: string, axis: SkillAxis) => void;
   takeMatter: () => void;
-  buildRoom: (floorId: string) => void;
   openHiring: () => void;
   closeHiring: () => void;
   hire: (candidateId: string) => void;
@@ -224,15 +212,6 @@ function goalsPanel(game: GameState): string {
 }
 
 // ---- Center: floor plan ----
-function roomEffect(t: RoomType): string {
-  const parts: string[] = [];
-  if (t.attorneySeats) parts.push(`${t.attorneySeats} attorney office`);
-  if (t.supportSeats) parts.push(`${t.supportSeats} bullpen desks`);
-  if (t.receptionSeats) parts.push(`${t.receptionSeats} front desk`);
-  if (t.caseBonus) parts.push(`+${t.caseBonus} case odds`);
-  if (t.caseCapacity) parts.push(`+${t.caseCapacity} open matters`);
-  return parts.join(" · ") || "Amenity";
-}
 function initials(name: string): string {
   return name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 }
@@ -243,13 +222,10 @@ function staffToken(game: GameState, s: Staff, seat: { x: number; y: number }): 
   )}</span>`;
 }
 
-// The office: the floor-plan artwork with clickable room zones and staff tokens
-// laid over the desks. Built rooms are live; unbuilt rooms dim with a build cue.
-function floorPlanGraphic(game: GameState, ui: UiState): string {
+// The office: the floor-plan artwork with each employee drawn as a round token
+// at their desk. The whole floor is always in use; tokens grow as you hire.
+function floorPlanGraphic(game: GameState): string {
   const stats = officeStats(game);
-  const builtByFloor = new Map<string, Room>();
-  for (const r of game.rooms) builtByFloor.set(r.floorId, r);
-
   const attorneys = game.staff.filter((s) => seatKind(s.role) === "office");
   const support = game.staff.filter((s) => seatKind(s.role) === "bullpen");
   const reception = game.staff.filter((s) => seatKind(s.role) === "reception");
@@ -257,33 +233,23 @@ function floorPlanGraphic(game: GameState, ui: UiState): string {
   let si = 0;
   let ri = 0;
 
-  let zones = "";
   let tokens = "";
   for (const f of FLOOR) {
     const z = FLOORPLAN.zones[f.id];
     if (!z) continue;
-    const style = `left:${z.x}%;top:${z.y}%;width:${z.w}%;height:${z.h}%`;
-    const t = roomType(f.typeId)!;
-    const built = builtByFloor.get(f.id);
-    const sel = ui.selectedFloorId === f.id;
-    if (built) {
-      const occ: Staff[] = [];
-      if (t.id === "office" && ai < attorneys.length) occ.push(attorneys[ai++]);
-      if (t.id === "openwork")
-        for (let k = 0; k < z.seats.length && si < support.length; k++) occ.push(support[si++]);
-      if (t.id === "lobby" && ri < reception.length) occ.push(reception[ri++]);
-      zones += `<button class="fp-zone ${sel ? "selected" : ""}" style="${style}" data-floor="${f.id}" title="${t.name}"></button>`;
-      occ.forEach((s, i) => {
-        if (z.seats[i]) tokens += staffToken(game, s, z.seats[i]);
-      });
-    } else {
-      zones += `<button class="fp-zone empty ${sel ? "selected" : ""}" style="${style}" data-floor="${f.id}"><span class="fp-build">+ ${t.name}</span></button>`;
-    }
+    const occ: Staff[] = [];
+    if (f.typeId === "office" && ai < attorneys.length) occ.push(attorneys[ai++]);
+    if (f.typeId === "openwork")
+      for (let k = 0; k < z.seats.length && si < support.length; k++) occ.push(support[si++]);
+    if (f.typeId === "lobby" && ri < reception.length) occ.push(reception[ri++]);
+    occ.forEach((s, i) => {
+      if (z.seats[i]) tokens += staffToken(game, s, z.seats[i]);
+    });
   }
 
   return `
     <section class="panel office-panel">
-      <div class="office-head"><h2>The Office</h2><span class="muted small">${game.rooms.length}/${FLOOR.length} rooms built</span></div>
+      <div class="office-head"><h2>The Office</h2><span class="muted small">${game.staff.length} on staff</span></div>
       <div class="office-summary small muted">
         Attorneys ${stats.attorneysHoused}/${stats.attorneySeats} ·
         Support ${stats.supportHoused}/${stats.supportSeats} ·
@@ -292,7 +258,6 @@ function floorPlanGraphic(game: GameState, ui: UiState): string {
       </div>
       <div class="fp-graphic" style="aspect-ratio:${FLOORPLAN.aspect}">
         <img class="fp-img" src="${FLOORPLAN.image}" alt="office floor plan" />
-        ${zones}
         ${tokens}
       </div>
     </section>`;
@@ -430,36 +395,15 @@ function matterPanel(game: GameState, ui: UiState): string {
       <div class="tags">${skillTags(m.requiredSkills)}</div>
       ${teamPicker(game, ui, m.area)}
       ${m.category === "litigation" ? oddsBlock(odds) : ""}
-      ${atCap ? `<div class="muted small">At matter capacity — build a Lobby or Storage Room for more.</div>` : ""}
+      ${atCap ? `<div class="muted small">At matter capacity — wrap up an open matter to free up the docket.</div>` : ""}
       <button id="take-matter" class="primary-wide" ${valid && !atCap ? "" : "disabled"}>${
         valid ? "Take the Matter ▸" : "Needs an attorney in this area"
       }</button>
     </aside>`;
 }
-function floorRoomPanel(game: GameState, ui: UiState): string {
-  const f = floorRoom(ui.selectedFloorId!)!;
-  const t = roomType(f.typeId)!;
-  const built = game.rooms.some((r) => r.floorId === f.id);
-  if (built) {
-    return `<aside class="panel briefing"><h2>${t.name}</h2><p class="flavor">${t.description}</p><div class="brief-meta small">${roomEffect(
-      t,
-    )}</div><p class="muted small">Built · value ${money(t.buildCost)}.</p></aside>`;
-  }
-  const afford = game.money >= t.buildCost;
-  return `
-    <aside class="panel briefing">
-      <h2>Build: ${t.name}</h2>
-      <p class="flavor">${t.description}</p>
-      <div class="brief-meta small">${roomEffect(t)}</div>
-      <button id="build-room" class="primary-wide" ${afford ? "" : "disabled"}>${
-        afford ? `Build for ${money(t.buildCost)}` : `Need ${money(t.buildCost)}`
-      }</button>
-    </aside>`;
-}
 function contextPanel(game: GameState, ui: UiState): string {
   if (ui.selectedMatterId && game.matters.some((m) => m.id === ui.selectedMatterId)) return matterPanel(game, ui);
-  if (ui.selectedFloorId && floorRoom(ui.selectedFloorId)) return floorRoomPanel(game, ui);
-  return `<aside class="panel briefing"><h2>The Firm</h2><p class="muted">Pick a lead to staff it, an open matter to check on it, or a room on the floor plan to build or inspect.</p><p class="hint small">Press <kbd>E</kbd> or <kbd>Enter</kbd> to end the week.</p></aside>`;
+  return `<aside class="panel briefing"><h2>The Firm</h2><p class="muted">Pick a lead to staff it, or an open matter to check on it. Hire from the top bar — new staff appear at their desks on the floor plan.</p><p class="hint small">Press <kbd>E</kbd> or <kbd>Enter</kbd> to end the week.</p></aside>`;
 }
 
 function actionBar(game: GameState): string {
@@ -573,7 +517,7 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
     ${hud(game)}
     <main class="layout">
       <div class="col">${rosterPanel(game)}${goalsPanel(game)}</div>
-      <div class="col">${floorPlanGraphic(game, ui)}${leadsPanel(game, ui)}${activePanel(game, ui)}</div>
+      <div class="col">${floorPlanGraphic(game)}${leadsPanel(game, ui)}${activePanel(game, ui)}</div>
       ${contextPanel(game, ui)}
     </main>
     ${actionBar(game)}
@@ -588,7 +532,6 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
   };
 
   all("[data-matter]", (el) => el.addEventListener("click", () => handlers.selectMatter(el.dataset.matter!)));
-  all("[data-floor]", (el) => el.addEventListener("click", () => handlers.selectFloor(el.dataset.floor!)));
   all("[data-team]", (el) => el.addEventListener("click", () => handlers.toggleStaff(el.dataset.team!)));
   all("[data-hire]", (el) => el.addEventListener("click", () => handlers.hire(el.dataset.hire!)));
   all("[data-spend]", (el) =>
@@ -599,7 +542,6 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
   );
 
   bind("#take-matter", handlers.takeMatter);
-  bind("#build-room", () => handlers.buildRoom(ui.selectedFloorId ?? ""));
   bind("#open-hiring", handlers.openHiring);
   bind("#close-hiring", handlers.closeHiring);
   bind("#end-turn", handlers.endTurn);
