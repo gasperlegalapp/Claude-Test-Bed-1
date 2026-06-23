@@ -85,6 +85,8 @@ export function createInitialState(seed = 1): GameState {
     candidates,
     matters: [],
     lastTurn: null,
+    weekRetainers: 0,
+    history: [],
     nextId,
     weeksInDebt: 0,
     status: "playing",

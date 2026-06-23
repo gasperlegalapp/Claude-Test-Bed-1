@@ -65,12 +65,25 @@ export interface TurnEvent {
 
 export interface TurnLog {
   week: number;
+  // Costs (cash out)
   salariesPaid: number;
   overheadPaid: number;
   marketingPaid: number;
   interestPaid: number;
+  caseLosses: number; // litigation losses settled against the firm
+  // Revenue (cash in)
   billingsCollected: number; // interim fees billed on active matters this week
+  retainersCollected: number; // retainers banked when new matters were taken
+  caseProceeds: number; // settlements/fees collected as matters closed
   events: TurnEvent[];
+}
+
+// One data point per completed week, for the run's trend line and peak stats.
+export interface WeekStat {
+  week: number;
+  valuation: number;
+  cash: number;
+  profit: number; // revenue - costs for that week
 }
 
 export type GameStatus = "playing" | "won" | "lost";
@@ -89,6 +102,8 @@ export interface GameState {
   candidates: Candidate[];
   matters: Matter[];
   lastTurn: TurnLog | null;
+  weekRetainers: number; // retainers banked since the last week closed
+  history: WeekStat[]; // one entry per closed week (plus a week-0 baseline)
   nextId: number;
   weeksInDebt: number;
   status: GameStatus;

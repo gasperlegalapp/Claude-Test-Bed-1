@@ -1237,3 +1237,120 @@ button.ghost:hover {
 .end-stats strong.accent {
   color: var(--accent);
 }
+
+/* Run trend + high score on the end screen */
+.end-trend {
+  margin: 0 0 16px;
+}
+.spark {
+  display: block;
+  width: 100%;
+  height: 56px;
+  margin-top: 4px;
+}
+.end-trend.good {
+  color: var(--good);
+}
+.end-trend.bad {
+  color: var(--bad);
+}
+.end-best {
+  margin-bottom: 16px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.end-best.new {
+  color: var(--warn);
+}
+
+/* ---- Resume saved run (setup screen) ---- */
+.resume-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.resume-title {
+  font-weight: 700;
+}
+
+/* ---- Pass on a lead ---- */
+.lead-actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.lead-actions .primary-wide {
+  flex: 1;
+}
+.pass-btn {
+  white-space: nowrap;
+}
+
+/* ---- Weekly P&L recap ---- */
+.pnl {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.pnl-group {
+  margin-bottom: 10px;
+}
+.pnl-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.pnl-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  padding: 2px 0 2px 12px;
+}
+.pnl-net {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 2px solid var(--line);
+  margin-top: 6px;
+  padding-top: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.pnl-net strong {
+  font-size: 19px;
+}
+.pnl-net.good {
+  color: var(--good);
+}
+.pnl-net.bad {
+  color: var(--bad);
+}
+
+/* ---- Help / how-to-play overlay ---- */
+.help-modal h3 {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.help-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 4px 0;
+}
+.help-keys {
+  text-align: right;
+  color: var(--muted);
+}

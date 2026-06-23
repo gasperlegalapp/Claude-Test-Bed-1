@@ -22,7 +22,9 @@ import {
   LOAN_CHUNK,
   OFFICE_RENT,
   WEEKLY_INSURANCE,
+  WEEKLY_INTEREST,
 } from "../engine/state.ts";
+import { savedSummary } from "../engine/save.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
 import { LAW_AREAS, lawArea } from "../data/areas.ts";
 import { ROLE_DEFS } from "../data/staff.ts";
@@ -44,21 +46,27 @@ export interface UiState {
   selectedStaff: Set<string>;
   showSummary: boolean;
   showHiring: boolean;
+  showHelp: boolean;
+  endBest: number; // best valuation on record, shown on the end screen
+  endIsNew: boolean; // did the finished run set a new best?
 }
 
 export interface Handlers {
   toggleSetupArea: (id: string) => void;
   startGame: () => void;
+  continueGame: () => void;
   selectMatter: (id: string) => void;
   toggleStaff: (id: string) => void;
   spendSkillPoint: (staffId: string, axis: SkillAxis) => void;
   takeMatter: () => void;
+  dismissLead: (id: string) => void;
   setMarketing: (level: number) => void;
   takeLoan: () => void;
   repayLoan: () => void;
   openHiring: () => void;
   closeHiring: () => void;
   hire: (candidateId: string) => void;
+  toggleHelp: () => void;
   endTurn: () => void;
   closeSummary: () => void;
   newGame: () => void;
@@ -119,16 +127,27 @@ function setupScreen(ui: UiState): string {
       </button>`;
   }).join("");
   const n = ui.setupAreas.size;
+  const saved = savedSummary();
+  const resume = saved
+    ? `<div class="resume-card">
+        <div>
+          <div class="resume-title">Continue your firm</div>
+          <div class="muted small">Week ${saved.week} · ${money(saved.money)} in the bank</div>
+        </div>
+        <button id="continue-game" class="ghost">Resume ▸</button>
+      </div>`
+    : "";
   return `
     <div class="setup">
       <div class="setup-card">
         <h1>Open Your Satellite Office</h1>
+        ${resume}
         <p class="muted">The partners back at HQ are sending you to open a new office in a new town. Pick the area${
           n === 1 ? "" : "s"
         } of law you'll focus on (1–2). Your founding team and your incoming work will match.</p>
         <div class="area-grid">${cards}</div>
         <div class="setup-foot">
-          <span class="muted small">${n}/2 selected</span>
+          <span class="muted small">${n}/2 selected${saved ? " · starting fresh replaces your saved firm" : ""}</span>
           <button id="start-game" ${n === 0 ? "disabled" : ""}>Open for Business ▸</button>
         </div>
       </div>
@@ -169,6 +188,7 @@ function hud(game: GameState): string {
         }">${available}</span></div>
       </div>
       <button id="open-hiring" class="ghost">Hire Staff</button>
+      <button id="open-help" class="ghost" title="Keyboard shortcuts & how to play">?</button>
       <button id="new-game" class="ghost">New Game</button>
     </header>`;
 }
@@ -222,11 +242,18 @@ function financesPanel(game: GameState): string {
 
   const tiers = MARKETING_TIERS.map((t, i) => {
     const on = i === game.marketingLevel;
-    return `<button class="mkt-opt ${on ? "on" : ""}" data-marketing="${i}">
+    const tip =
+      t.extraAttempts > 0
+        ? `+${t.extraAttempts} lead attempt${t.extraAttempts > 1 ? "s" : ""}/week, +${Math.round(
+            t.chanceBonus * 100,
+          )}% to land each`
+        : "No marketing spend — leads come from walk-ins and reception only";
+    return `<button class="mkt-opt ${on ? "on" : ""}" data-marketing="${i}" title="${tip}">
       <span class="mkt-name">${t.label}</span>
       <span class="mkt-cost muted small">${t.weeklyCost === 0 ? "free" : `${money(t.weeklyCost)}/wk`}</span>
     </button>`;
   }).join("");
+  const interestPct = Math.round(WEEKLY_INTEREST * 100);
 
   return `
     <aside class="panel finances">
@@ -247,17 +274,21 @@ function financesPanel(game: GameState): string {
       </div>
       <div class="fin-block">
         <div class="fin-sub muted small">Line of credit</div>
-        <div class="fin-row"><span class="muted small">Debt</span><span class="small ${
+        <div class="fin-row" title="Borrowed principal still owed; it accrues interest weekly"><span class="muted small">Debt</span><span class="small ${
           game.debt > 0 ? "bad" : ""
         }">${money(game.debt)}</span></div>
-        <div class="fin-row"><span class="muted small">Available</span><span class="small">${money(avail)}</span></div>
+        <div class="fin-row" title="Headroom left on your credit line — it grows with reputation"><span class="muted small">Available</span><span class="small">${money(avail)}</span></div>
         <div class="fin-actions">
-          <button id="take-loan" class="mini" ${avail < 1 ? "disabled" : ""}>Borrow ${money(LOAN_CHUNK)}</button>
-          <button id="repay-loan" class="mini" ${
+          <button id="take-loan" class="mini" title="Draw ${money(
+            LOAN_CHUNK,
+          )} from the credit line" ${avail < 1 ? "disabled" : ""}>Borrow ${money(LOAN_CHUNK)}</button>
+          <button id="repay-loan" class="mini" title="Pay ${money(
+            LOAN_CHUNK,
+          )} back toward the balance" ${
             game.debt <= 0 || game.money <= 0 ? "disabled" : ""
           }>Repay ${money(LOAN_CHUNK)}</button>
         </div>
-        ${game.debt > 0 ? `<div class="muted small">Interest accrues at 4%/week on the balance.</div>` : ""}
+        ${game.debt > 0 ? `<div class="muted small">Interest accrues at ${interestPct}%/week on the balance.</div>` : ""}
       </div>
     </aside>`;
 }
@@ -483,9 +514,12 @@ function matterPanel(game: GameState, ui: UiState): string {
           ? `<div class="muted small">Every caseworker is at capacity — hire or wrap up a matter to free a slot.</div>`
           : ""
       }
-      <button id="take-matter" class="primary-wide" ${valid ? "" : "disabled"}>${
-        valid ? "Take the Matter ▸" : "Needs an attorney in this area"
-      }</button>
+      <div class="lead-actions">
+        <button id="take-matter" class="primary-wide" ${valid ? "" : "disabled"}>${
+          valid ? "Take the Matter ▸" : "Needs an attorney in this area"
+        }</button>
+        <button class="ghost pass-btn" data-pass="${m.id}" title="Turn down this lead">Pass</button>
+      </div>
     </aside>`;
 }
 function contextPanel(game: GameState, ui: UiState): string {
@@ -527,28 +561,55 @@ function summaryModal(game: GameState): string {
   if (!log) return "";
   const lines =
     log.events.length === 0 ? `<li class="muted">A quiet week. Nothing resolved.</li>` : log.events.map(eventLine).join("");
-  const expenses = log.salariesPaid + log.overheadPaid + log.marketingPaid + log.interestPaid;
-  const part = (label: string, val: number) =>
-    val > 0 ? `<span class="muted">${label} <span class="bad">-${money(val)}</span></span>` : "";
-  const breakdown = [
-    part("Salaries", log.salariesPaid),
-    part("Overhead", log.overheadPaid),
-    part("Marketing", log.marketingPaid),
-    part("Interest", log.interestPaid),
-  ]
-    .filter(Boolean)
-    .join('<span class="recap-dot">·</span>');
-  const billing =
-    log.billingsCollected > 0
-      ? `<div class="recap-expenses small"><span class="muted">Client billings <span class="good">+${money(
-          log.billingsCollected,
-        )}</span></span></div>`
+
+  const revenue = log.retainersCollected + log.billingsCollected + log.caseProceeds;
+  const costs =
+    log.salariesPaid + log.overheadPaid + log.marketingPaid + log.interestPaid + log.caseLosses;
+  const profit = revenue - costs;
+
+  // A line in the ledger; omitted when zero so the recap stays tight.
+  const inRow = (label: string, val: number) =>
+    val > 0
+      ? `<div class="pnl-row"><span class="muted">${label}</span><span class="good">+${money(val)}</span></div>`
       : "";
+  const outRow = (label: string, val: number) =>
+    val > 0
+      ? `<div class="pnl-row"><span class="muted">${label}</span><span class="bad">-${money(val)}</span></div>`
+      : "";
+
+  const revRows =
+    [
+      inRow("Retainers", log.retainersCollected),
+      inRow("Client billings", log.billingsCollected),
+      inRow("Case settlements", log.caseProceeds),
+    ].join("") || `<div class="pnl-row muted small">No revenue this week</div>`;
+  const costRows = [
+    outRow("Salaries", log.salariesPaid),
+    outRow("Rent &amp; insurance", log.overheadPaid),
+    outRow("Marketing", log.marketingPaid),
+    outRow("Loan interest", log.interestPaid),
+    outRow("Litigation losses", log.caseLosses),
+  ].join("");
+
+  const pnl = `
+    <div class="pnl">
+      <div class="pnl-group">
+        <div class="pnl-head"><span>Revenue</span><span class="good">+${money(revenue)}</span></div>
+        ${revRows}
+      </div>
+      <div class="pnl-group">
+        <div class="pnl-head"><span>Costs</span><span class="bad">-${money(costs)}</span></div>
+        ${costRows}
+      </div>
+      <div class="pnl-net ${profit >= 0 ? "good" : "bad"}">
+        <span>${profit >= 0 ? "Profit" : "Loss"} this week</span>
+        <strong>${profit >= 0 ? "+" : "-"}${money(Math.abs(profit))}</strong>
+      </div>
+    </div>`;
+
   return `<div class="modal-backdrop"><div class="modal"><h2>Week ${
     log.week
-  } — Recap</h2><ul class="resolve-list">${lines}</ul>${billing}<div class="recap-expenses small">${breakdown}</div><div class="recap-foot"><span class="muted">Total expenses: <span class="bad">-${money(
-    expenses,
-  )}</span></span><button id="close-summary">Continue ▸</button></div></div></div>`;
+  } — Recap</h2><ul class="resolve-list">${lines}</ul>${pnl}<div class="recap-foot"><button id="close-summary">Continue ▸</button></div></div></div>`;
 }
 function hiringModal(game: GameState): string {
   const stats = officeStats(game);
@@ -582,20 +643,81 @@ function hiringModal(game: GameState): string {
     stats.receptionHoused
   }/${stats.receptionSeats}. Attorneys need an office; support need a bullpen desk.</p><div class="cand-grid">${cards}</div></div></div>`;
 }
-function endOverlay(game: GameState): string {
+// A tiny inline trend line of the run's valuation, week by week.
+function sparkline(values: number[]): string {
+  if (values.length < 2) return "";
+  const w = 280;
+  const h = 56;
+  const pad = 4;
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const span = hi - lo || 1;
+  const pts = values
+    .map((v, i) => {
+      const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+      const y = h - pad - ((v - lo) / span) * (h - pad * 2);
+      return `${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`;
+    })
+    .join(" ");
+  const last = pts.split(" ").pop()!.split(",");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="valuation trend">
+    <polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="3" fill="currentColor"/>
+  </svg>`;
+}
+
+function endOverlay(game: GameState, ui: UiState): string {
   if (game.status === "playing") return "";
   const won = game.status === "won";
+  const valuations = game.history.map((h) => h.valuation);
+  const cashes = game.history.map((h) => h.cash);
+  const finalVal = computeValuation(game);
+  const peakVal = Math.max(finalVal, ...valuations);
+  const peakCash = Math.max(game.money, ...cashes);
+  const stat = (label: string, val: string, cls = "") =>
+    `<div><span class="muted">${label}</span><strong class="${cls}">${val}</strong></div>`;
+  const trend =
+    game.history.length >= 2
+      ? `<div class="end-trend ${won ? "good" : "bad"}"><div class="muted small">Valuation over ${
+          game.week
+        } weeks</div>${sparkline(valuations)}</div>`
+      : "";
+  const score = `<div class="end-best ${ui.endIsNew ? "new" : ""}">${
+    ui.endIsNew
+      ? `New best — peak valuation ${money(peakVal)}!`
+      : `Peak valuation ${money(peakVal)} · best on record ${money(ui.endBest)}`
+  }</div>`;
+
   return `<div class="modal-backdrop"><div class="modal end-modal ${game.status}"><h2>${
     won ? "The Firm Prevails" : "The Firm Folds"
-  }</h2><p class="end-reason">${game.statusReason}</p><div class="end-stats"><div><span class="muted">Weeks</span><strong>${
-    game.week
-  }</strong></div><div><span class="muted">Staff</span><strong>${
-    game.staff.length
-  }</strong></div><div><span class="muted">Reputation</span><strong>${
-    game.reputation
-  }</strong></div><div><span class="muted">Valuation</span><strong class="accent">${money(
-    computeValuation(game),
-  )}</strong></div></div><button id="overlay-newgame" class="primary-wide">Open a New Office</button></div></div>`;
+  }</h2><p class="end-reason">${game.statusReason}</p>${trend}<div class="end-stats">${stat(
+    "Weeks",
+    String(game.week),
+  )}${stat("Staff", String(game.staff.length))}${stat("Reputation", String(game.reputation))}${stat(
+    "Peak cash",
+    money(peakCash),
+  )}${stat("Final valuation", money(finalVal), "accent")}${stat(
+    "Peak valuation",
+    money(peakVal),
+    "accent",
+  )}</div>${score}<button id="overlay-newgame" class="primary-wide">Open a New Office</button></div></div>`;
+}
+
+function helpModal(): string {
+  const row = (keys: string, what: string) =>
+    `<div class="help-row"><span class="help-keys">${keys}</span><span>${what}</span></div>`;
+  return `<div class="modal-backdrop"><div class="modal help-modal"><div class="pm-head"><h2>How to Play</h2><button id="close-help" class="ghost">Close</button></div>
+    <p class="muted small">Run a satellite law office: take client matters, staff them with qualified attorneys, hire as you grow, and build the firm's valuation to win — without going broke or letting reputation hit zero.</p>
+    <h3>Shortcuts</h3>
+    ${row("<kbd>E</kbd> / <kbd>Enter</kbd>", "End the week")}
+    ${row("<kbd>H</kbd>", "Open hiring")}
+    ${row("<kbd>?</kbd>", "Toggle this help")}
+    ${row("<kbd>Esc</kbd>", "Deselect / close a panel")}
+    <h3>Tips</h3>
+    <div class="help-row"><span></span><span>Each matter pays a retainer up front, bills a little every week it's open, and settles the balance when it closes.</span></div>
+    <div class="help-row"><span></span><span>Litigation can be lost; transactional work always pays. Stronger teams win more often.</span></div>
+    <div class="help-row"><span></span><span>Your run autosaves every week — close the tab and resume later from the start screen.</span></div>
+  </div></div>`;
 }
 
 export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handlers: Handlers): void {
@@ -606,17 +728,21 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
       .forEach((el) => el.addEventListener("click", () => handlers.toggleSetupArea(el.dataset.setupArea!)));
     const start = root.querySelector<HTMLButtonElement>("#start-game");
     if (start) start.addEventListener("click", handlers.startGame);
+    const cont = root.querySelector<HTMLButtonElement>("#continue-game");
+    if (cont) cont.addEventListener("click", handlers.continueGame);
     return;
   }
 
   const overlay =
     game.status !== "playing"
-      ? endOverlay(game)
-      : ui.showHiring
-        ? hiringModal(game)
-        : ui.showSummary
-          ? summaryModal(game)
-          : "";
+      ? endOverlay(game, ui)
+      : ui.showHelp
+        ? helpModal()
+        : ui.showHiring
+          ? hiringModal(game)
+          : ui.showSummary
+            ? summaryModal(game)
+            : "";
 
   root.innerHTML = `
     ${hud(game)}
@@ -649,11 +775,14 @@ export function renderApp(root: HTMLElement, game: GameState, ui: UiState, handl
   all("[data-marketing]", (el) =>
     el.addEventListener("click", () => handlers.setMarketing(Number(el.dataset.marketing))),
   );
+  all("[data-pass]", (el) => el.addEventListener("click", () => handlers.dismissLead(el.dataset.pass!)));
   bind("#take-matter", handlers.takeMatter);
   bind("#take-loan", handlers.takeLoan);
   bind("#repay-loan", handlers.repayLoan);
   bind("#open-hiring", handlers.openHiring);
   bind("#close-hiring", handlers.closeHiring);
+  bind("#open-help", handlers.toggleHelp);
+  bind("#close-help", handlers.toggleHelp);
   bind("#end-turn", handlers.endTurn);
   bind("#new-game", handlers.newGame);
   bind("#close-summary", handlers.closeSummary);

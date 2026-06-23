@@ -18,7 +18,7 @@ import {
   weeklyInterest,
   availableCredit,
 } from "./state.ts";
-import { checkStatus } from "./scoring.ts";
+import { checkStatus, computeValuation } from "./scoring.ts";
 import { gainXp, spendSkillPoint } from "./growth.ts";
 import { officeStats, hasFreeSeat, roleCount } from "./office.ts";
 import { generateCandidate, generateStartingStaff } from "./people.ts";
@@ -29,6 +29,7 @@ import { ROLE_DEFS } from "../data/staff.ts";
 export type Action =
   | { type: "START_GAME"; areas: string[] }
   | { type: "TAKE_MATTER"; matterId: string; staffIds: string[] }
+  | { type: "DISMISS_LEAD"; matterId: string }
   | { type: "HIRE"; candidateId: string }
   | { type: "SPEND_SKILL_POINT"; staffId: string; axis: SkillAxis }
   | { type: "SET_MARKETING"; level: number }
@@ -43,6 +44,8 @@ export function reduce(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "TAKE_MATTER":
       return takeMatter(state, action.matterId, action.staffIds);
+    case "DISMISS_LEAD":
+      return dismissLead(state, action.matterId);
     case "HIRE":
       return hire(state, action.candidateId);
     case "SPEND_SKILL_POINT":
@@ -73,6 +76,7 @@ function startGame(state: GameState, areas: string[]): GameState {
     phase: "playing",
     focusAreas: areas,
     staff: seeded.staff,
+    history: [{ week: 0, valuation: computeValuation(state), cash: state.money, profit: 0 }],
     rng,
     nextId,
   };
@@ -110,12 +114,20 @@ function takeMatter(
   return {
     ...state,
     money: state.money + matter.retainer,
+    weekRetainers: state.weekRetainers + matter.retainer,
     matters: state.matters.map((m) =>
       m.id === matterId
         ? { ...m, status: "active", staffIds: [...staffIds], collected: m.retainer }
         : m,
     ),
   };
+}
+
+// Turn down an offered lead so it stops cluttering the board.
+function dismissLead(state: GameState, matterId: string): GameState {
+  const matter = state.matters.find((m) => m.id === matterId);
+  if (!matter || matter.status !== "offered") return state;
+  return { ...state, matters: state.matters.filter((m) => m.id !== matterId) };
 }
 
 function hire(state: GameState, candidateId: string): GameState {
@@ -194,6 +206,8 @@ function endTurn(state: GameState): GameState {
   const officeBonus = officeStats(state).caseBonus;
   const staffById = new Map(state.staff.map((s) => [s.id, s]));
   let billingsCollected = 0;
+  let caseProceeds = 0; // money collected as matters closed
+  let caseLosses = 0; // money lost when litigation went against the firm
 
   // Progress and resolve active matters.
   const remaining: Matter[] = [];
@@ -237,6 +251,8 @@ function endTurn(state: GameState): GameState {
     }
     money += moneyDelta;
     reputation += repDelta;
+    if (moneyDelta >= 0) caseProceeds += moneyDelta;
+    else caseLosses += -moneyDelta;
     events.push({
       kind: "matter",
       title: m.title,
@@ -280,6 +296,7 @@ function endTurn(state: GameState): GameState {
     week: state.week + 1,
     money,
     reputation,
+    weekRetainers: 0, // banked retainers roll into this week's recap below
     staff: [...staffById.values()],
     matters: kept,
     rng,
@@ -316,9 +333,19 @@ function endTurn(state: GameState): GameState {
     overheadPaid,
     marketingPaid,
     interestPaid,
+    caseLosses,
     billingsCollected,
+    retainersCollected: state.weekRetainers,
+    caseProceeds,
     events,
   };
+
+  const revenue = billingsCollected + state.weekRetainers + caseProceeds;
+  const costs = salariesPaid + overheadPaid + marketingPaid + interestPaid + caseLosses;
+  next.history = [
+    ...state.history,
+    { week: next.week, valuation: computeValuation(next), cash: money, profit: revenue - costs },
+  ];
 
   const { status, reason } = checkStatus(next);
   next.status = status;
