@@ -1,10 +1,10 @@
-// Floor-plan layout + overlay coordinates. Zones are keyed by FloorRoom id.
-// The plan is drawn as an SVG from these numbers (see ui/render.ts); there is
-// no raster artwork. All numbers are PERCENTAGES of the plan (0–100), origin
-// top-left:
-//   x,y,w,h  -> the room's rectangle on the plan
-//   seats[]  -> where each staff token (and its desk) sits inside the room
-// Token overlays use the same percentage space, so they stay aligned.
+import officeFloor from "../assets/office-floor.png";
+
+// Floor-plan artwork + overlay coordinates. Zones are keyed by FloorRoom id.
+// All numbers are PERCENTAGES of the image (0–100), origin top-left:
+//   x,y,w,h  -> the room's clickable rectangle (also used to dim if unbuilt)
+//   seats[]  -> where each staff token sits inside the room
+// (Approximate — easy to nudge once seen in the browser.)
 
 export interface FpSeat {
   x: number;
@@ -18,11 +18,13 @@ export interface FpZone {
   seats: FpSeat[];
 }
 export interface FloorPlanArt {
+  image: string;
   aspect: number; // width / height
   zones: Record<string, FpZone>;
 }
 
 export const FLOORPLAN: FloorPlanArt = {
+  image: officeFloor,
   aspect: 1.3333,
   zones: {
     office1: { x: 3, y: 6, w: 22, h: 20, seats: [{ x: 15, y: 16 }] },
