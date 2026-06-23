@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createInitialState, maxActiveMatters } from "../state.ts";
+import { createInitialState } from "../state.ts";
 import { reduce } from "../reducer.ts";
 import { officeStats, spareCapacity, staffLoad } from "../office.ts";
 import {
@@ -9,6 +9,7 @@ import {
   creditLimit,
   LOAN_CHUNK,
   MARKETING_TIERS,
+  WEEKLY_INTEREST,
 } from "../state.ts";
 import { computeValuation } from "../scoring.ts";
 import { ROLE_DEFS } from "../../data/staff.ts";
@@ -63,7 +64,6 @@ describe("TAKE_MATTER", () => {
     let taken = 0;
     for (const m of offered) {
       if (spareCapacity(s, att.id) <= 0) break;
-      if (s.matters.filter((x) => x.status === "active").length >= maxActiveMatters(s)) break;
       s = reduce(s, { type: "TAKE_MATTER", matterId: m.id, staffIds: [att.id] });
       taken++;
     }
@@ -189,9 +189,58 @@ describe("finances", () => {
     s = reduce(s, { type: "TAKE_LOAN" });
     // Borrowed cash is offset by the new debt, so valuation is unchanged.
     expect(computeValuation(s)).toBe(v0);
-    const interest = Math.round(s.debt * 0.04);
+    const interest = Math.round(s.debt * WEEKLY_INTEREST);
     const expected = s.money - salariesOf(s) - weeklyOverhead(s) - interest;
     const s1 = reduce(s, { type: "END_TURN" });
     expect(s1.money).toBe(expected);
+  });
+});
+
+describe("billing", () => {
+  it("collects a retainer up front when a matter is taken", () => {
+    let s = started();
+    const att = attorneyOf(s);
+    const m = s.matters.find((x) => x.status === "offered")!;
+    expect(m.retainer).toBeGreaterThan(0);
+    const before = s.money;
+    s = reduce(s, { type: "TAKE_MATTER", matterId: m.id, staffIds: [att.id] });
+    const taken = s.matters.find((x) => x.id === m.id)!;
+    expect(s.money).toBe(before + m.retainer);
+    expect(taken.collected).toBe(m.retainer);
+  });
+
+  it("bills interim fees each week a matter is in progress", () => {
+    let s = started();
+    const att = attorneyOf(s);
+    // A long case so it stays open through at least one billing week.
+    const m = [...s.matters].filter((x) => x.status === "offered").sort((a, b) => b.totalDays - a.totalDays)[0];
+    s = reduce(s, { type: "TAKE_MATTER", matterId: m.id, staffIds: [att.id] });
+    const afterTake = s.matters.find((x) => x.id === m.id)!.collected;
+    s = reduce(s, { type: "END_TURN" });
+    const still = s.matters.find((x) => x.id === m.id);
+    expect(still).toBeTruthy();
+    expect(still!.collected).toBeGreaterThan(afterTake);
+    expect(s.lastTurn!.billingsCollected).toBeGreaterThan(0);
+  });
+});
+
+describe("matter capacity", () => {
+  it("lets the firm carry more active matters than the old global cap", () => {
+    // Drive aggressive intake and take every lead a free attorney can cover,
+    // proving there is no firm-wide active-matter ceiling anymore.
+    let s = reduce(started(), { type: "SET_MARKETING", level: 2 });
+    let maxActive = 0;
+    for (let week = 0; week < 16; week++) {
+      for (const m of s.matters.filter((x) => x.status === "offered")) {
+        const att = s.staff.find(
+          (x) => ROLE_DEFS[x.role].attorney && x.practiceAreas.includes(m.area) && spareCapacity(s, x.id) > 0,
+        );
+        if (!att) continue;
+        s = reduce(s, { type: "TAKE_MATTER", matterId: m.id, staffIds: [att.id] });
+      }
+      maxActive = Math.max(maxActive, s.matters.filter((x) => x.status === "active").length);
+      s = reduce(s, { type: "END_TURN" });
+    }
+    expect(maxActive).toBeGreaterThan(3);
   });
 });

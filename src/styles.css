@@ -470,6 +470,16 @@ button.ghost:hover {
 .recap-dot {
   color: var(--panel-3);
 }
+.active-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.o-note {
+  display: block;
+  font-style: italic;
+}
 
 /* The slab + exterior wall wrapping a grid of rooms. */
 .floor-plan {

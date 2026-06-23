@@ -39,7 +39,9 @@ export interface Matter {
   difficulty: number;
   totalDays: number;
   daysRemaining: number;
-  payoff: number;
+  payoff: number; // total estimated fee for the matter
+  retainer: number; // collected up front when the matter is taken
+  collected: number; // fees billed and collected so far (retainer + interim)
   riskCost: number;
   reputation: number;
   staffIds: string[]; // who's working it (active matters)
@@ -67,6 +69,7 @@ export interface TurnLog {
   overheadPaid: number;
   marketingPaid: number;
   interestPaid: number;
+  billingsCollected: number; // interim fees billed on active matters this week
   events: TurnEvent[];
 }
 

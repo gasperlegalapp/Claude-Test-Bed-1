@@ -30,6 +30,8 @@ function matter(over: Partial<Matter> = {}): Matter {
     totalDays: 60,
     daysRemaining: 60,
     payoff: 12000,
+    retainer: 0,
+    collected: 0,
     riskCost: 3000,
     reputation: 5,
     staffIds: [],
@@ -74,10 +76,15 @@ describe("resolveLitigation", () => {
 });
 
 describe("resolveTransactional", () => {
-  it("always pays the fee — no losing", () => {
-    const m = matter({ category: "transactional", payoff: 5000, reputation: 2 });
-    const res = resolveTransactional(m);
-    expect(res.moneyDelta).toBe(5000);
-    expect(res.repDelta).toBe(2);
+  it("collects the outstanding balance and never loses money", () => {
+    const m = matter({ category: "transactional", payoff: 5000, collected: 1500, reputation: 2 });
+    // Across many seeds the final collection always nets positive (worst case is
+    // a short-pay on the balance) and reputation is awarded.
+    for (let s = 1; s <= 25; s++) {
+      const res = resolveTransactional(m, createRng(s));
+      expect(res.outcome).toBe("success");
+      expect(res.repDelta).toBe(2);
+      expect(res.moneyDelta).toBeGreaterThan(0);
+    }
   });
 });

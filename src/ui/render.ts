@@ -10,16 +10,18 @@ import {
   roleCapacity,
   spareCapacity,
   roleCount,
+  firmCaseCapacity,
+  hasFreeCaseSlot,
 } from "../engine/office.ts";
 import {
-  maxActiveMatters,
-  weeklyOverhead,
   weeklyExpenses,
   weeklyInterest,
   marketingTier,
   availableCredit,
   MARKETING_TIERS,
   LOAN_CHUNK,
+  OFFICE_RENT,
+  WEEKLY_INSURANCE,
 } from "../engine/state.ts";
 import { SKILL_AXES, SKILL_LABELS, type SkillAxis } from "../data/skills.ts";
 import { LAW_AREAS, lawArea } from "../data/areas.ts";
@@ -210,7 +212,6 @@ function rosterPanel(game: GameState): string {
 // ---- Left: finances ----
 function financesPanel(game: GameState): string {
   const salaries = game.staff.reduce((sum, s) => sum + s.salary, 0);
-  const overhead = weeklyOverhead(game);
   const mkt = marketingTier(game);
   const interest = weeklyInterest(game);
   const total = weeklyExpenses(game);
@@ -233,7 +234,8 @@ function financesPanel(game: GameState): string {
       <div class="fin-block">
         <div class="fin-sub muted small">Weekly expenses</div>
         ${expense("Salaries", salaries)}
-        ${expense("Rent & utilities", overhead)}
+        ${expense("Rent", OFFICE_RENT)}
+        ${expense("Insurance", WEEKLY_INSURANCE)}
         ${mkt.weeklyCost > 0 ? expense("Marketing", mkt.weeklyCost) : ""}
         ${interest > 0 ? expense("Loan interest", interest, "bad") : ""}
         <div class="fin-row total"><span>Total / week</span><span class="bad">-${money(total)}</span></div>
@@ -353,7 +355,9 @@ function leadsPanel(game: GameState, ui: UiState): string {
         <button class="board-case ${sel ? "selected" : ""}" data-matter="${m.id}">
           <div class="board-top"><strong>${m.title}</strong><span class="payoff good">${money(m.payoff)}</span></div>
           <div class="case-sub small">${categoryBadge(m)} <span class="muted">${areaName(m.area)}</span></div>
-          <div class="board-meta muted small">~${durLabel(m.totalDays)} · lead expires in ${m.expiresInWeeks}w</div>
+          <div class="board-meta muted small">${money(m.retainer)} retainer · ~${durLabel(
+            m.totalDays,
+          )} · expires in ${m.expiresInWeeks}w</div>
         </button>`;
     })
     .join("");
@@ -376,13 +380,15 @@ function activePanel(game: GameState, ui: UiState): string {
           )}</span></div>
           <div class="case-sub small">${categoryBadge(m)} <span class="muted">${areaName(m.area)}</span></div>
           <div class="progress"><div class="progress-fill" style="width:${fill}%"></div></div>
-          <div class="muted small">${names}</div>
+          <div class="active-foot small"><span class="muted">${names}</span><span class="good">${money(
+            m.collected,
+          )} / ${money(m.payoff)} billed</span></div>
         </button>`;
     })
     .join("");
-  return `<section class="panel"><h2>Open Matters (${active.length}/${maxActiveMatters(
+  return `<section class="panel"><h2>Open Matters (${active.length}/${firmCaseCapacity(
     game,
-  )})</h2><div class="active-grid">${rows}</div></section>`;
+  )} slots)</h2><div class="active-grid">${rows}</div></section>`;
 }
 
 // ---- Right: context panel ----
@@ -440,10 +446,13 @@ function matterPanel(game: GameState, ui: UiState): string {
         <div class="case-sub small">${categoryBadge(m)} <span class="muted">${areaName(m.area)}</span></div>
         <p class="flavor">${m.flavor}</p>
         <div class="brief-meta muted small">${durLabel(m.daysRemaining)} remaining · worked by ${names}</div>
+        <div class="brief-meta small"><span class="good">${money(m.collected)}</span> of ${money(
+          m.payoff,
+        )} billed so far</div>
         ${odds}
         ${
           m.category === "transactional"
-            ? `<p class="muted small">Client has signed — completing the work pays the fee.</p>`
+            ? `<p class="muted small">Client has signed — billing continues until the work is delivered.</p>`
             : ""
         }
       </aside>`;
@@ -452,7 +461,7 @@ function matterPanel(game: GameState, ui: UiState): string {
   // Offered matter -> staffing panel.
   const valid = canStaffMatter(game, m, [...ui.selectedStaff]);
   const odds = m.category === "litigation" && valid ? successChance(m, team, officeStats(game).caseBonus) : null;
-  const atCap = game.matters.filter((x) => x.status === "active").length >= maxActiveMatters(game);
+  const noCapacity = !hasFreeCaseSlot(game);
   return `
     <aside class="panel briefing">
       <h2>New Lead</h2>
@@ -461,14 +470,20 @@ function matterPanel(game: GameState, ui: UiState): string {
       )}</span></div>
       <div class="case-sub small">${categoryBadge(m)} <span class="muted">${areaName(m.area)}</span></div>
       <p class="flavor">${m.flavor}</p>
-      <div class="brief-meta muted small">~${durLabel(m.totalDays)} of work · ${
-        m.category === "litigation" ? `risk ${money(m.riskCost)} if lost` : "guaranteed fee on completion"
+      <div class="brief-meta muted small"><span class="good">${money(
+        m.retainer,
+      )} retainer on signing</span> · ~${durLabel(m.totalDays)} of work · ${
+        m.category === "litigation" ? `risk ${money(m.riskCost)} if lost` : "billed to completion"
       }</div>
       <div class="tags">${skillTags(m.requiredSkills)}</div>
       ${teamPicker(game, ui, m.area)}
       ${m.category === "litigation" ? oddsBlock(odds) : ""}
-      ${atCap ? `<div class="muted small">At matter capacity — wrap up an open matter to free up the docket.</div>` : ""}
-      <button id="take-matter" class="primary-wide" ${valid && !atCap ? "" : "disabled"}>${
+      ${
+        noCapacity
+          ? `<div class="muted small">Every caseworker is at capacity — hire or wrap up a matter to free a slot.</div>`
+          : ""
+      }
+      <button id="take-matter" class="primary-wide" ${valid ? "" : "disabled"}>${
         valid ? "Take the Matter ▸" : "Needs an attorney in this area"
       }</button>
     </aside>`;
@@ -493,9 +508,10 @@ function eventLine(e: TurnEvent): string {
         ? `<span class="o-rep ${e.repDelta > 0 ? "good" : "bad"}">${e.repDelta > 0 ? "+" : ""}${e.repDelta} rep</span>`
         : "";
     const label = e.category === "transactional" ? "Closed" : OUTCOME_LABEL[e.outcome!];
+    const note = e.detail ? `<span class="o-note muted small">${e.detail}</span>` : "";
     return `<li class="resolve-line ${e.outcome}"><span class="o-tag">${label}</span><span class="o-title">${
       e.title
-    }</span><span class="o-deltas"><span class="o-money ${(e.moneyDelta ?? 0) >= 0 ? "good" : "bad"}">${
+    }${note}</span><span class="o-deltas"><span class="o-money ${(e.moneyDelta ?? 0) >= 0 ? "good" : "bad"}">${
       (e.moneyDelta ?? 0) >= 0 ? "+" : ""
     }${money(e.moneyDelta ?? 0)}</span>${rep}</span></li>`;
   }
@@ -522,9 +538,15 @@ function summaryModal(game: GameState): string {
   ]
     .filter(Boolean)
     .join('<span class="recap-dot">·</span>');
+  const billing =
+    log.billingsCollected > 0
+      ? `<div class="recap-expenses small"><span class="muted">Client billings <span class="good">+${money(
+          log.billingsCollected,
+        )}</span></span></div>`
+      : "";
   return `<div class="modal-backdrop"><div class="modal"><h2>Week ${
     log.week
-  } — Recap</h2><ul class="resolve-list">${lines}</ul><div class="recap-expenses small">${breakdown}</div><div class="recap-foot"><span class="muted">Total expenses: <span class="bad">-${money(
+  } — Recap</h2><ul class="resolve-list">${lines}</ul>${billing}<div class="recap-expenses small">${breakdown}</div><div class="recap-foot"><span class="muted">Total expenses: <span class="bad">-${money(
     expenses,
   )}</span></span><button id="close-summary">Continue ▸</button></div></div></div>`;
 }
