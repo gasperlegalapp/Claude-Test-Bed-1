@@ -296,7 +296,112 @@ function staffToken(game: GameState, s: Staff, seat: { x: number; y: number }): 
   )}</span>`;
 }
 
-// The office: the floor-plan artwork with each employee drawn as a round token
+// ---- Floor-plan SVG (drawn from FLOORPLAN zones; no raster art) ----
+// Coordinates are percentages; the SVG uses a matching 400x300 (4:3) viewBox so
+// the staff token overlays (positioned in the same percentage space) line up.
+const FP_VB_W = 400;
+const FP_VB_H = 300;
+const fpx = (p: number): number => Math.round((p / 100) * FP_VB_W * 10) / 10;
+const fpy = (p: number): number => Math.round((p / 100) * FP_VB_H * 10) / 10;
+
+const FP_CARPET: Record<string, string> = {
+  office: "#d6dfcb",
+  openwork: "#cfd8e2",
+  lobby: "#e3d4b6",
+  conference: "#c9d8d2",
+  kitchen: "#dde1e4",
+  storage: "#d3d6da",
+  bathroom: "#dbe6ea",
+};
+const FP_LABEL: Record<string, string> = {
+  office: "Office",
+  openwork: "Open Work Area",
+  lobby: "Reception",
+  conference: "Conference",
+  kitchen: "Kitchen",
+  storage: "Storage",
+  bathroom: "Restroom",
+};
+
+// A desk (with a monitor) drawn beneath a staff seat, so a token reads as a
+// person sitting at their desk.
+function fpDesk(seat: { x: number; y: number }, wide: boolean): string {
+  const x = fpx(seat.x);
+  const y = fpy(seat.y);
+  const w = wide ? 42 : 30;
+  const h = 16;
+  return (
+    `<rect class="fpx-desk" x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="2"/>` +
+    `<rect class="fpx-mon" x="${x - 7}" y="${y - h / 2 - 3.5}" width="14" height="3.5" rx="1"/>`
+  );
+}
+
+// Room-specific furniture for the rooms that have no seats of their own.
+function fpFurniture(typeId: string, z: { x: number; y: number; w: number; h: number }): string {
+  const x0 = fpx(z.x);
+  const y0 = fpy(z.y);
+  const x1 = fpx(z.x + z.w);
+  const y1 = fpy(z.y + z.h);
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  switch (typeId) {
+    case "conference": {
+      const tw = (x1 - x0) * 0.52;
+      const th = (y1 - y0) * 0.5;
+      return `<rect class="fpx-table" x="${cx - tw / 2}" y="${cy - th / 2}" width="${tw}" height="${th}" rx="7"/>`;
+    }
+    case "kitchen":
+      return (
+        `<rect class="fpx-counter" x="${x0 + 6}" y="${y0 + 9}" width="${x1 - x0 - 12}" height="9" rx="2"/>` +
+        `<rect class="fpx-appliance" x="${x0 + 6}" y="${y1 - 22}" width="15" height="17" rx="2"/>`
+      );
+    case "storage": {
+      let s = "";
+      const w = x1 - x0 - 12;
+      for (let i = 0; i < 3; i++) {
+        const yy = y0 + 11 + i * ((y1 - y0 - 18) / 3);
+        s += `<rect class="fpx-shelf" x="${x0 + 6}" y="${yy}" width="${w}" height="6" rx="1"/>`;
+      }
+      return s;
+    }
+    case "bathroom":
+      return (
+        `<rect class="fpx-fixture" x="${x0 + 6}" y="${y0 + 9}" width="12" height="10" rx="2"/>` +
+        `<rect class="fpx-fixture" x="${x1 - 18}" y="${y0 + 9}" width="12" height="14" rx="3"/>`
+      );
+    default:
+      return "";
+  }
+}
+
+function floorPlanSvg(): string {
+  let body = "";
+  let officeNo = 0;
+  for (const f of FLOOR) {
+    const z = FLOORPLAN.zones[f.id];
+    if (!z) continue;
+    const x = fpx(z.x);
+    const y = fpy(z.y);
+    const w = fpx(z.w);
+    const h = fpy(z.h);
+    const fill = FP_CARPET[f.typeId] ?? "#e0e3e6";
+    body += `<rect class="fpx-room" x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${fill}"/>`;
+    body += fpFurniture(f.typeId, z);
+    for (const seat of z.seats) body += fpDesk(seat, f.typeId === "lobby");
+    let label = FP_LABEL[f.typeId] ?? f.typeId;
+    if (f.typeId === "office") label = `Office ${++officeNo}`;
+    body += `<text class="fpx-label" x="${x + 6}" y="${y + 14}">${label.toUpperCase()}</text>`;
+  }
+  return (
+    `<svg class="fp-svg" viewBox="0 0 ${FP_VB_W} ${FP_VB_H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="office floor plan">` +
+    `<rect class="fpx-bg" x="0" y="0" width="${FP_VB_W}" height="${FP_VB_H}" rx="6"/>` +
+    body +
+    `<rect class="fpx-wall" x="2" y="2" width="${FP_VB_W - 4}" height="${FP_VB_H - 4}" rx="6"/>` +
+    `</svg>`
+  );
+}
+
+// The office: the floor-plan drawn as an SVG with each employee as a round token
 // at their desk. The whole floor is always in use; tokens grow as you hire.
 function floorPlanGraphic(game: GameState): string {
   const stats = officeStats(game);
@@ -331,7 +436,7 @@ function floorPlanGraphic(game: GameState): string {
         Case odds +${stats.caseBonus}
       </div>
       <div class="fp-graphic" style="aspect-ratio:${FLOORPLAN.aspect}">
-        <img class="fp-img" src="${FLOORPLAN.image}" alt="office floor plan" />
+        ${floorPlanSvg()}
         ${tokens}
       </div>
     </section>`;

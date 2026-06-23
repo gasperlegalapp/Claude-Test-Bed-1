@@ -602,7 +602,7 @@ button.ghost:hover {
 .shelf { background: #c9b08a; border: 1px solid #a98f63; border-radius: 2px; }
 .box { width: 16px; height: 13px; background: #d2b48c; border: 1px solid #b3966f; border-radius: 2px; }
 
-/* ---- Floor-plan graphic + overlays (your artwork) ---- */
+/* ---- Floor-plan graphic + overlays (drawn as an SVG) ---- */
 .fp-graphic {
   position: relative;
   width: 100%;
@@ -611,14 +611,28 @@ button.ghost:hover {
   box-shadow: 0 6px 18px rgba(15, 17, 17, 0.18);
   background: #e9ebec;
 }
-.fp-img {
+.fp-svg {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  -webkit-user-drag: none;
   user-select: none;
 }
+.fpx-bg { fill: #eceee9; }
+.fpx-wall { fill: none; stroke: #5b6470; stroke-width: 4; }
+.fpx-room { stroke: #aeb4bb; stroke-width: 2; }
+.fpx-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  fill: #5c636b;
+}
+.fpx-desk { fill: #b98a52; stroke: #936a38; stroke-width: 1; }
+.fpx-mon { fill: #2b3440; }
+.fpx-table { fill: #a9794a; stroke: #875f37; stroke-width: 1.5; }
+.fpx-counter { fill: #cfd4d8; stroke: #aab0b6; stroke-width: 1; }
+.fpx-appliance { fill: #eef1f3; stroke: #aab0b6; stroke-width: 1; }
+.fpx-shelf { fill: #c9b08a; stroke: #a98f63; stroke-width: 1; }
+.fpx-fixture { fill: #e8edf0; stroke: #9aa0a6; stroke-width: 1; }
 /* Staff figures placed at desk coordinates on the image */
 .fp-token {
   position: absolute;
