@@ -94,6 +94,17 @@ export function spareCapacity(state: GameState, staffId: string): number {
   return roleCapacity(s.role) - staffLoad(state, staffId);
 }
 
+// The firm's total docket capacity: the sum of every caseworker's case slots.
+// (How many active matters the staff could collectively carry at once.)
+export function firmCaseCapacity(state: GameState): number {
+  return state.staff.reduce((sum, s) => sum + roleCapacity(s.role), 0);
+}
+
+// Does anyone on staff have a free case slot right now?
+export function hasFreeCaseSlot(state: GameState): boolean {
+  return state.staff.some((s) => ROLE_DEFS[s.role].casework && spareCapacity(state, s.id) > 0);
+}
+
 // How many of a role the firm already employs (for max-count enforcement).
 export function roleCount(state: GameState, role: StaffRole): number {
   return state.staff.filter((s) => s.role === role).length;

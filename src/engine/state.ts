@@ -1,7 +1,6 @@
 import { createRng } from "./rng.ts";
 import type { GameState } from "./types.ts";
 import { generateCandidate } from "./people.ts";
-import { officeStats } from "./office.ts";
 
 const STARTING_MONEY = 35000;
 const STARTING_REPUTATION = 10;
@@ -10,18 +9,21 @@ const STARTING_REPUTATION = 10;
 export const REP_VALUE = 1500; // valuation per reputation point
 export const DEBT_WEEKS_TO_BANKRUPTCY = 4;
 export const CANDIDATE_POOL = 4; // hireable candidates on offer
-export const BASE_ACTIVE_MATTERS = 3; // active matters before room capacity
 export const MAX_OFFERED = 6; // leads waiting to be taken
 export const LEAD_CHANCE = 0.55; // weekly chance an intake attempt lands work
 export const WEEK_DAYS = 7;
 
 // ---- Finances ----
-export const OFFICE_RENT = 2500; // weekly rent for the office
-export const UTILITY_PER_HEAD = 150; // weekly utilities per staff member
-export const WEEKLY_INTEREST = 0.04; // interest charged weekly on outstanding debt
+// Costs are deliberately light: a young firm should be able to find its feet.
+export const OFFICE_RENT = 1200; // weekly rent for the office
+export const WEEKLY_INSURANCE = 300; // weekly malpractice / liability insurance
+export const WEEKLY_INTEREST = 0.03; // interest charged weekly on outstanding debt
 export const LOAN_CHUNK = 10000; // borrow / repay in this increment
 export const CREDIT_BASE = 25000; // base borrowing limit
 export const CREDIT_PER_REP = 1500; // extra borrowing limit per reputation point
+
+// ---- Billing ----
+export const RETAINER_PCT = 0.3; // share of the fee collected up front on intake
 
 export interface MarketingTier {
   label: string;
@@ -32,18 +34,14 @@ export interface MarketingTier {
 
 export const MARKETING_TIERS: MarketingTier[] = [
   { label: "None", weeklyCost: 0, extraAttempts: 0, chanceBonus: 0 },
-  { label: "Modest", weeklyCost: 1200, extraAttempts: 1, chanceBonus: 0.05 },
-  { label: "Aggressive", weeklyCost: 3000, extraAttempts: 2, chanceBonus: 0.12 },
+  { label: "Modest", weeklyCost: 600, extraAttempts: 1, chanceBonus: 0.05 },
+  { label: "Aggressive", weeklyCost: 1500, extraAttempts: 2, chanceBonus: 0.12 },
 ];
 
-// How many matters the firm can actively work at once.
-export function maxActiveMatters(state: GameState): number {
-  return BASE_ACTIVE_MATTERS + officeStats(state).caseCapacity;
-}
-
-// Weekly rent + utilities the firm owes regardless of casework.
+// Weekly rent + insurance the firm owes regardless of casework.
 export function weeklyOverhead(state: GameState): number {
-  return OFFICE_RENT + state.staff.length * UTILITY_PER_HEAD;
+  void state;
+  return OFFICE_RENT + WEEKLY_INSURANCE;
 }
 export function marketingTier(state: GameState): MarketingTier {
   return MARKETING_TIERS[state.marketingLevel] ?? MARKETING_TIERS[0];

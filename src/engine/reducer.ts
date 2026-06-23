@@ -4,9 +4,9 @@ import {
   resolveTransactional,
   rollLead,
   canStaffMatter,
+  interimBill,
 } from "./matters.ts";
 import {
-  maxActiveMatters,
   CANDIDATE_POOL,
   MAX_OFFERED,
   LEAD_CHANCE,
@@ -104,15 +104,15 @@ function takeMatter(
 ): GameState {
   const matter = state.matters.find((m) => m.id === matterId);
   if (!matter || matter.status !== "offered") return state;
-  if (state.matters.filter((m) => m.status === "active").length >= maxActiveMatters(state))
-    return state;
   if (!canStaffMatter(state, matter, staffIds)) return state;
 
+  // Collect the retainer up front when the client signs.
   return {
     ...state,
+    money: state.money + matter.retainer,
     matters: state.matters.map((m) =>
       m.id === matterId
-        ? { ...m, status: "active", staffIds: [...staffIds] }
+        ? { ...m, status: "active", staffIds: [...staffIds], collected: m.retainer }
         : m,
     ),
   };
@@ -193,6 +193,7 @@ function endTurn(state: GameState): GameState {
 
   const officeBonus = officeStats(state).caseBonus;
   const staffById = new Map(state.staff.map((s) => [s.id, s]));
+  let billingsCollected = 0;
 
   // Progress and resolve active matters.
   const remaining: Matter[] = [];
@@ -203,7 +204,11 @@ function endTurn(state: GameState): GameState {
     }
     const daysRemaining = m.daysRemaining - WEEK_DAYS;
     if (daysRemaining > 0) {
-      remaining.push({ ...m, daysRemaining });
+      // Still in progress: bill the client for this week's work.
+      const bill = interimBill(m);
+      money += bill;
+      billingsCollected += bill;
+      remaining.push({ ...m, daysRemaining, collected: m.collected + bill });
       continue;
     }
 
@@ -214,17 +219,21 @@ function endTurn(state: GameState): GameState {
     let outcome: TurnEvent["outcome"];
     let moneyDelta: number;
     let repDelta: number;
+    let detail: string | undefined;
     if (m.category === "litigation") {
       const res = resolveLitigation(m, assigned, rng, officeBonus);
       rng = res.rng;
       outcome = res.outcome;
       moneyDelta = res.moneyDelta;
       repDelta = res.repDelta;
+      detail = res.detail;
     } else {
-      const res = resolveTransactional(m);
+      const res = resolveTransactional(m, rng);
+      rng = res.rng;
       outcome = res.outcome;
       moneyDelta = res.moneyDelta;
       repDelta = res.repDelta;
+      detail = res.detail;
     }
     money += moneyDelta;
     reputation += repDelta;
@@ -235,6 +244,7 @@ function endTurn(state: GameState): GameState {
       outcome,
       moneyDelta,
       repDelta,
+      detail,
     });
 
     // Everyone on the matter earns experience.
@@ -306,6 +316,7 @@ function endTurn(state: GameState): GameState {
     overheadPaid,
     marketingPaid,
     interestPaid,
+    billingsCollected,
     events,
   };
 

@@ -2,6 +2,7 @@ import type { GameState, Matter, Outcome, Staff } from "./types.ts";
 import type { RngState } from "./rng.ts";
 import { nextFloat, nextInt, pick } from "./rng.ts";
 import { spareCapacity } from "./office.ts";
+import { RETAINER_PCT } from "./state.ts";
 import { ROLE_DEFS } from "../data/staff.ts";
 import {
   MATTER_TEMPLATES,
@@ -50,10 +51,46 @@ export interface Resolution {
   outcome: Outcome;
   moneyDelta: number;
   repDelta: number;
+  detail?: string;
   rng: RngState;
 }
 
-// Litigation resolves on the merits: win big, settle, or lose.
+function round100(n: number): number {
+  return Math.round(n / 100) * 100;
+}
+
+// The fee billed to a matter for one week of active work. Spreads the
+// non-retainer balance evenly across the matter's expected duration, so a long
+// case pays the firm a little every week instead of all at the end.
+export function interimBill(m: Matter): number {
+  const totalWeeks = Math.max(1, Math.ceil(m.totalDays / 7));
+  const bill = round100((m.payoff - m.retainer) / totalWeeks);
+  const room = m.payoff - m.collected; // never bill past the estimate before close
+  return Math.max(0, Math.min(bill, room));
+}
+
+// At close, the bill rarely matches the estimate exactly: sometimes the work
+// ran long and bills over, sometimes the client disputes and short-pays.
+function billingVariance(payoff: number, rng: RngState): {
+  delta: number;
+  detail?: string;
+  rng: RngState;
+} {
+  const r = nextFloat(rng);
+  if (r.value < 0.22) {
+    const mag = nextFloat(r.rng);
+    return { delta: round100(payoff * (0.05 + mag.value * 0.18)), detail: "Billed over estimate", rng: mag.rng };
+  }
+  if (r.value > 0.82) {
+    const mag = nextFloat(r.rng);
+    return { delta: -round100(payoff * (0.05 + mag.value * 0.22)), detail: "Client short-paid the bill", rng: mag.rng };
+  }
+  return { delta: 0, rng: r.rng };
+}
+
+// Litigation resolves on the merits at close. The firm keeps whatever it has
+// already billed; this is the final settlement of the outstanding balance,
+// scaled by the result and nudged by a collection variance.
 export function resolveLitigation(
   matter: Matter,
   assigned: Staff[],
@@ -63,36 +100,51 @@ export function resolveLitigation(
   const chance = successChance(matter, assigned, scoreBonus);
   const r = nextFloat(rng);
   const margin = chance - r.value;
+  const outstanding = Math.max(0, matter.payoff - matter.collected);
   let outcome: Outcome;
   let moneyDelta: number;
   let repDelta: number;
   if (margin >= 0.3) {
     outcome = "critical";
-    moneyDelta = Math.round(matter.payoff * 1.25);
+    moneyDelta = outstanding + round100(matter.payoff * 0.25); // balance + success fee
     repDelta = Math.round(matter.reputation * 1.5);
   } else if (margin >= 0) {
     outcome = "success";
-    moneyDelta = matter.payoff;
+    moneyDelta = outstanding;
     repDelta = matter.reputation;
   } else if (margin >= -0.15) {
     outcome = "partial";
-    moneyDelta = Math.round(matter.payoff * 0.45); // a settlement
-    repDelta = 0;
+    moneyDelta = round100(outstanding * 0.5); // settle for half the balance
+    repDelta = Math.round(matter.reputation * 0.3);
   } else {
     outcome = "failure";
-    moneyDelta = -matter.riskCost;
+    moneyDelta = -matter.riskCost; // lose the case; the balance goes uncollected
     repDelta = -Math.max(1, Math.round(matter.reputation * 0.5));
   }
-  return { outcome, moneyDelta, repDelta, rng: r.rng };
+
+  let detail: string | undefined;
+  let rngOut = r.rng;
+  if (outcome !== "failure") {
+    const v = billingVariance(matter.payoff, rngOut);
+    moneyDelta += v.delta;
+    detail = v.detail;
+    rngOut = v.rng;
+  }
+  return { outcome, moneyDelta, repDelta, detail, rng: rngOut };
 }
 
-// Transactional work: the client signed, so completing it pays out. No loss.
-export function resolveTransactional(matter: Matter): {
-  outcome: Outcome;
-  moneyDelta: number;
-  repDelta: number;
-} {
-  return { outcome: "success", moneyDelta: matter.payoff, repDelta: matter.reputation };
+// Transactional work: the client signed, so the balance is collected at close.
+// No loss on the merits, but the final bill can still run over or short.
+export function resolveTransactional(matter: Matter, rng: RngState): Resolution {
+  const outstanding = Math.max(0, matter.payoff - matter.collected);
+  const v = billingVariance(matter.payoff, rng);
+  return {
+    outcome: "success",
+    moneyDelta: outstanding + v.delta,
+    repDelta: matter.reputation,
+    detail: v.detail,
+    rng: v.rng,
+  };
 }
 
 // Instantiate an offered matter from a template (random days/fee/expiry).
@@ -104,7 +156,8 @@ export function makeMatter(
   const d = nextInt(rng, template.minDays, template.maxDays);
   const pay = nextInt(d.rng, template.payoffMin, template.payoffMax);
   const exp = nextInt(pay.rng, 2, 4);
-  const payoff = Math.round(pay.value / 100) * 100;
+  const payoff = round100(pay.value);
+  const retainer = round100(payoff * RETAINER_PCT);
   return {
     matter: {
       id,
@@ -118,6 +171,8 @@ export function makeMatter(
       totalDays: d.value,
       daysRemaining: d.value,
       payoff,
+      retainer,
+      collected: 0,
       riskCost: template.riskCost,
       reputation: template.reputation,
       staffIds: [],
