@@ -134,6 +134,7 @@
   .act.def .atitle { color: var(--rdef); }
   .act.mil .atitle { color: var(--mil); }
   .act.attack .atitle { color: var(--enemy); }
+  .act.siege .atitle { color: #c98b3a; }
   .act.boost .atitle { color: var(--gold); }
   .act.skip .atitle { color: var(--muted); }
 
@@ -149,6 +150,10 @@
   .boostbadge {
     font-size: 10px; font-weight: 800; letter-spacing: .5px; color: #10151f;
     background: var(--gold); border-radius: 999px; padding: 1px 7px; vertical-align: middle;
+  }
+  .siegebadge {
+    font-size: 10px; font-weight: 800; letter-spacing: .5px; color: #10151f;
+    background: #c98b3a; border-radius: 999px; padding: 1px 7px; vertical-align: middle;
   }
   .scene .boosted { filter: drop-shadow(0 0 2.5px var(--gold)); }
 
@@ -245,7 +250,7 @@
   .help summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .help .body { font-size: 13px; color: var(--muted); line-height: 1.6; margin-top: 10px; }
   .help b { color: var(--text); }
-  .k-eco { color: var(--eco); } .k-tech { color: var(--tech); } .k-mil { color: var(--mil); } .k-gold { color: var(--gold); } .k-boost { color: var(--gold); font-weight: 700; }
+  .k-eco { color: var(--eco); } .k-tech { color: var(--tech); } .k-mil { color: var(--mil); } .k-gold { color: var(--gold); } .k-boost { color: var(--gold); font-weight: 700; } .k-siege { color: #c98b3a; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -274,12 +279,12 @@
   <div class="board">
     <!-- PLAYER 1 -->
     <div class="player you active" id="panel-you">
-      <div class="pname"><span id="you-name">PLAYER 1 (YOU)</span> <span class="boostbadge" id="you-boost" style="display:none"></span></div>
+      <div class="pname"><span id="you-name">PLAYER 1 (YOU)</span> <span class="boostbadge" id="you-boost" style="display:none"></span> <span class="siegebadge" id="you-siegebadge" style="display:none">BESIEGED</span></div>
       <div class="hpbar"><div class="hpfill" id="you-hpfill"></div><div class="hptext" id="you-hptext"></div></div>
       <div class="scene" id="you-scene"></div>
       <div class="stats">
         <div class="stat gold"><div class="label">Gold</div><div class="val" id="you-gold">0</div><div class="sub" id="you-income"></div></div>
-        <div class="stat eco"><div class="label">Economy</div><div class="val" id="you-eco">0</div><div class="sub">income/turn</div></div>
+        <div class="stat eco"><div class="label">Economy</div><div class="val" id="you-eco">0</div><div class="sub" id="you-ecosub">income/turn</div></div>
         <div class="stat tech"><div class="label">Research</div><div class="val" id="you-tech">0</div><div class="sub" id="you-techsub"></div></div>
         <div class="stat mil"><div class="label">Army</div><div class="val" id="you-army">0</div><div class="sub" id="you-str"></div></div>
       </div>
@@ -287,12 +292,12 @@
 
     <!-- PLAYER 2 -->
     <div class="player enemy" id="panel-enemy">
-      <div class="pname"><span id="enemy-name">PLAYER 2 (AI)</span> <span class="boostbadge" id="enemy-boost" style="display:none"></span></div>
+      <div class="pname"><span id="enemy-name">PLAYER 2 (AI)</span> <span class="boostbadge" id="enemy-boost" style="display:none"></span> <span class="siegebadge" id="enemy-siegebadge" style="display:none">BESIEGED</span></div>
       <div class="hpbar"><div class="hpfill" id="enemy-hpfill"></div><div class="hptext" id="enemy-hptext"></div></div>
       <div class="scene" id="enemy-scene"></div>
       <div class="stats">
         <div class="stat gold"><div class="label">Gold</div><div class="val" id="enemy-gold">0</div><div class="sub">&nbsp;</div></div>
-        <div class="stat eco"><div class="label">Economy</div><div class="val" id="enemy-eco">0</div><div class="sub">income/turn</div></div>
+        <div class="stat eco"><div class="label">Economy</div><div class="val" id="enemy-eco">0</div><div class="sub" id="enemy-ecosub">income/turn</div></div>
         <div class="stat tech"><div class="label">Research</div><div class="val" id="enemy-tech">0</div><div class="sub" id="enemy-techsub"></div></div>
         <div class="stat mil"><div class="label">Army</div><div class="val" id="enemy-army">0</div><div class="sub" id="enemy-str"></div></div>
       </div>
@@ -304,9 +309,13 @@
   <div class="controls">
     <h3 id="controls-head">Your move — take one action</h3>
     <div class="btngrid">
-      <button class="act eco" id="btn-eco">
-        <div class="atitle"><span>Build Economy</span><span class="acost" id="cost-eco"></span></div>
-        <div class="adesc">+1 income every turn. Compounds — but builds no defense.</div>
+      <button class="act eco" id="btn-farm">
+        <div class="atitle"><span>Build Farm</span><span class="acost" id="cost-farm"></span></div>
+        <div class="adesc">+1 gold every turn. Cheap, compounds — but builds no defense.</div>
+      </button>
+      <button class="act eco" id="btn-upgrade">
+        <div class="atitle"><span>Upgrade Farms</span><span class="acost" id="cost-upgrade"></span></div>
+        <div class="adesc" id="upgrade-desc">All farms +1 gold each.</div>
       </button>
       <button class="act atk" id="btn-ratk">
         <div class="atitle"><span>Research: Attack</span><span class="acost" id="cost-ratk"></span></div>
@@ -332,8 +341,12 @@
         <button class="trainbtn" id="btn-train"><span id="train-label">Train</span></button>
       </div>
       <button class="act attack" id="btn-attack">
-        <div class="atitle"><span>Attack!</span><span class="acost" id="atk-cost">3g</span></div>
+        <div class="atitle"><span>Assault!</span><span class="acost" id="atk-cost">3g</span></div>
         <div class="adesc" id="atk-desc">Send your army at the enemy. Defenders have the edge.</div>
+      </button>
+      <button class="act siege" id="btn-siege">
+        <div class="atitle"><span>Lay Siege</span><span class="acost" id="siege-cost">free</span></div>
+        <div class="adesc" id="siege-desc">Starve the enemy: chip their castle and cut their income.</div>
       </button>
       <button class="act boost" id="btn-boost">
         <div class="atitle"><span>Boost Attack</span><span class="acost" id="boost-cost">12g</span></div>
@@ -354,14 +367,15 @@
   <details class="help">
     <summary>How to play &amp; the strategy behind the three dynamics</summary>
     <div class="body">
-      <p>Each turn you collect <span class="k-gold">Gold</span> equal to your <span class="k-eco">Economy</span>, then take <b>one</b> action (or <b>Skip</b> to just bank the gold). The enemy does the same. First to knock the opponent's Base from 30 to 0 wins. <b>Attacks unlock on turn 4</b> and cost <span class="k-gold">3 gold</span> to launch.</p>
+      <p>Each turn you collect <span class="k-gold">Gold</span> equal to your income, then take <b>one</b> action (or <b>Skip</b> to just bank the gold). The enemy does the same. First to knock the opponent's Base from 30 to 0 wins. <b>Assault and Siege unlock on turn 2</b>.</p>
       <p><b>Modes</b> (top of the screen): <b>vs AI</b> plays against the computer at your chosen difficulty, or <b>2 Players</b> is local hotseat — two people share one device and the shared controls drive whoever's turn it is. Between turns a "your turn" screen lets you pass the device. Switching mode starts a fresh duel.</p>
-      <p><b class="k-eco">Economy</b> is the engine — more gold every turn (you'll see farms appear as it grows), up to a maximum of <b>+15/turn</b>. But a turn spent on economy is a turn not spent defending, so a pure economy player is exposed once attacks open up.</p>
+      <p><b class="k-eco">Economy = Farms.</b> <b>Build Farm</b> (cheap) adds +1 gold/turn; <b>Upgrade Farms</b> raises every farm's output (+2, then +3 each), up to <b>+15/turn</b>. Farms compound but build no defense — and a besieger can choke your income, so a pure economy player is exposed.</p>
+      <p><b class="k-siege">Siege vs. Assault.</b> Once unlocked you can project force two ways, and only one per turn. <b>Assault</b> throws your army at the Base (defenders have the edge — a failed assault is costly). <b>Lay Siege</b> (needs 3+ troops) skips the wall: it chips <b>3 castle HP</b> and cuts the enemy's next income <b>25–50%</b>, but drops your other plans for the turn. A besieged player sees a <b>BESIEGED</b> flag and can <b>sally out</b> — assault the besieging army — to break it. So siege punishes greed and turtling; sallying is the counter.</p>
       <p><b class="k-mil">Military</b> is the only way to deal damage, capped at <b>15 troops</b>. Three types, each with attack/defense stats: <b>Infantry</b> (3g, 2/2 — balanced), <b>Archers</b> (3g, 3/1 — hit hard but fragile on defense), <b>Knights</b> (6g, 4/4 — elite, durable). When armies clash, the attacker's <i>attack</i> meets the defender's <i>defense</i>; <b>defenders have the edge</b>, and only overflow reaches the Base.</p>
       <p><b>Counter triangle:</b> each unit deals <b>+30% attack</b> when it <i>attacks</i> the type it beats — <b>Infantry &rsaquo; Knights &rsaquo; Archers &rsaquo; Infantry</b> (defense is raw, so counters reward picking the right attacker, not reacting last). Watch the enemy's army on their field and bring the unit that counters their main force. The <b class="k-tech">AI reads your army too</b> and counters it — and it will rush you if you over-greed economy, so vary your play.</p>
       <p><b class="k-tech">Research</b> comes in two tracks you choose between: <b>+Attack</b> (adds attack to every troop) and <b>+Defense</b> (adds defense to every troop). You get <b>5 research points total</b> across both tracks (e.g. 4 attack + 1 defense) — spend them to crack a turtle or harden against a rush.</p>
       <p><b class="k-gold">Boost Attack</b> is a one-time trump card (you and the AI each get one): for <b>12 gold</b> it gives <b>+40% attack</b> on your next 2 turns. Activating it uses your turn, so time it right — pop it, then attack into a defense you couldn't otherwise break. Pick a troop type and quantity, then press the <b>Train</b> button to commit (nothing trains until you do).</p>
-      <p><b>The balance:</b> Economy beats a slow opponent, aggression beats greedy economy, and Research beats a big-but-primitive army. Mass <b>Archers</b> to break a turtle, or hold <b>Knights</b> to repel a rush. Set the <b class="k-tech">AI difficulty</b> up top — changing it starts a fresh duel.</p>
+      <p><b>The balance:</b> Economy out-scales a slow opponent, <b class="k-siege">Siege</b> punishes greed and turtling, and Assault backed by <b class="k-tech">Research</b> cracks a big-but-primitive army — while a well-timed sally breaks a siege. Mass <b>Archers</b> to break a turtle, or hold <b>Knights</b> to repel a rush. Set the <b class="k-tech">AI difficulty</b> up top — changing it starts a fresh duel.</p>
     </div>
   </details>
 </div>
@@ -397,17 +411,23 @@
 const CFG = {
   startHP: 30,
   startGold: 4,
-  startEco: 2,
-  ecoCost: (eco) => 2 * eco,          // cost to raise economy by 1
+  startFarms: 2,                       // farms at game start (each +1 gold/turn)
+  farmCost: 3,                         // gold to build one farm (+1 income)
+  farmMax: 6,                          // max number of farms
+  farmUpg: (lvl) => 8 * lvl,           // cost to upgrade all farms one level (L1->2 = 8, L2->3 = 16)
+  farmLevelMax: 3,                     // farms can be upgraded to +3 gold each
   techCost: (tech) => 3 + 3 * tech,   // cost to raise research by 1
   attackCost: 3,                       // gold to launch an assault
-  attackUnlockTurn: 4,                 // no attacks on turns 1-3
+  attackUnlockTurn: 2,                 // no attacks/sieges on turn 1
   armyCap: 15,                         // max total troops
   boostCost: 12,                       // gold to activate the one-time boost
   boostMult: 1.4,                      // +40% attack while boosted
   boostDuration: 2,                    // active for your next 2 turns
-  ecoCap: 15,                          // max economy / income per turn
+  ecoCap: 15,                          // max income per turn
   techCap: 5,                          // max total research traits (attack + defense combined)
+  siegeMinArmy: 3,                     // troops needed to mount a siege
+  siegeDmg: 3,                         // castle HP chipped per siege turn
+  siegeCut: [0.25, 0.50],              // fraction of the enemy's next income a siege denies (random)
 };
 
 // Troop types: attackers and defenders use different stats, so composition matters.
@@ -439,8 +459,12 @@ const AI_PARAMS = {
 };
 
 function newPlayer() {
-  return { hp: CFG.startHP, gold: CFG.startGold, eco: CFG.startEco, atkTech: 0, defTech: 0, units: { inf: 0, arc: 0, kni: 0 }, boostUsed: false, boostStart: 0 };
+  return { hp: CFG.startHP, gold: CFG.startGold, farms: CFG.startFarms, farmLevel: 1, atkTech: 0, defTech: 0,
+           units: { inf: 0, arc: 0, kni: 0 }, boostUsed: false, boostStart: 0, suppression: 0, sieging: false };
 }
+// Gold produced per turn: each farm yields farmLevel gold, capped.
+function income(p) { return Math.min(CFG.ecoCap, p.farms * p.farmLevel); }
+function foeOf(p) { return p === you ? enemy : you; }
 
 let you, enemy, turnNo, current, busy, trainQty, selectedType, difficulty = "normal";
 let mode = "ai"; // "ai" = solo vs AI, "pvp" = local 2-player hotseat
@@ -493,6 +517,7 @@ function clearArmy(p) { p.units = { inf: 0, arc: 0, kni: 0 }; }
 function reduceArmy(p, keep) { for (const t of TYPES) p.units[t] = Math.max(0, Math.round(p.units[t] * keep)); }
 function maxTrainable(p, type) { return Math.min(Math.floor(p.gold / TROOPS[type].cost), CFG.armyCap - totalTroops(p)); }
 function canAttack(p) { return turnNo >= CFG.attackUnlockTurn && totalTroops(p) > 0 && p.gold >= CFG.attackCost; }
+function canSiege(p) { return turnNo >= CFG.attackUnlockTurn && totalTroops(p) >= CFG.siegeMinArmy; }
 
 function reset() {
   you = newPlayer();
@@ -530,10 +555,10 @@ const GROUND_Y = 92;
 function drawScene(key, p) {
   const el = document.getElementById(key + "-scene");
   if (!el) return;
-  const dev = Math.max(0, (p.eco - CFG.startEco) + p.atkTech + p.defTech);
+  const dev = Math.max(0, (p.farms - CFG.startFarms) + (p.farmLevel - 1) + p.atkTech + p.defTech);
   const u = p.units;
   const boosted = boostActive(p);
-  const sig = u.inf + "," + u.arc + "," + u.kni + "|" + dev + "|" + p.eco + "|" + p.atkTech + "," + p.defTech + "|" + Math.max(0, p.hp) + "|b" + (boosted ? 1 : 0);
+  const sig = u.inf + "," + u.arc + "," + u.kni + "|" + dev + "|" + p.farms + "," + p.farmLevel + "|" + p.atkTech + "," + p.defTech + "|" + Math.max(0, p.hp) + "|b" + (boosted ? 1 : 0);
   const prev = prevScene[key];
   if (prev && prev.sig === sig) return; // nothing visual changed — keep DOM (and any running animation)
   const pu = prev ? prev.units : { inf: 0, arc: 0, kni: 0 };
@@ -732,14 +757,15 @@ function buildScene(p, side, dev, grewBase, newBy, boosted) {
   // research buildings — a forge (Attack) and an academy (Defense) that grow per level
   if (p.defTech > 0) fg += academyGlyph(Math.min(p.defTech, 4), 4, 126);
   if (p.atkTech > 0) fg += forgeGlyph(Math.min(p.atkTech, 4), 26, 126);
-  // farms — one tilled plot per economy level above the start
-  const nFarms = Math.min(p.eco - CFG.startEco, 5);
+  // farms — one tilled plot per farm; upgraded farms sprout golden wheat sheaves
+  const nFarms = Math.min(p.farms, 6);
   for (let k = 0; k < nFarms; k++) {
     const fx = 58 + k * 16;
     const fy = GROUND_Y + 18 + (k % 2) * 11;
     fg += '<path d="M' + fx + ' ' + fy + ' l13 0 l3 7 l-13 0 z" fill="#3f7d3a" stroke="#2c5a28" stroke-width="0.6"/>';
     fg += '<path d="M' + (fx + 3) + ' ' + (fy + 2) + ' l11 0 M' + (fx + 2) + ' ' + (fy + 4.5) + ' l12 0" stroke="#5fae54" stroke-width="0.6"/>';
-    if (k % 2 === 1) fg += '<path d="M' + (fx + 15) + ' ' + (fy + 6) + ' l3 -6 l3 6 z" fill="#e7c14b" stroke="#b8941f" stroke-width="0.5"/>';
+    for (let s = 0; s < p.farmLevel - 1; s++)
+      fg += '<path d="M' + (fx + 4 + s * 5) + ' ' + (fy + 6) + ' l2.5 -6 l2.5 6 z" fill="#e7c14b" stroke="#b8941f" stroke-width="0.5"/>';
   }
 
   // ---- Troops ----
@@ -781,7 +807,9 @@ function render() {
     document.getElementById(key + "-hpfill").style.width = hpPct + "%";
     document.getElementById(key + "-hptext").textContent = "Base " + Math.max(0, p.hp) + " / " + CFG.startHP;
     document.getElementById(key + "-gold").textContent = p.gold;
-    document.getElementById(key + "-eco").textContent = p.eco;
+    document.getElementById(key + "-eco").textContent = income(p);
+    const ecosub = document.getElementById(key + "-ecosub");
+    if (ecosub) ecosub.textContent = p.farms + " farm" + (p.farms === 1 ? "" : "s") + " x" + p.farmLevel;
     document.getElementById(key + "-tech").textContent = "+" + p.atkTech + "/+" + p.defTech;
     document.getElementById(key + "-army").textContent = totalTroops(p) + "/" + CFG.armyCap;
     document.getElementById(key + "-str").textContent = "atk " + atkPower(p) + " / def " + defPower(p);
@@ -791,9 +819,12 @@ function render() {
     const bn = boostLeft(p);
     bb.style.display = (p.boostUsed && bn > 0) ? "inline-block" : "none";
     bb.textContent = "BOOST x" + CFG.boostMult + " (" + bn + ")";
+    // "BESIEGED" flag when the opponent is actively besieging this side
+    const sb = document.getElementById(key + "-siegebadge");
+    if (sb) sb.style.display = foeOf(p).sieging ? "inline-block" : "none";
     drawScene(key, p);
   }
-  document.getElementById("you-income").textContent = "+" + you.eco + "/turn";
+  document.getElementById("you-income").textContent = "+" + income(you) + "/turn";
 
   document.getElementById("turnnum").textContent = turnNo;
   const pvp = mode === "pvp";
@@ -813,14 +844,19 @@ function render() {
 
   // the player the shared controls represent (active side in hotseat; always you vs AI)
   const ap = controlPlayer();
-  const ecoCost = CFG.ecoCost(ap.eco);
   const atkResCost = CFG.techCost(ap.atkTech);
   const defResCost = CFG.techCost(ap.defTech);
   const pct = Math.round((CFG.boostMult - 1) * 100);
-  const ecoMaxed = ap.eco >= CFG.ecoCap;
+  const farmsMaxed = ap.farms >= CFG.farmMax;
+  const upgCost = CFG.farmUpg(ap.farmLevel);
+  const upgMaxed = ap.farmLevel >= CFG.farmLevelMax;
   const techUsed = ap.atkTech + ap.defTech;
   const techMaxed = techUsed >= CFG.techCap;
-  document.getElementById("cost-eco").textContent = ecoMaxed ? "MAXED" : ecoCost + "g";
+  document.getElementById("cost-farm").textContent = farmsMaxed ? "MAXED" : CFG.farmCost + "g";
+  document.getElementById("cost-upgrade").textContent = upgMaxed ? "MAXED" : upgCost + "g";
+  document.getElementById("upgrade-desc").textContent = upgMaxed
+    ? "Farms at max output (+" + CFG.farmLevelMax + " gold each)."
+    : "All farms +1 gold each (now +" + ap.farmLevel + " → +" + (ap.farmLevel + 1) + " each).";
   document.getElementById("cost-ratk").textContent = techMaxed ? "MAXED" : atkResCost + "g";
   document.getElementById("cost-rdef").textContent = techMaxed ? "MAXED" : defResCost + "g";
   document.getElementById("ratk-used").textContent = techUsed + " of " + CFG.techCap + " used";
@@ -849,19 +885,25 @@ function render() {
     ? (boostLeft(ap) > 0 ? "Active: +" + pct + "% attack (" + boostLeft(ap) + " turn" + (boostLeft(ap) === 1 ? "" : "s") + " left)." : "Already used this game.")
     : "Once per game: +" + pct + "% attack for your next " + CFG.boostDuration + " turns.";
 
-  // attack lock state
+  // assault + siege lock state
   const locked = turnNo < CFG.attackUnlockTurn;
   document.getElementById("atk-cost").textContent = locked ? "turn " + CFG.attackUnlockTurn : CFG.attackCost + "g";
   document.getElementById("atk-desc").textContent = locked
-    ? "Armies mobilize — attacking unlocks on turn " + CFG.attackUnlockTurn + "."
-    : "Send your army at the enemy (costs " + CFG.attackCost + "g). Defenders have the edge.";
+    ? "Armies mobilize — assault unlocks on turn " + CFG.attackUnlockTurn + "."
+    : "Throw your army at the enemy Base (costs " + CFG.attackCost + "g). Defenders have the edge.";
+  document.getElementById("siege-cost").textContent = locked ? "turn " + CFG.attackUnlockTurn : "free";
+  document.getElementById("siege-desc").textContent = locked
+    ? "Siege unlocks on turn " + CFG.attackUnlockTurn + "."
+    : "Needs " + CFG.siegeMinArmy + "+ troops. Chips " + CFG.siegeDmg + " castle HP and cuts enemy income 25–50% next turn. They can sally to break it.";
 
   const myTurn = isHumanTurn() && !busy && you.hp > 0 && enemy.hp > 0;
-  document.getElementById("btn-eco").disabled = !myTurn || ecoMaxed || ap.gold < ecoCost;
+  document.getElementById("btn-farm").disabled = !myTurn || farmsMaxed || ap.gold < CFG.farmCost;
+  document.getElementById("btn-upgrade").disabled = !myTurn || upgMaxed || ap.gold < upgCost;
   document.getElementById("btn-ratk").disabled = !myTurn || techMaxed || ap.gold < atkResCost;
   document.getElementById("btn-rdef").disabled = !myTurn || techMaxed || ap.gold < defResCost;
   document.getElementById("btn-train").disabled = !myTurn || trainMax < 1;
   document.getElementById("btn-attack").disabled = !myTurn || !canAttack(ap);
+  document.getElementById("btn-siege").disabled = !myTurn || !canSiege(ap);
   document.getElementById("btn-boost").disabled = !myTurn || ap.boostUsed || ap.gold < CFG.boostCost;
   document.getElementById("btn-skip").disabled = !myTurn;
   document.getElementById("t-minus").classList.toggle("off", !myTurn);
@@ -1020,7 +1062,9 @@ function playBattle(snap, res, onDone) {
 // ---- Turn flow ----
 function startTurn(side) {
   const p = side === "you" ? you : enemy;
-  p.gold += p.eco;
+  p.sieging = false;                                   // clear my own siege stance at the start of my turn
+  p.gold += Math.floor(income(p) * (1 - (p.suppression || 0)));  // a siege denies part of this income
+  p.suppression = 0;
 }
 
 function endTurn() {
@@ -1087,11 +1131,27 @@ function playerAction(fn) {
   endTurn();
 }
 
-function doEco() {
-  const p = actor(), c = CFG.ecoCost(p.eco);
-  if (p.gold < c || p.eco >= CFG.ecoCap) return;
-  p.gold -= c; p.eco += 1;
-  log("invested in <span class='k-eco'>Economy</span> &rarr; income now +" + p.eco + "/turn.", current);
+function doFarm() {
+  const p = actor();
+  if (p.gold < CFG.farmCost || p.farms >= CFG.farmMax) return;
+  p.gold -= CFG.farmCost; p.farms += 1;
+  log("built a <span class='k-eco'>Farm</span> &rarr; income now +" + income(p) + "/turn.", current);
+}
+function doUpgrade() {
+  const p = actor(), c = CFG.farmUpg(p.farmLevel);
+  if (p.gold < c || p.farmLevel >= CFG.farmLevelMax) return;
+  p.gold -= c; p.farmLevel += 1;
+  log("upgraded <span class='k-eco'>Farms</span> to +" + p.farmLevel + " each &rarr; income now +" + income(p) + "/turn.", current);
+}
+function doSiege() {
+  const p = actor(), foe = foeOf(p);
+  if (!canSiege(p)) return;
+  p.sieging = true;
+  const cut = CFG.siegeCut[0] + Math.random() * (CFG.siegeCut[1] - CFG.siegeCut[0]);
+  foe.suppression = cut;
+  foe.hp -= CFG.siegeDmg;
+  log("lays <span class='k-siege'>Siege</span>! Castle &minus;" + CFG.siegeDmg + " HP and enemy income &minus;" +
+      Math.round(cut * 100) + "% next turn.", current);
 }
 function doResearchAtk() {
   const p = actor(), c = CFG.techCost(p.atkTech);
@@ -1161,6 +1221,18 @@ function aiTrain(me, role, D) {
   return { type, n };
 }
 
+// Can the AI still develop economy (afford a farm or an upgrade)?
+function aiCanEcon(me) {
+  return (me.farms < CFG.farmMax && me.gold >= CFG.farmCost) ||
+         (me.farmLevel < CFG.farmLevelMax && me.gold >= CFG.farmUpg(me.farmLevel));
+}
+// Commit an economy step: build a farm first, else upgrade. Returns "farm"/"upgrade"/null.
+function aiDoEcon(me) {
+  if (me.farms < CFG.farmMax && me.gold >= CFG.farmCost) { me.gold -= CFG.farmCost; me.farms += 1; return "farm"; }
+  if (me.farmLevel < CFG.farmLevelMax && me.gold >= CFG.farmUpg(me.farmLevel)) { me.gold -= CFG.farmUpg(me.farmLevel); me.farmLevel += 1; return "upgrade"; }
+  return null;
+}
+
 function aiTurn() {
   if (busy === false) return; // safety
   const me = enemy, foe = you;
@@ -1170,9 +1242,9 @@ function aiTurn() {
   const foeAtk = atkVs(foe, me), myDef = defVs(me, foe);
   const myTotal = totalTroops(me), foeTotal = totalTroops(foe);
   // read the player's posture to adapt
-  const foeGreedy = foeTotal === 0 && foe.eco >= me.eco && turnNo >= 2;       // hoarding economy, no army
+  const foeGreedy = foeTotal <= CFG.siegeMinArmy && income(foe) >= 5 && turnNo >= CFG.attackUnlockTurn; // rich, thin army
+  const beingSieged = foe.sieging;                                            // player is besieging me right now
   const nearUnlock = turnNo >= CFG.attackUnlockTurn - 2;
-  const ecoCost = CFG.ecoCost(me.eco);
   const atkResCost = CFG.techCost(me.atkTech);
   const defResCost = CFG.techCost(me.defTech);
   const ableToAttack = canAttack(me);
@@ -1182,6 +1254,14 @@ function aiTurn() {
   if (ableToAttack) {
     const dmg = foeDef === 0 ? myAtk : (myAtk > foeDef ? myAtk - foeDef : 0);
     if (dmg >= foe.hp && (foeDef === 0 || myAtk > foeDef)) decision = "attack";
+  }
+
+  // 1.3 Lethal siege: chip a low castle through its wall to finish.
+  if (!decision && canSiege(me) && foe.hp <= CFG.siegeDmg) decision = "siege";
+
+  // 1.5 Under siege: sally out to break it rather than sit and bleed HP + income.
+  if (!decision && beingSieged && ableToAttack && Math.random() < Math.max(0.5, D.smart)) {
+    if (foeDef === 0 ? myAtk > 0 : (myAtk > foeDef && myAtk - foeDef >= 2)) decision = "attack";
   }
 
   // 2. Profitable attack: press an edge. Impatience lowers the bar over time.
@@ -1204,52 +1284,48 @@ function aiTurn() {
     }
   }
 
-  // 3-4. Development. Three modes: ramp economy while attacks are locked, defend
-  //      when the opponent's attack can overflow us, otherwise grow then arm up.
+  // 2.7 Siege: finish a low castle through the wall, or starve a greedy/holed-up foe —
+  //     but only when their counter-sally can't overrun our own Base.
+  if (!decision && canSiege(me)) {
+    const wallStalemate = foeDef > 0 && myAtk <= foeDef * 1.15;         // can't profitably assault
+    const safeToSiege = foeTotal <= CFG.siegeMinArmy || foeAtk <= myDef * 1.1; // won't get overrun on their sally
+    if (foe.hp <= CFG.siegeDmg) decision = "siege";                    // lethal chip ends it before any sally
+    else if ((foeGreedy || wallStalemate) && safeToSiege && Math.random() < Math.max(0.5, D.smart)) decision = "siege";
+  }
+
+  // 3-4. Development: ramp economy to a healthy base, hold a standing (counter) army,
+  //      then research — while reacting to a real threat with defense.
   if (!decision) {
     const atCap = totalTroops(me) >= CFG.armyCap;
-    const safe = turnNo < CFG.attackUnlockTurn;                 // turns 1-3: nobody can attack
     const techFull = me.atkTech + me.defTech >= CFG.techCap;
-    const canTechDef = myTotal >= 2 && me.defTech < D.techCap && !techFull && me.gold >= defResCost;
-    const canTechAtk = myTotal >= 2 && me.atkTech < D.techCap && !techFull && me.gold >= atkResCost;
     const balanceTech = me.atkTech <= me.defTech ? "tech_atk" : "tech_def"; // research the lagging track
+    const techGold = CFG.techCost(balanceTech === "tech_atk" ? me.atkTech : me.defTech);
+    const canTech = myTotal >= 2 && !techFull && me.gold >= techGold &&
+                    (balanceTech === "tech_atk" ? me.atkTech : me.defTech) < D.techCap;
     const behindOnDef = foeTotal > 0 && foeAtk > myDef;         // opponent could overflow my defense
+    const wantEco = income(me) < 7 && aiCanEcon(me);            // a healthy economy base, then convert to force
 
-    if (safe) {
-      // while no one can attack: ramp economy — but if the player is skipping an
-      // army entirely, raise a strike force to punish their open base at unlock.
-      const wantEco = me.eco < 5;
-      if (foeGreedy && nearUnlock && !atCap && me.gold >= TROOPS.inf.cost && Math.random() < D.smart) decision = "train_off";
-      else if (wantEco && me.gold >= ecoCost) decision = "eco";
-      else if (wantEco) decision = "save";
-      else if (!atCap && me.gold >= TROOPS.inf.cost) decision = "train_off";
-      else decision = me.gold >= ecoCost ? "eco" : "save";
-    } else if (behindOnDef && Math.random() < D.defend) {
+    if (behindOnDef && Math.random() < D.defend) {
       // pressured: research DEFENSE (multiplies whole-army def), or mass counter-units
-      if (canTechDef && Math.random() < 0.45) decision = "tech_def";
+      if (!techFull && me.defTech < D.techCap && me.gold >= defResCost && me.defTech <= me.atkTech && Math.random() < 0.5) decision = "tech_def";
       else if (!atCap && me.gold >= TROOPS.inf.cost) decision = "train_def";
-      else if (canTechDef) decision = "tech_def";
-      else if (me.gold >= ecoCost && me.eco < 7) decision = "eco";
+      else if (wantEco) decision = "eco";
       else decision = "save";
-    } else if (foeGreedy && !atCap && me.gold >= TROOPS.inf.cost && Math.random() < D.smart) {
-      // player is turtling economy with no defense — build up and go punish it
-      decision = "train_off";
-    } else {
-      // comfortable: grow economy to a ceiling, then a researched standing army
-      const wantEco = me.eco < 5 && me.gold >= ecoCost;
-      const canTech = balanceTech === "tech_atk" ? canTechAtk : canTechDef;
-      if (wantEco) decision = "eco";
-      else if (canTech && Math.random() < D.techBias) decision = balanceTech;
-      else if (!atCap && me.gold >= TROOPS.inf.cost) decision = "train_off";
-      else if (me.gold >= ecoCost && me.eco < 7) decision = "eco";
-      else decision = "pass";
-    }
+    } else if (wantEco) {
+      decision = "eco";                                          // establish a healthy economy base first
+    } else if (!atCap && me.gold >= TROOPS.inf.cost) {
+      decision = "train_off";                                    // then convert income into a counter army
+    } else if (canTech && Math.random() < D.techBias) {
+      decision = balanceTech;
+    } else if (aiCanEcon(me)) {
+      decision = "eco";
+    } else decision = "save";
   }
 
   // Blunder (easy AI): sometimes throw away the plan for a random dev move.
   if (Math.random() < D.mistake && decision !== "attack") {
     const opts = [];
-    if (me.gold >= ecoCost) opts.push("eco");
+    if (aiCanEcon(me)) opts.push("eco");
     if (me.gold >= TROOPS.inf.cost && totalTroops(me) < CFG.armyCap) opts.push("train_off");
     if (me.gold >= CFG.techCost(me.atkTech) && totalTroops(me) > 0) opts.push("tech_atk");
     if (me.gold >= CFG.techCost(me.defTech) && totalTroops(me) > 0) opts.push("tech_def");
@@ -1259,7 +1335,7 @@ function aiTurn() {
 
   // Hard caps: never pour a turn into a maxed track — redirect to army or banking.
   const armyRoom = totalTroops(me) < CFG.armyCap;
-  if (decision === "eco" && me.eco >= CFG.ecoCap)
+  if (decision === "eco" && !aiCanEcon(me))
     decision = (armyRoom && me.gold >= TROOPS.inf.cost) ? "train_off" : "save";
   if ((decision === "tech_atk" || decision === "tech_def") && me.atkTech + me.defTech >= CFG.techCap)
     decision = (armyRoom && me.gold >= TROOPS.inf.cost) ? "train_off" : "save";
@@ -1289,11 +1365,22 @@ function aiTurn() {
       } else { think = "Holds and saves gold."; log("holds and saves gold.", "enemy"); }
       break;
     }
-    case "eco":
-      me.gold -= ecoCost; me.eco += 1;
-      think = "Expands its economy.";
-      log("invested in <span class='k-eco'>Economy</span> &rarr; income now +" + me.eco + "/turn.", "enemy");
+    case "siege": {
+      me.sieging = true;
+      const cut = CFG.siegeCut[0] + Math.random() * (CFG.siegeCut[1] - CFG.siegeCut[0]);
+      foe.suppression = cut; foe.hp -= CFG.siegeDmg;
+      think = "Lays siege to your castle.";
+      log("lays <span class='k-siege'>Siege</span>! Castle &minus;" + CFG.siegeDmg + " HP and your income &minus;" +
+          Math.round(cut * 100) + "% next turn.", "enemy");
       break;
+    }
+    case "eco": {
+      const w = aiDoEcon(me);
+      think = w === "upgrade" ? "Upgrades its farms." : "Builds a farm.";
+      log((w === "upgrade" ? "upgraded <span class='k-eco'>Farms</span>" : "built a <span class='k-eco'>Farm</span>") +
+          " &rarr; income now +" + income(me) + "/turn.", "enemy");
+      break;
+    }
     case "tech_atk":
       me.gold -= atkResCost; me.atkTech += 1;
       think = "Researches attack.";
@@ -1319,10 +1406,12 @@ function aiTurn() {
 }
 
 // ---- Wiring ----
-document.getElementById("btn-eco").addEventListener("click", () => playerAction(doEco));
+document.getElementById("btn-farm").addEventListener("click", () => playerAction(doFarm));
+document.getElementById("btn-upgrade").addEventListener("click", () => playerAction(doUpgrade));
 document.getElementById("btn-ratk").addEventListener("click", () => playerAction(doResearchAtk));
 document.getElementById("btn-rdef").addEventListener("click", () => playerAction(doResearchDef));
 document.getElementById("btn-attack").addEventListener("click", requestAttack);
+document.getElementById("btn-siege").addEventListener("click", () => playerAction(doSiege));
 document.getElementById("btn-boost").addEventListener("click", () => playerAction(doBoost));
 document.getElementById("btn-skip").addEventListener("click", () => playerAction(doSkip));
 // Train only commits via its dedicated button — clicking the setup tile does nothing.
