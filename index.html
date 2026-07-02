@@ -115,8 +115,17 @@
     border-radius: 14px; padding: 14px 16px;
   }
   .controls h3 { margin: 0 0 10px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+  /* actions are grouped: Upgrade / Build & Recruit / Engage, then Skip below */
+  .group { margin-bottom: 12px; }
+  .grouplabel {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--muted); margin: 0 0 6px; padding-left: 2px;
+    border-left: 3px solid var(--line); padding: 1px 0 1px 8px;
+  }
   .btngrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-items: start; }
-  @media (max-width: 680px) { .btngrid { grid-template-columns: 1fr; } }
+  .train-tile { grid-column: span 2; }   /* Build Farm + the wider Train tile share one row */
+  #btn-skip { margin-top: 2px; }
+  @media (max-width: 680px) { .btngrid { grid-template-columns: 1fr; } .train-tile { grid-column: auto; } }
   .act {
     text-align: left; cursor: pointer; color: var(--text); width: 100%; display: block;
     background: #131c2e; border: 1px solid var(--line); border-radius: 10px;
@@ -308,55 +317,72 @@
 
   <div class="controls">
     <h3 id="controls-head">Your move — take one action</h3>
-    <div class="btngrid">
-      <button class="act eco" id="btn-farm">
-        <div class="atitle"><span>Build Farm</span><span class="acost" id="cost-farm"></span></div>
-        <div class="adesc">+1 gold every turn. Cheap, compounds — but builds no defense.</div>
-      </button>
-      <button class="act eco" id="btn-upgrade">
-        <div class="atitle"><span>Upgrade Farms</span><span class="acost" id="cost-upgrade"></span></div>
-        <div class="adesc" id="upgrade-desc">All farms +1 gold each.</div>
-      </button>
-      <button class="act atk" id="btn-ratk">
-        <div class="atitle"><span>Research: Attack</span><span class="acost" id="cost-ratk"></span></div>
-        <div class="adesc">+1 attack to <i>every</i> troop you own. <span class="usebadge" id="ratk-used"></span></div>
-      </button>
-      <button class="act def" id="btn-rdef">
-        <div class="atitle"><span>Research: Defense</span><span class="acost" id="cost-rdef"></span></div>
-        <div class="adesc">+1 defense to <i>every</i> troop you own. <span class="usebadge" id="rdef-used"></span></div>
-      </button>
-      <div class="act mil train-tile">
-        <div class="atitle"><span>Train Troops</span><span class="acost" id="t-cost"></span></div>
-        <div class="typesel" id="typesel">
-          <span class="ty on" id="ty-inf" data-type="inf">Infantry<small id="ty-inf-stat"></small><small class="beats">&rsaquo; Knights</small></span>
-          <span class="ty" id="ty-arc" data-type="arc">Archers<small id="ty-arc-stat"></small><small class="beats">&rsaquo; Infantry</small></span>
-          <span class="ty" id="ty-kni" data-type="kni">Knights<small id="ty-kni-stat"></small><small class="beats">&rsaquo; Archers</small></span>
-        </div>
-        <div class="trainctl" id="trainctl">
-          <span class="step" id="t-minus">&minus;</span>
-          <span class="qty" id="t-qty">1</span>
-          <span class="step" id="t-plus">+</span>
-          <span class="tcap" id="t-cap"></span>
-        </div>
-        <button class="trainbtn" id="btn-train"><span id="train-label">Train</span></button>
+
+    <div class="group">
+      <div class="grouplabel">Upgrade — permanent boosts</div>
+      <div class="btngrid">
+        <button class="act atk" id="btn-ratk">
+          <div class="atitle"><span>Research: Attack</span><span class="acost" id="cost-ratk"></span></div>
+          <div class="adesc">+1 attack to <i>every</i> troop you own. <span class="usebadge" id="ratk-used"></span></div>
+        </button>
+        <button class="act def" id="btn-rdef">
+          <div class="atitle"><span>Research: Defense</span><span class="acost" id="cost-rdef"></span></div>
+          <div class="adesc">+1 defense to <i>every</i> troop you own. <span class="usebadge" id="rdef-used"></span></div>
+        </button>
+        <button class="act eco" id="btn-upgrade">
+          <div class="atitle"><span>Upgrade Farms</span><span class="acost" id="cost-upgrade"></span></div>
+          <div class="adesc" id="upgrade-desc">All farms +1 gold each.</div>
+        </button>
       </div>
-      <button class="act attack" id="btn-attack">
-        <div class="atitle"><span>Assault!</span><span class="acost" id="atk-cost">3g</span></div>
-        <div class="adesc" id="atk-desc">Send your army at the enemy. Defenders have the edge.</div>
-      </button>
-      <button class="act siege" id="btn-siege">
-        <div class="atitle"><span>Lay Siege</span><span class="acost" id="siege-cost">free</span></div>
-        <div class="adesc" id="siege-desc">Starve the enemy: chip their castle and cut their income.</div>
-      </button>
-      <button class="act boost" id="btn-boost">
-        <div class="atitle"><span>Boost Attack</span><span class="acost" id="boost-cost">12g</span></div>
-        <div class="adesc" id="boost-desc">Once per game: +40% attack for your next 2 turns.</div>
-      </button>
-      <button class="act skip" id="btn-skip">
-        <div class="atitle"><span>Skip Turn</span><span class="acost">bank gold</span></div>
-        <div class="adesc">Take no action this turn — you still collect your income.</div>
-      </button>
     </div>
+
+    <div class="group">
+      <div class="grouplabel">Build &amp; Recruit</div>
+      <div class="btngrid">
+        <button class="act eco" id="btn-farm">
+          <div class="atitle"><span>Build Farm</span><span class="acost" id="cost-farm"></span></div>
+          <div class="adesc">+1 gold every turn. Cheap, compounds — but builds no defense.</div>
+        </button>
+        <div class="act mil train-tile">
+          <div class="atitle"><span>Train Troops</span><span class="acost" id="t-cost"></span></div>
+          <div class="typesel" id="typesel">
+            <span class="ty on" id="ty-inf" data-type="inf">Infantry<small id="ty-inf-stat"></small><small class="beats">&rsaquo; Knights</small></span>
+            <span class="ty" id="ty-arc" data-type="arc">Archers<small id="ty-arc-stat"></small><small class="beats">&rsaquo; Infantry</small></span>
+            <span class="ty" id="ty-kni" data-type="kni">Knights<small id="ty-kni-stat"></small><small class="beats">&rsaquo; Archers</small></span>
+          </div>
+          <div class="trainctl" id="trainctl">
+            <span class="step" id="t-minus">&minus;</span>
+            <span class="qty" id="t-qty">1</span>
+            <span class="step" id="t-plus">+</span>
+            <span class="tcap" id="t-cap"></span>
+          </div>
+          <button class="trainbtn" id="btn-train"><span id="train-label">Train</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="grouplabel">Engage — one strike per turn</div>
+      <div class="btngrid">
+        <button class="act attack" id="btn-attack">
+          <div class="atitle"><span>Assault!</span><span class="acost" id="atk-cost">3g</span></div>
+          <div class="adesc" id="atk-desc">Send your army at the enemy. Defenders have the edge.</div>
+        </button>
+        <button class="act siege" id="btn-siege">
+          <div class="atitle"><span>Lay Siege</span><span class="acost" id="siege-cost">free</span></div>
+          <div class="adesc" id="siege-desc">Starve the enemy: chip their castle and cut their income.</div>
+        </button>
+        <button class="act boost" id="btn-boost">
+          <div class="atitle"><span>Boost Attack</span><span class="acost" id="boost-cost">12g</span></div>
+          <div class="adesc" id="boost-desc">Once per game: +40% attack for your next 2 turns.</div>
+        </button>
+      </div>
+    </div>
+
+    <button class="act skip" id="btn-skip">
+      <div class="atitle"><span>Skip Turn</span><span class="acost">bank gold</span></div>
+      <div class="adesc">Take no action this turn — you still collect your income.</div>
+    </button>
   </div>
 
   <div class="log">
