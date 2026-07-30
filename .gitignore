@@ -1,4 +1,5 @@
 node_modules
 dist
+dist-proforma
 *.local
 .DS_Store

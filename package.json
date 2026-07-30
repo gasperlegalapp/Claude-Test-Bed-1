@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "proforma": "vite --config proforma/vite.config.ts",
+    "proforma:build": "tsc && vite build --config proforma/vite.config.ts",
+    "proforma:preview": "vite preview --config proforma/vite.config.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
