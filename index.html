@@ -399,6 +399,18 @@
   .clashbar { display: flex; height: 8px; max-width: 360px; margin: 12px auto 0; border-radius: 999px; overflow: hidden; background: #070a12; border: 1px solid var(--line); }
   .clashbar > div { height: 100%; width: 50%; transition: width .7s var(--ease); }
 
+  /* ===== Wizard ===== */
+  .act.wiz { --c: var(--tech); }
+  #btn-recruit { margin-bottom: 9px; }
+  .btngrid.two { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 680px) { .btngrid.two { grid-template-columns: 1fr; } }
+  .wardbadge { font-size: 9.5px; font-weight: 800; letter-spacing: 1px; color: #10151f; border-radius: 999px; padding: 2px 8px; vertical-align: middle;
+    background: linear-gradient(180deg, #d4bcff, var(--tech)); box-shadow: 0 0 14px -2px var(--tech); }
+  .scene .orb { transform-box: fill-box; transform-origin: center; animation: orbPulse 1.6s ease-in-out infinite; }
+  @keyframes orbPulse { 0%, 100% { opacity: .75; transform: scale(1); } 50% { opacity: 1; transform: scale(1.35); } }
+  .scene .wardome { animation: wardShimmer 2.2s ease-in-out infinite; }
+  @keyframes wardShimmer { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
+
   /* ===== Help ===== */
   .help { margin-top: 20px; }
   .help summary { cursor: pointer; color: var(--muted); font-size: 13px; letter-spacing: .3px; }
@@ -435,7 +447,7 @@
   <div class="board">
     <!-- PLAYER 1 -->
     <div class="player you active" id="panel-you">
-      <div class="pname"><span id="you-name">PLAYER 1 (YOU)</span> <span class="boostbadge" id="you-boost" style="display:none"></span> <span class="siegebadge" id="you-siegebadge" style="display:none">BESIEGED</span></div>
+      <div class="pname"><span id="you-name">PLAYER 1 (YOU)</span> <span class="boostbadge" id="you-boost" style="display:none"></span> <span class="siegebadge" id="you-siegebadge" style="display:none">BESIEGED</span> <span class="wardbadge" id="you-wardbadge" style="display:none">WARDED</span></div>
       <div class="hpbar"><div class="hpghost" id="you-hpghost"></div><div class="hpfill" id="you-hpfill"></div><div class="hptext" id="you-hptext"></div></div>
       <div class="scenewrap" id="you-scenewrap"><div class="scene" id="you-scene"></div><div class="fxlayer" id="you-fx"></div></div>
       <div class="stats">
@@ -448,7 +460,7 @@
 
     <!-- PLAYER 2 -->
     <div class="player enemy" id="panel-enemy">
-      <div class="pname"><span id="enemy-name">PLAYER 2 (AI)</span> <span class="boostbadge" id="enemy-boost" style="display:none"></span> <span class="siegebadge" id="enemy-siegebadge" style="display:none">BESIEGED</span></div>
+      <div class="pname"><span id="enemy-name">PLAYER 2 (AI)</span> <span class="boostbadge" id="enemy-boost" style="display:none"></span> <span class="siegebadge" id="enemy-siegebadge" style="display:none">BESIEGED</span> <span class="wardbadge" id="enemy-wardbadge" style="display:none">WARDED</span></div>
       <div class="hpbar"><div class="hpghost" id="enemy-hpghost"></div><div class="hpfill" id="enemy-hpfill"></div><div class="hptext" id="enemy-hptext"></div></div>
       <div class="scenewrap" id="enemy-scenewrap"><div class="scene" id="enemy-scene"></div><div class="fxlayer" id="enemy-fx"></div></div>
       <div class="stats">
@@ -510,7 +522,7 @@
 
     <div class="group">
       <div class="grouplabel">Engage — one strike per turn</div>
-      <div class="btngrid">
+      <div class="btngrid two">
         <button class="act attack" id="btn-attack">
           <div class="atitle"><span>Assault!</span><span class="acost" id="atk-cost">3g</span></div>
           <div class="adesc" id="atk-desc">Send your army at the enemy. Defenders have the edge.</div>
@@ -519,9 +531,27 @@
           <div class="atitle"><span>Lay Siege</span><span class="acost" id="siege-cost">free</span></div>
           <div class="adesc" id="siege-desc">Starve the enemy: chip their castle and cut their income.</div>
         </button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="grouplabel">Wizard — one per game, spells use your turn</div>
+      <button class="act wiz" id="btn-recruit">
+        <div class="atitle"><span>Recruit the Wizard</span><span class="acost" id="cost-recruit">10g</span></div>
+        <div class="adesc">Unlocks Fireball, Ward and Battle Blessing for the rest of the game.</div>
+      </button>
+      <div class="btngrid">
+        <button class="act wiz" id="btn-fireball">
+          <div class="atitle"><span>Fireball</span><span class="acost" id="cost-fireball"></span></div>
+          <div class="adesc" id="fireball-desc"></div>
+        </button>
+        <button class="act wiz" id="btn-ward">
+          <div class="atitle"><span>Ward</span><span class="acost" id="cost-ward"></span></div>
+          <div class="adesc" id="ward-desc"></div>
+        </button>
         <button class="act boost" id="btn-boost">
-          <div class="atitle"><span>Boost Attack</span><span class="acost" id="boost-cost">12g</span></div>
-          <div class="adesc" id="boost-desc">Once per game: +40% attack for your next 2 turns.</div>
+          <div class="atitle"><span>Battle Blessing</span><span class="acost" id="boost-cost"></span></div>
+          <div class="adesc" id="boost-desc"></div>
         </button>
       </div>
     </div>
@@ -547,7 +577,7 @@
       <p><b class="k-mil">Military</b> is the only way to deal damage, capped at <b>15 troops</b>. Three types, each with attack/defense stats: <b>Infantry</b> (3g, 2/2 — balanced), <b>Archers</b> (3g, 3/1 — hit hard but fragile on defense), <b>Knights</b> (6g, 4/4 — elite, durable). When armies clash, the attacker's <i>attack</i> meets the defender's <i>defense</i>; <b>defenders have the edge</b>, and only overflow reaches the Base.</p>
       <p><b>Counter triangle:</b> each unit deals <b>+30% attack</b> when it <i>attacks</i> the type it beats — <b>Infantry &rsaquo; Knights &rsaquo; Archers &rsaquo; Infantry</b> (defense is raw, so counters reward picking the right attacker, not reacting last). Watch the enemy's army on their field and bring the unit that counters their main force. The <b class="k-tech">AI reads your army too</b> and counters it — and it will rush you if you over-greed economy, so vary your play.</p>
       <p><b class="k-tech">Research</b> comes in two tracks you choose between: <b>+Attack</b> (adds attack to every troop) and <b>+Defense</b> (adds defense to every troop). You get <b>5 research points total</b> across both tracks (e.g. 4 attack + 1 defense) — spend them to crack a turtle or harden against a rush.</p>
-      <p><b class="k-gold">Boost Attack</b> is a one-time trump card (you and the AI each get one): for <b>12 gold</b> it gives <b>+40% attack</b> on your next 2 turns. Activating it uses your turn, so time it right — pop it, then attack into a defense you couldn't otherwise break. Pick a troop type and quantity, then press the <b>Train</b> button to commit (nothing trains until you do).</p>
+      <p><b class="k-tech">The Wizard.</b> Each side can recruit one Wizard, once, for <b>10 gold</b>. Casting a spell is your action for the turn, and each spell has a cooldown. <b>Fireball</b> (6g, every 5 turns) burns about 30% of every enemy troop type but never touches the castle, so it thins a massed turtle or a threatening army. <b>Ward</b> (4g, every 3 turns) protects your castle until your next turn: no siege can take hold, and assaults hit at 75%. <b>Battle Blessing</b> (12g, once per game) gives <b>+40% attack</b> on your next 2 turns, so cast it, then assault into a defense you couldn't otherwise break. Pick a troop type and quantity, then press the <b>Train</b> button to commit (nothing trains until you do).</p>
       <p><b>The balance:</b> Economy out-scales a slow opponent, <b class="k-siege">Siege</b> punishes greed and turtling, and Assault backed by <b class="k-tech">Research</b> cracks a big-but-primitive army — while a well-timed sally breaks a siege. Mass <b>Archers</b> to break a turtle, or hold <b>Knights</b> to repel a rush. Set the <b class="k-tech">AI difficulty</b> up top — changing it starts a fresh duel.</p>
     </div>
   </details>
@@ -594,9 +624,16 @@ const CFG = {
   attackCost: 3,                       // gold to launch an assault
   attackUnlockTurn: 2,                 // no attacks/sieges on turn 1
   armyCap: 15,                         // max total troops
-  boostCost: 12,                       // gold to activate the one-time boost
-  boostMult: 1.4,                      // +40% attack while boosted
+  boostCost: 12,                       // Battle Blessing (a Wizard spell): gold, once per game
+  boostMult: 1.4,                      // +40% attack while blessed
   boostDuration: 2,                    // active for your next 2 turns
+  wizardCost: 10,                      // one-time gold to recruit the Wizard (one per side)
+  fireballCost: 6,                     // gold per Fireball
+  fireballCD: 5,                       // turns before Fireball can be cast again
+  fireballKeep: 0.7,                   // each enemy troop type keeps 70% (rounded)
+  wardCost: 4,                         // gold per Ward
+  wardCD: 3,                           // turns before Ward can be cast again
+  wardAtkMult: 0.75,                   // assaults on a warded castle hit at 75%; sieges can't take hold
   ecoCap: 15,                          // max income per turn
   techCap: 5,                          // max total research traits (attack + defense combined)
   siegeMinArmy: 3,                     // troops needed to mount a siege
@@ -634,7 +671,8 @@ const AI_PARAMS = {
 
 function newPlayer() {
   return { hp: CFG.startHP, gold: CFG.startGold, farms: CFG.startFarms, farmLevel: 1, atkTech: 0, defTech: 0,
-           units: { inf: 0, arc: 0, kni: 0 }, boostUsed: false, boostStart: 0, suppression: 0, sieging: false };
+           units: { inf: 0, arc: 0, kni: 0 }, boostUsed: false, boostStart: 0, suppression: 0, sieging: false,
+           wizard: false, ward: false, cd: { fireball: 0, ward: 0 } };
 }
 // Gold produced per turn: each farm yields farmLevel gold, capped.
 function income(p) { return Math.min(CFG.ecoCap, p.farms * p.farmLevel); }
@@ -693,7 +731,32 @@ function clearArmy(p) { p.units = { inf: 0, arc: 0, kni: 0 }; }
 function reduceArmy(p, keep) { for (const t of TYPES) p.units[t] = Math.max(0, Math.round(p.units[t] * keep)); }
 function maxTrainable(p, type) { return Math.min(Math.floor(p.gold / TROOPS[type].cost), CFG.armyCap - totalTroops(p)); }
 function canAttack(p) { return turnNo >= CFG.attackUnlockTurn && totalTroops(p) > 0 && p.gold >= CFG.attackCost; }
-function canSiege(p) { return turnNo >= CFG.attackUnlockTurn && totalTroops(p) >= CFG.siegeMinArmy; }
+function canSiege(p) { return turnNo >= CFG.attackUnlockTurn && totalTroops(p) >= CFG.siegeMinArmy && !foeOf(p).ward; }
+
+// ---- The Wizard: recruited once, then casting a spell is your action for the turn ----
+function spellReady(p, spell) { return p.wizard && turnNo >= p.cd[spell]; }
+function canFireball(p) { return spellReady(p, "fireball") && turnNo >= CFG.attackUnlockTurn && p.gold >= CFG.fireballCost && totalTroops(foeOf(p)) > 0; }
+function canWard(p) { return spellReady(p, "ward") && p.gold >= CFG.wardCost; }
+function canBless(p) { return p.wizard && !p.boostUsed && p.gold >= CFG.boostCost; }
+// Fireball burns part of every enemy troop type; it never touches the castle.
+function castFireball(caster) {
+  const foe = foeOf(caster);
+  let killed = 0;
+  for (const t of TYPES) {
+    const keep = Math.round(foe.units[t] * CFG.fireballKeep);
+    killed += foe.units[t] - keep;
+    foe.units[t] = keep;
+  }
+  caster.gold -= CFG.fireballCost;
+  caster.cd.fireball = turnNo + CFG.fireballCD;
+  return killed;
+}
+// A Ward protects the castle until the caster's next turn begins.
+function castWard(caster) {
+  caster.gold -= CFG.wardCost;
+  caster.ward = true;
+  caster.cd.ward = turnNo + CFG.wardCD;
+}
 
 function reset() {
   you = newPlayer();
@@ -738,7 +801,7 @@ function drawScene(key, p) {
   const u = p.units;
   const boosted = boostActive(p);
   const besieged = siegeCamp[key];
-  const sig = u.inf + "," + u.arc + "," + u.kni + "|" + dev + "|" + p.farms + "," + p.farmLevel + "|" + p.atkTech + "," + p.defTech + "|" + Math.max(0, p.hp) + "|b" + (boosted ? 1 : 0) + "|s" + (besieged ? 1 : 0);
+  const sig = u.inf + "," + u.arc + "," + u.kni + "|" + dev + "|" + p.farms + "," + p.farmLevel + "|" + p.atkTech + "," + p.defTech + "|" + Math.max(0, p.hp) + "|b" + (boosted ? 1 : 0) + "|s" + (besieged ? 1 : 0) + "|w" + (p.wizard ? 1 : 0) + (p.ward ? 1 : 0);
   const prev = prevScene[key];
   if (prev && prev.sig === sig) return; // nothing visual changed — keep DOM (and any running animation)
   const pu = prev ? prev.units : { inf: 0, arc: 0, kni: 0 };
@@ -1026,7 +1089,23 @@ function buildScene(p, side, dev, grewBase, newBy, boosted, besieged) {
     + '</defs>';
   // smoke pours from the keep as the Base is battered
   const smoke = hpRatio < 0.5 ? smokeGroup(wallX + cw / 2, wallTop - 2, hpRatio < 0.33 ? 2 : 1) : "";
-  const body = c + smoke + camp + t + fg;
+  // the Wizard keeps watch from the wall; a Ward wraps the keep in an arcane dome
+  let wiz = "";
+  if (p.wizard) {
+    const wx = wallX + cw * 0.5, wy = wallTop - 1, robe = side === "you" ? "#2b3f8f" : "#7a2440";
+    wiz += '<g transform="translate(' + wx.toFixed(1) + ',' + wy + ')">'
+      + '<path d="M-4 0 L-2.6 -11 L2.6 -11 L4 0 Z" fill="' + robe + '" stroke="#0a0f1a" stroke-width="0.5"/>'
+      + '<circle cy="-13" r="2.6" fill="#ffd9b0"/><path d="M-1.6 -12 L0 -9 L1.6 -12 Z" fill="#e6ecf5"/>'
+      + '<path d="M-4.6 -14.5 L4.6 -14.5 L0.5 -25 Z" fill="' + robe + '" stroke="#0a0f1a" stroke-width="0.5"/>'
+      + '<circle cx="1" cy="-20" r="0.7" fill="#ffd97a"/>'
+      + '<line x1="5.5" y1="0" x2="5.5" y2="-20" stroke="#8a5a2b" stroke-width="1.1"/>'
+      + '<circle cx="5.5" cy="-21.5" r="4.5" fill="#b388ff" opacity="0.3" class="orb"/><circle cx="5.5" cy="-21.5" r="1.8" fill="#e8dcff"/></g>';
+  }
+  if (p.ward) {
+    const dx = wallX + cw / 2, rx = cw / 2 + 18, ry = ch + 34;
+    wiz += '<path class="wardome" d="M' + (dx - rx).toFixed(1) + ' ' + GROUND_Y + ' A' + rx.toFixed(1) + ' ' + ry + ' 0 0 1 ' + (dx + rx).toFixed(1) + ' ' + GROUND_Y + ' Z" fill="#b388ff" fill-opacity="0.13" stroke="#d4bcff" stroke-opacity="0.75" stroke-width="1.2"/>';
+  }
+  const body = c + smoke + wiz + camp + t + fg;
   // mirror the enemy so the two camps face each other across the center
   const inner = side === "enemy" ? '<g transform="translate(300,0) scale(-1,1)">' + body + "</g>" : body;
   return '<svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMax meet">' + defs + skyLayer() + inner + "</svg>";
@@ -1103,6 +1182,8 @@ const sfx = {
   clash()  { tone(0, 0.4, "sine", 150, 55, 0.6); noise(0, 0.2, "highpass", 3200, 1400, 0.35); tone(0, 0.32, "square", 1750, 1500, 0.05); tone(0.02, 0.4, "triangle", 2650, 2350, 0.06); },
   arrows() { for (let i = 0; i < 4; i++) noise(i * 0.055, 0.14, "highpass", 6000, 2600, 0.09); },
   shield() { tone(0, 0.6, "triangle", 880, 830, 0.14); tone(0, 0.6, "sine", 1320, 1270, 0.09); noise(0, 0.12, "highpass", 2500, 1500, 0.2); },
+  bless()  { tone(0, 0.5, "sine", 523, 530, 0.12); tone(0.08, 0.55, "sine", 659, 665, 0.1); tone(0.16, 0.7, "sine", 784, 790, 0.1); },
+  fireball() { noise(0, 0.6, "bandpass", 300, 2200, 0.3); tone(0, 0.6, "sawtooth", 140, 420, 0.06); },
 };
 
 // One impact in SVG/SMIL: smoke plume, hot flash, fire bloom, flying stone chunks, embers.
@@ -1179,6 +1260,37 @@ function playSiegeFx(key, p) {
   }, SIEGE_HIT_MS);
   setTimeout(() => { if (layer.firstChild === svg) layer.innerHTML = ""; }, 2700);
 }
+// Centre of a side's troop line, in the unmirrored scene coordinates buildScene uses.
+function armyCenter(p) {
+  const dev = Math.max(0, (p.farms - CFG.startFarms) + (p.farmLevel - 1) + p.atkTech + p.defTech);
+  const x0 = 14 + Math.min(40 + dev * 3, 78) + 14, n = Math.max(1, Math.min(totalTroops(p), CFG.armyCap));
+  const gap = Math.min(14, (296 - x0) / Math.max(1, n - 1));
+  return x0 + gap * (n - 1) / 2;
+}
+// A Fireball falls from the sky onto the target's army, drawn on that board's effects layer.
+function playFireballFx(key, killed) {
+  const layer = document.getElementById(key + "-fx");
+  if (!layer) return;
+  const cx = armyCenter(key === "you" ? you : enemy), fall = 0.55;
+  const path = "M" + (cx - 55).toFixed(1) + " -20 Q" + (cx - 15).toFixed(1) + " 20 " + cx.toFixed(1) + " 82";
+  let g = '<g opacity="0"><set attributeName="opacity" to="1" begin="0.05s"/><set attributeName="opacity" to="0" begin="' + (0.05 + fall) + 's"/>'
+    + '<animateMotion dur="' + fall + 's" begin="0.05s" fill="freeze" path="' + path + '"/>'
+    + '<circle r="10" fill="#b388ff" opacity="0.35"/><circle r="6" fill="#ff8a2a"/><circle r="3" fill="#fff0b0"/></g>';
+  g += burstFx(cx, 84, 0.05 + fall, 1.6) + burstFx(cx + 24, 86, 0.15 + fall, 1.1) + burstFx(cx - 24, 86, 0.2 + fall, 1);
+  if (key === "enemy") g = '<g transform="translate(300,0) scale(-1,1)">' + g + "</g>";
+  layer.innerHTML = '<svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMax meet">' + g + "</svg>";
+  const svg = layer.firstChild;
+  if (svg && svg.setCurrentTime) svg.setCurrentTime(0);
+  fxHoldUntil = Date.now() + 1300;
+  sfx.fireball();
+  setTimeout(() => {
+    sfx.boom();
+    const wrap = document.getElementById(key + "-scenewrap");
+    if (wrap) { wrap.classList.remove("quake"); void wrap.offsetWidth; wrap.classList.add("quake"); }
+    if (killed > 0) spawnFloat(key, "−" + killed + " troop" + (killed === 1 ? "" : "s"));
+  }, (0.05 + fall) * 1000);
+  setTimeout(() => { if (layer.firstChild === svg) layer.innerHTML = ""; }, 2600);
+}
 // Hold a modal back until a siege volley lands, so a killing blow is actually seen.
 function showAfterFx(id) {
   const wait = Math.max(0, fxHoldUntil - Date.now());
@@ -1240,7 +1352,9 @@ function render() {
     const bb = document.getElementById(key + "-boost");
     const bn = boostLeft(p);
     bb.style.display = (p.boostUsed && bn > 0) ? "inline-block" : "none";
-    bb.textContent = "BOOST x" + CFG.boostMult + " (" + bn + ")";
+    bb.textContent = "BLESSED x" + CFG.boostMult + " (" + bn + ")";
+    const wb = document.getElementById(key + "-wardbadge");
+    if (wb) wb.style.display = p.ward ? "inline-block" : "none";
     // The rules clear a siege flag when the besieger's next turn starts. For display, the camp
     // (and the BESIEGED flag) stays up until the besieger finishes a turn without renewing it.
     if (foeOf(p).sieging) siegeCamp[key] = true;
@@ -1306,8 +1420,18 @@ function render() {
   document.getElementById("train-label").textContent =
     "Train " + trainN + " " + TROOPS[selectedType].name + (trainMax >= 1 ? " (" + (trainN * TROOPS[selectedType].cost) + "g)" : "");
 
-  // boost state
-  document.getElementById("boost-cost").textContent = ap.boostUsed ? "used" : CFG.boostCost + "g";
+  // wizard + spells: cost, or why it can't be cast yet
+  const wait = (s) => Math.max(0, ap.cd[s] - turnNo);
+  const spellTag = (s, cost) => !ap.wizard ? "needs Wizard" : wait(s) > 0 ? "ready in " + wait(s) : cost + "g";
+  document.getElementById("btn-recruit").style.display = ap.wizard ? "none" : "";
+  document.getElementById("cost-recruit").textContent = CFG.wizardCost + "g";
+  document.getElementById("cost-fireball").textContent = spellTag("fireball", CFG.fireballCost);
+  document.getElementById("fireball-desc").textContent = "Burns " + Math.round((1 - CFG.fireballKeep) * 100) +
+    "% of every enemy troop type. Never touches the castle. Every " + CFG.fireballCD + " turns.";
+  document.getElementById("cost-ward").textContent = ap.ward ? "active" : spellTag("ward", CFG.wardCost);
+  document.getElementById("ward-desc").textContent = "Until your next turn: no siege can take hold and assaults hit at " +
+    Math.round(CFG.wardAtkMult * 100) + "%. Every " + CFG.wardCD + " turns.";
+  document.getElementById("boost-cost").textContent = !ap.wizard ? "needs Wizard" : ap.boostUsed ? "used" : CFG.boostCost + "g";
   document.getElementById("boost-desc").textContent = ap.boostUsed
     ? (boostLeft(ap) > 0 ? "Active: +" + pct + "% attack (" + boostLeft(ap) + " turn" + (boostLeft(ap) === 1 ? "" : "s") + " left)." : "Already used this game.")
     : "Once per game: +" + pct + "% attack for your next " + CFG.boostDuration + " turns.";
@@ -1321,6 +1445,7 @@ function render() {
   document.getElementById("siege-cost").textContent = locked ? "turn " + CFG.attackUnlockTurn : "free";
   document.getElementById("siege-desc").textContent = locked
     ? "Siege unlocks on turn " + CFG.attackUnlockTurn + "."
+    : foeOf(ap).ward ? "The enemy castle is Warded until their next turn, so no siege can take hold."
     : "Needs " + CFG.siegeMinArmy + "+ troops. Chips " + CFG.siegeDmg + " castle HP and cuts enemy income 25–50% next turn. They can sally to break it.";
 
   const myTurn = isHumanTurn() && !busy && you.hp > 0 && enemy.hp > 0;
@@ -1331,7 +1456,10 @@ function render() {
   document.getElementById("btn-train").disabled = !myTurn || trainMax < 1;
   document.getElementById("btn-attack").disabled = !myTurn || !canAttack(ap);
   document.getElementById("btn-siege").disabled = !myTurn || !canSiege(ap);
-  document.getElementById("btn-boost").disabled = !myTurn || ap.boostUsed || ap.gold < CFG.boostCost;
+  document.getElementById("btn-recruit").disabled = !myTurn || ap.wizard || ap.gold < CFG.wizardCost;
+  document.getElementById("btn-fireball").disabled = !myTurn || !canFireball(ap);
+  document.getElementById("btn-ward").disabled = !myTurn || !canWard(ap);
+  document.getElementById("btn-boost").disabled = !myTurn || !canBless(ap);
   document.getElementById("btn-skip").disabled = !myTurn;
   document.getElementById("t-minus").classList.toggle("off", !myTurn);
   document.getElementById("t-plus").classList.toggle("off", !myTurn);
@@ -1348,10 +1476,10 @@ function counterNote(army, opp, verb) {
   return "";
 }
 function resolveAttack(att, def, attName, defName) {
-  const aStr = atkVs(att, def);
+  const aStr = Math.round(atkVs(att, def) * (def.ward ? CFG.wardAtkMult : 1));
   if (aStr === 0) { log(attName + " has no army to attack with.", "battle"); return { outcome: "noArmy", attName, defName }; }
   const dStr = defVs(def, att);
-  const aNote = counterNote(att, def, "counter");
+  const aNote = counterNote(att, def, "counter") + (def.ward ? " <i>(the Ward blunts the assault to " + Math.round(CFG.wardAtkMult * 100) + "%)</i>" : "");
   const dNote = counterNote(def, att, "hold off");
 
   if (dStr === 0) {
@@ -1564,6 +1692,7 @@ function playBattle(snap, res, onDone) {
 function startTurn(side) {
   const p = side === "you" ? you : enemy;
   p.sieging = false;                                   // clear my own siege stance at the start of my turn
+  p.ward = false;                                      // my Ward lasted through the opponent's turn
   p.gold += Math.floor(income(p) * (1 - (p.suppression || 0)));  // a siege denies part of this income
   p.suppression = 0;
 }
@@ -1685,10 +1814,33 @@ function requestAttack() {
 }
 function doBoost() {
   const p = actor();
-  if (p.boostUsed || p.gold < CFG.boostCost) return;
+  if (!canBless(p)) return;
   p.gold -= CFG.boostCost; p.boostUsed = true; p.boostStart = turnNo;
-  log("activated <span class='k-boost'>Battle Boost</span> &rarr; +" + Math.round((CFG.boostMult - 1) * 100) +
+  sfx.bless();
+  log("casts <span class='k-boost'>Battle Blessing</span> &rarr; +" + Math.round((CFG.boostMult - 1) * 100) +
       "% attack for the next " + CFG.boostDuration + " turns!", current);
+}
+function doRecruit() {
+  const p = actor();
+  if (p.wizard || p.gold < CFG.wizardCost) return;
+  p.gold -= CFG.wizardCost; p.wizard = true;
+  sfx.bless();
+  log("recruits a <span class='k-tech'>Wizard</span>. Fireball, Ward and Battle Blessing are now available.", current);
+}
+function doFireball() {
+  const p = actor();
+  if (!canFireball(p)) return;
+  const killed = castFireball(p);
+  playFireballFx(p === you ? "enemy" : "you", killed);
+  log("hurls a <span class='k-tech'>Fireball</span>: <b>" + killed + "</b> enemy troop" + (killed === 1 ? "" : "s") + " burned.", current);
+}
+function doWard() {
+  const p = actor();
+  if (!canWard(p)) return;
+  castWard(p);
+  sfx.shield();
+  log("raises a <span class='k-tech'>Ward</span>: sieges can't take hold and assaults hit at " +
+      Math.round(CFG.wardAtkMult * 100) + "% until their next turn.", current);
 }
 function doSkip() {
   log("holds position and banks the gold.", current);
@@ -1739,7 +1891,7 @@ function aiTurn() {
   const me = enemy, foe = you;
   const D = AI_PARAMS[difficulty];
   // matchup-aware: each value already accounts for the counter triangle
-  const myAtk = atkVs(me, foe), foeDef = defVs(foe, me);
+  const myAtk = Math.round(atkVs(me, foe) * (foe.ward ? CFG.wardAtkMult : 1)), foeDef = defVs(foe, me);
   const foeAtk = atkVs(foe, me), myDef = defVs(me, foe);
   const myTotal = totalTroops(me), foeTotal = totalTroops(foe);
   // read the player's posture to adapt
@@ -1765,6 +1917,13 @@ function aiTurn() {
     if (foeDef === 0 ? myAtk > 0 : (myAtk > foeDef && myAtk - foeDef >= 2)) decision = "attack";
   }
 
+  // 1.7 Ward: shield the castle when it's being besieged or the opponent's army can overrun us.
+  if (!decision && canWard(me) && (beingSieged || (foeTotal > 0 && foeAtk > myDef)) && Math.random() < Math.max(0.5, D.smart)) decision = "ward";
+
+  // 1.8 Fireball: thin a big army that threatens us, or one we can't break through.
+  if (!decision && canFireball(me) && foeTotal >= 4 && (foeAtk > myDef || (foeDef > 0 && myAtk <= foeDef * 1.15)) &&
+      Math.random() < Math.max(0.5, D.smart)) decision = "fireball";
+
   // 2. Profitable attack: press an edge. Impatience lowers the bar over time.
   if (!decision && ableToAttack) {
     const e = Math.max(D.minEdge, D.edge - turnNo * 0.02);
@@ -1774,7 +1933,7 @@ function aiTurn() {
   // 2.5 Boost: spend it to punch through a wall we're stuck against, or to set up
   //     a lethal blow — banking toward it if short. Only with a committed army,
   //     when not under heavy threat, and when more research won't easily help.
-  if (!decision && !me.boostUsed && ableToAttack && myTotal >= 5 && foeAtk <= myDef + 4) {
+  if (!decision && me.wizard && !me.boostUsed && ableToAttack && myTotal >= 5 && foeAtk <= myDef + 4) {
     const boosted = Math.floor(myAtk * CFG.boostMult);
     const stalemated = foeDef > 0 && myAtk <= foeDef * 1.15;                 // can't profitably break now
     const breakthrough = boosted - foeDef >= Math.max(D.minDiff, 4);         // boost yields solid overflow
@@ -1812,6 +1971,8 @@ function aiTurn() {
       else if (!atCap && me.gold >= TROOPS.inf.cost) decision = "train_def";
       else if (wantEco) decision = "eco";
       else decision = "save";
+    } else if (!me.wizard && myTotal >= 3 && turnNo >= 3 && me.gold >= CFG.wizardCost) {
+      decision = "recruit";                                      // with a standing army and the gold, take the Wizard
     } else if (wantEco) {
       decision = "eco";                                          // establish a healthy economy base first
     } else if (!atCap && me.gold >= TROOPS.inf.cost) {
@@ -1852,9 +2013,29 @@ function aiTurn() {
       return;                                  // the battle animation drives render + endTurn
     case "boost":
       me.gold -= CFG.boostCost; me.boostUsed = true; me.boostStart = turnNo;
-      think = "Rallies a battle boost!";
-      log("activated <span class='k-boost'>Battle Boost</span> &rarr; +" + Math.round((CFG.boostMult - 1) * 100) +
+      think = "Its Wizard blesses the army!";
+      sfx.bless();
+      log("casts <span class='k-boost'>Battle Blessing</span> &rarr; +" + Math.round((CFG.boostMult - 1) * 100) +
           "% attack for " + CFG.boostDuration + " turns!", "enemy");
+      break;
+    case "recruit":
+      me.gold -= CFG.wizardCost; me.wizard = true;
+      think = "Recruits a Wizard.";
+      sfx.bless();
+      log("recruits a <span class='k-tech'>Wizard</span>.", "enemy");
+      break;
+    case "fireball": {
+      const killed = castFireball(me);
+      playFireballFx("you", killed);
+      think = "Hurls a Fireball at your army!";
+      log("hurls a <span class='k-tech'>Fireball</span>: <b>" + killed + "</b> of your troops burned.", "enemy");
+      break;
+    }
+    case "ward":
+      castWard(me);
+      think = "Raises a Ward over its castle.";
+      sfx.shield();
+      log("raises a <span class='k-tech'>Ward</span> over its castle until its next turn.", "enemy");
       break;
     case "train_def":
     case "train_off": {
@@ -1914,6 +2095,9 @@ document.getElementById("btn-rdef").addEventListener("click", () => playerAction
 document.getElementById("btn-attack").addEventListener("click", requestAttack);
 document.getElementById("btn-siege").addEventListener("click", () => playerAction(doSiege));
 document.getElementById("btn-boost").addEventListener("click", () => playerAction(doBoost));
+document.getElementById("btn-recruit").addEventListener("click", () => playerAction(doRecruit));
+document.getElementById("btn-fireball").addEventListener("click", () => playerAction(doFireball));
+document.getElementById("btn-ward").addEventListener("click", () => playerAction(doWard));
 document.getElementById("btn-skip").addEventListener("click", () => playerAction(doSkip));
 // Train only commits via its dedicated button — clicking the setup tile does nothing.
 document.getElementById("btn-train").addEventListener("click", () => playerAction(doTrain));
