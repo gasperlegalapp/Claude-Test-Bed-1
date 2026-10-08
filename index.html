@@ -134,7 +134,7 @@
   .hptext { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; letter-spacing: .5px; color: #fff; text-shadow: 0 1px 3px #000c; font-variant-numeric: tabular-nums; }
 
   .scene {
-    margin-top: 12px; aspect-ratio: 2 / 1; height: auto; border-radius: 12px; overflow: hidden; position: relative;
+    aspect-ratio: 2 / 1; height: auto; border-radius: 12px; overflow: hidden; position: relative;
     border: 1px solid #2b3a55;
     background: linear-gradient(180deg, #0b0f2a 0%, #2b1f4f 40%, #8a4460 56%, #f09a52 61%, #3a5a2c 61.3%, #1c2e17 100%);
     box-shadow: inset 0 0 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.25), 0 10px 24px -14px rgba(0,0,0,.9);
@@ -377,6 +377,28 @@
   .scene .siegecamp .fire { animation: flicker .5s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center bottom; }
   @keyframes flicker { from { transform: scaleY(1) scaleX(1); opacity: .95; } to { transform: scaleY(1.18) scaleX(.9); opacity: .8; } }
 
+  /* ===== Siege + battle juice ===== */
+  .scenewrap { position: relative; margin-top: 12px; }
+  .fxlayer { position: absolute; inset: 0; z-index: 3; pointer-events: none; border-radius: 12px; overflow: hidden; }
+  .fxlayer svg { display: block; width: 100%; height: 100%; }
+  .scenewrap.quake { animation: stageShake .5s ease-in-out; }
+  .scene .cfire { animation: flicker .38s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center bottom; }
+  .scene .ember { opacity: 0; transform-box: fill-box; animation: emberRise 2.4s linear infinite; }
+  @keyframes emberRise { 0% { opacity: 0; transform: translate(0,0); } 15% { opacity: .9; } 100% { opacity: 0; transform: translate(var(--ex, 4px), -34px); } }
+  .dmgfloat.econ { top: 76px; font-family: var(--font-ui); font-size: 15px; font-weight: 800; letter-spacing: .5px; color: var(--gold-hi); text-shadow: 0 0 14px var(--gold), 0 1px 0 #3a2a00; animation-delay: .2s; }
+  .battle-stage .cam { transform-box: view-box; transform-origin: 168px 82px; animation: camPunch 1.3s var(--ease) .72s both; }
+  @keyframes camPunch { 0% { transform: scale(1); } 12% { transform: scale(1.16); } 100% { transform: scale(1.05); } }
+  .battle-stage .bstreak { opacity: 0; transform-box: fill-box; transform-origin: left center; animation: streak .42s ease-out .78s; }
+  @keyframes streak { 0% { opacity: 1; transform: scaleX(.2); } 100% { opacity: 0; transform: scaleX(1.7); } }
+  .battle-stage .bshield { opacity: 0; transform-box: fill-box; transform-origin: center; animation: shieldFlare .75s ease-out .8s; }
+  @keyframes shieldFlare { 0% { opacity: 0; transform: scale(.6); } 25% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0; transform: scale(1.3); } }
+  .battle-box.boom-good { animation: modalIn .35s var(--ease) both, boomGood .8s ease-out .8s; }
+  .battle-box.boom-bad { animation: modalIn .35s var(--ease) both, boomBad .8s ease-out .8s; }
+  @keyframes boomGood { 20% { box-shadow: inset 0 1px 0 var(--line-hi), 0 0 90px 12px rgba(232,180,85,.55); } }
+  @keyframes boomBad { 20% { box-shadow: inset 0 1px 0 var(--line-hi), 0 0 90px 12px rgba(255,90,90,.55); } }
+  .clashbar { display: flex; height: 8px; max-width: 360px; margin: 12px auto 0; border-radius: 999px; overflow: hidden; background: #070a12; border: 1px solid var(--line); }
+  .clashbar > div { height: 100%; width: 50%; transition: width .7s var(--ease); }
+
   /* ===== Help ===== */
   .help { margin-top: 20px; }
   .help summary { cursor: pointer; color: var(--muted); font-size: 13px; letter-spacing: .3px; }
@@ -407,6 +429,7 @@
       <button class="diff on" id="diff-normal">Normal</button>
       <button class="diff" id="diff-hard">Hard</button>
     </span>
+    <span class="diffbar"><button class="diff on" id="sound-toggle">Sound on</button></span>
   </div>
 
   <div class="board">
@@ -414,7 +437,7 @@
     <div class="player you active" id="panel-you">
       <div class="pname"><span id="you-name">PLAYER 1 (YOU)</span> <span class="boostbadge" id="you-boost" style="display:none"></span> <span class="siegebadge" id="you-siegebadge" style="display:none">BESIEGED</span></div>
       <div class="hpbar"><div class="hpghost" id="you-hpghost"></div><div class="hpfill" id="you-hpfill"></div><div class="hptext" id="you-hptext"></div></div>
-      <div class="scene" id="you-scene"></div>
+      <div class="scenewrap" id="you-scenewrap"><div class="scene" id="you-scene"></div><div class="fxlayer" id="you-fx"></div></div>
       <div class="stats">
         <div class="stat gold"><div class="label">Gold</div><div class="val" id="you-gold">0</div><div class="sub" id="you-income"></div></div>
         <div class="stat eco"><div class="label">Economy</div><div class="val" id="you-eco">0</div><div class="sub" id="you-ecosub">income/turn</div></div>
@@ -427,7 +450,7 @@
     <div class="player enemy" id="panel-enemy">
       <div class="pname"><span id="enemy-name">PLAYER 2 (AI)</span> <span class="boostbadge" id="enemy-boost" style="display:none"></span> <span class="siegebadge" id="enemy-siegebadge" style="display:none">BESIEGED</span></div>
       <div class="hpbar"><div class="hpghost" id="enemy-hpghost"></div><div class="hpfill" id="enemy-hpfill"></div><div class="hptext" id="enemy-hptext"></div></div>
-      <div class="scene" id="enemy-scene"></div>
+      <div class="scenewrap" id="enemy-scenewrap"><div class="scene" id="enemy-scene"></div><div class="fxlayer" id="enemy-fx"></div></div>
       <div class="stats">
         <div class="stat gold"><div class="label">Gold</div><div class="val" id="enemy-gold">0</div><div class="sub">&nbsp;</div></div>
         <div class="stat eco"><div class="label">Economy</div><div class="val" id="enemy-eco">0</div><div class="sub" id="enemy-ecosub">income/turn</div></div>
@@ -539,9 +562,10 @@
 </div>
 
 <div class="battle-overlay" id="battle-overlay">
-  <div class="battle-box">
+  <div class="battle-box" id="battle-box">
     <div class="battle-title" id="battle-title"></div>
     <div class="battle-stage" id="battle-stage"></div>
+    <div class="clashbar"><div id="cb-att"></div><div id="cb-def"></div></div>
     <div class="battle-sub" id="battle-sub"></div>
     <div class="battle-hint">click to skip</div>
   </div>
@@ -620,6 +644,7 @@ let you, enemy, turnNo, current, busy, trainQty, selectedType, difficulty = "nor
 let mode = "ai"; // "ai" = solo vs AI, "pvp" = local 2-player hotseat
 let prevScene; // tracks last-rendered army/dev per side to animate growth
 let prevHp = {}, prevCurrent = null; // presentation-only: drive damage feedback and the turn-chip beat
+let siegeCamp = { you: false, enemy: false }; // presentation-only: is a besieger's camp standing on this board?
 
 // The player acting right now, and the human-turn / naming helpers used so the
 // shared controls can drive either side in hotseat mode.
@@ -679,7 +704,9 @@ function reset() {
   trainQty = 1;
   selectedType = "inf";
   prevScene = { you: null, enemy: null };
-  prevHp = {}; prevCurrent = null;
+  prevHp = {}; prevCurrent = null; siegeCamp = { you: false, enemy: false };
+  clearTimeout(fxTimer); fxHoldUntil = 0;
+  for (const k of ["you", "enemy"]) document.getElementById(k + "-fx").innerHTML = "";
   document.getElementById("logbody").innerHTML = "";
   document.getElementById("overlay").classList.remove("show");
   log("A new duel begins. Build, research, raise an army — and break the enemy Base.", "");
@@ -710,7 +737,7 @@ function drawScene(key, p) {
   const dev = Math.max(0, (p.farms - CFG.startFarms) + (p.farmLevel - 1) + p.atkTech + p.defTech);
   const u = p.units;
   const boosted = boostActive(p);
-  const besieged = foeOf(p).sieging;
+  const besieged = siegeCamp[key];
   const sig = u.inf + "," + u.arc + "," + u.kni + "|" + dev + "|" + p.farms + "," + p.farmLevel + "|" + p.atkTech + "," + p.defTech + "|" + Math.max(0, p.hp) + "|b" + (boosted ? 1 : 0) + "|s" + (besieged ? 1 : 0);
   const prev = prevScene[key];
   if (prev && prev.sig === sig) return; // nothing visual changed — keep DOM (and any running animation)
@@ -955,6 +982,13 @@ function buildScene(p, side, dev, grewBase, newBy, boosted, besieged) {
       camp += '<g transform="translate(' + tx + ',' + GROUND_Y + ') scale(' + sc + ')"><path d="M-10 0 L0 -14 L10 0 Z" fill="' + fc + '" stroke="' + fd + '" stroke-width="0.8"/><path d="M-2.5 0 L0 -6 L2.5 0 Z" fill="#0a0f1a"/></g>';
     camp += '<circle cx="254" cy="' + (GROUND_Y - 3) + '" r="9" fill="#ff9a3a" opacity="0.3"/>';
     camp += '<g class="fire"><path d="M250 ' + GROUND_Y + ' l4 -9 l4 9 z" fill="#ffb84d"/><path d="M252 ' + GROUND_Y + ' l2 -5 l2 5 z" fill="#fff0a0"/></g>';
+    // the keep burns while besieged: flames on the battlements, embers drifting up
+    for (const [fx, fy, sc, d] of [[wallX + cw * 0.28, wallTop - 4, 1, 0], [wallX + cw * 0.72, wallTop - 4, 0.8, 0.13], [rtX + tw / 2, rtTop - 1, 0.7, 0.07]]) {
+      camp += '<g transform="translate(' + fx.toFixed(1) + ',' + fy.toFixed(1) + ') scale(' + sc + ')"><circle cy="-4" r="7" fill="#ff7a2a" opacity="0.3"/>'
+        + '<g class="cfire" style="animation-delay:' + d + 's"><path d="M-3 0 Q-3.5 -6 0 -11 Q3.5 -6 3 0 Z" fill="#ff8a2a"/><path d="M-1.5 0 Q-1.8 -3.5 0 -6.5 Q1.8 -3.5 1.5 0 Z" fill="#ffe08a"/></g></g>';
+    }
+    for (let i = 0; i < 5; i++)
+      camp += '<circle class="ember" cx="' + (wallX + cw * (0.2 + i * 0.15)).toFixed(1) + '" cy="' + (wallTop - 6) + '" r="0.9" fill="#ffb347" style="--ex:' + (i % 2 ? 4 : -3) + 'px;animation-delay:' + (i * 0.45).toFixed(2) + 's"/>';
     camp += '<g transform="translate(214,' + GROUND_Y + ')"><line x1="-9" y1="0" x2="9" y2="0" stroke="#4a3216" stroke-width="2.2"/><line x1="0" y1="0" x2="0" y2="-18" stroke="#5a3d1e" stroke-width="2"/><line x1="-16" y1="-27" x2="11" y2="-11" stroke="#7a5228" stroke-width="1.7"/><circle cx="-16" cy="-27" r="2.4" fill="#3a3f4a"/><line x1="11" y1="-11" x2="11" y2="-5" stroke="#7a5228" stroke-width="1.2"/></g>';
     camp += '</g>';
   }
@@ -1016,28 +1050,180 @@ function setNum(el, v) {
   el._raf = requestAnimationFrame(step);
 }
 // A damage number that drifts up off a player's panel.
-function spawnFloat(key, text) {
+function spawnFloat(key, text, cls) {
   const panel = document.getElementById("panel-" + key);
   if (!panel || !panel.appendChild) return;
   const f = document.createElement("div");
-  f.className = "dmgfloat"; f.textContent = text;
+  f.className = "dmgfloat" + (cls ? " " + cls : ""); f.textContent = text;
   panel.appendChild(f);
   setTimeout(() => { if (f.parentNode) f.parentNode.removeChild(f); }, 1200);
+}
+
+// ---- Sound: synthesized with Web Audio, so the game still ships as one file ----
+const SFX = { on: true, ctx: null, master: null, noise: null };
+try { SFX.on = localStorage.getItem("triarchy-sound") !== "off"; } catch (e) { /* storage blocked: stay on */ }
+function audio() {
+  if (!SFX.on) return null;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!SFX.ctx) {
+    SFX.ctx = new AC();
+    SFX.master = SFX.ctx.createGain(); SFX.master.gain.value = 0.5; SFX.master.connect(SFX.ctx.destination);
+    const len = SFX.ctx.sampleRate, buf = SFX.ctx.createBuffer(1, len, len), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    SFX.noise = buf;
+  }
+  if (SFX.ctx.state === "suspended") SFX.ctx.resume();
+  return SFX.ctx;
+}
+function envelope(ctx, t, dur, peak) {
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  g.connect(SFX.master);
+  return g;
+}
+function noise(delay, dur, type, f0, f1, peak) {
+  const ctx = audio(); if (!ctx) return;
+  const t = ctx.currentTime + delay, src = ctx.createBufferSource(), flt = ctx.createBiquadFilter();
+  src.buffer = SFX.noise; flt.type = type;
+  flt.frequency.setValueAtTime(f0, t); flt.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  src.connect(flt).connect(envelope(ctx, t, dur, peak));
+  src.start(t); src.stop(t + dur + 0.05);
+}
+function tone(delay, dur, wave, f0, f1, peak) {
+  const ctx = audio(); if (!ctx) return;
+  const t = ctx.currentTime + delay, osc = ctx.createOscillator();
+  osc.type = wave; osc.frequency.setValueAtTime(f0, t); osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  osc.connect(envelope(ctx, t, dur, peak));
+  osc.start(t); osc.stop(t + dur + 0.05);
+}
+const sfx = {
+  launch() { tone(0, 0.18, "triangle", 95, 45, 0.35); noise(0.05, 0.55, "bandpass", 350, 1600, 0.22); },
+  boom()   { tone(0, 0.7, "sine", 120, 32, 0.9); noise(0, 0.5, "lowpass", 1200, 140, 0.7); },
+  clash()  { tone(0, 0.4, "sine", 150, 55, 0.6); noise(0, 0.2, "highpass", 3200, 1400, 0.35); tone(0, 0.32, "square", 1750, 1500, 0.05); tone(0.02, 0.4, "triangle", 2650, 2350, 0.06); },
+  arrows() { for (let i = 0; i < 4; i++) noise(i * 0.055, 0.14, "highpass", 6000, 2600, 0.09); },
+  shield() { tone(0, 0.6, "triangle", 880, 830, 0.14); tone(0, 0.6, "sine", 1320, 1270, 0.09); noise(0, 0.12, "highpass", 2500, 1500, 0.2); },
+};
+
+// One impact in SVG/SMIL: smoke plume, hot flash, fire bloom, flying stone chunks, embers.
+// (x, y) are in the host SVG's coordinates; t is the begin time in seconds.
+function burstFx(x, y, t, scale) {
+  const T = (v) => (t + v).toFixed(2) + "s";
+  let g = '<g transform="translate(' + x.toFixed(1) + ',' + y.toFixed(1) + ') scale(' + (scale || 1) + ')">';
+  for (let i = 0; i < 5; i++) {
+    const b = T(0.1 + i * 0.07);
+    g += '<circle cx="' + ((i - 2) * 3.5) + '" cy="0" r="3" fill="#4a4550" opacity="0">'
+      + '<animate attributeName="r" values="3;' + (9 + i) + '" dur="1.3s" begin="' + b + '" fill="freeze"/>'
+      + '<animate attributeName="cy" values="0;' + (-16 - i * 3) + '" dur="1.3s" begin="' + b + '" fill="freeze"/>'
+      + '<animate attributeName="opacity" values="0;0.75;0" keyTimes="0;0.2;1" dur="1.3s" begin="' + b + '" fill="freeze"/></circle>';
+  }
+  g += '<circle r="2" fill="#fff4c4" opacity="0"><animate attributeName="r" values="2;16" dur="0.3s" begin="' + T(0) + '" fill="freeze"/>'
+    + '<animate attributeName="opacity" values="0;1;0" keyTimes="0;0.2;1" dur="0.3s" begin="' + T(0) + '" fill="freeze"/></circle>';
+  g += '<circle r="3" fill="#ff7a22" opacity="0"><animate attributeName="r" values="3;12" dur="0.45s" begin="' + T(0.03) + '" fill="freeze"/>'
+    + '<animate attributeName="opacity" values="0;0.9;0" keyTimes="0;0.25;1" dur="0.45s" begin="' + T(0.03) + '" fill="freeze"/></circle>';
+  [[-15, 10], [-8, 18], [6, 16], [13, 6], [19, 20], [-19, 2], [2, -6]].forEach(([dx, dy], i) => {
+    g += '<rect x="-1.3" y="-1.3" width="2.6" height="2.6" rx="0.5" fill="' + (i % 2 ? "#7d8597" : "#5a6070") + '" opacity="0">'
+      + '<set attributeName="opacity" to="1" begin="' + T(0.02) + '"/><set attributeName="opacity" to="0" begin="' + T(0.62) + '"/>'
+      + '<animateMotion dur="0.6s" begin="' + T(0.02) + '" fill="freeze" rotate="auto" path="M0 0 Q' + (dx * 0.6).toFixed(1) + ' ' + (-14 - i) + ' ' + dx + ' ' + dy + '"/></rect>';
+  });
+  for (let i = 0; i < 6; i++) {
+    const ex = (i - 2.5) * 5;
+    g += '<circle r="0.9" fill="#ffc861" opacity="0">'
+      + '<set attributeName="opacity" to="1" begin="' + T(0.05) + '"/><set attributeName="opacity" to="0" begin="' + T(1.05) + '"/>'
+      + '<animateMotion dur="1s" begin="' + T(0.05) + '" fill="freeze" path="M0 0 Q' + ex + ' -12 ' + (ex * 1.4).toFixed(1) + ' ' + (-26 - i * 2) + '"/></circle>';
+  }
+  return g + "</g>";
+}
+
+// Where a siege stone strikes the keep, in the unmirrored scene coordinates buildScene uses.
+function keepTarget(p) {
+  const dev = Math.max(0, (p.farms - CFG.startFarms) + (p.farmLevel - 1) + p.atkTech + p.defTech);
+  const cw = Math.min(40 + dev * 3, 78), ch = Math.min(34 + dev * 5, 74);
+  return { x: 14 + cw * 0.55, y: GROUND_Y - ch * 0.7 };
+}
+
+// A trebuchet volley from the siege camp into the besieged keep, drawn on the board's
+// effects layer so scene repaints underneath can't cut it short.
+const SIEGE_T0 = 0.12, SIEGE_FLY = 0.72, SIEGE_HIT_MS = Math.round((SIEGE_T0 + SIEGE_FLY) * 1000);
+let fxHoldUntil = 0, fxTimer = 0;
+function playSiegeFx(key, p) {
+  const layer = document.getElementById(key + "-fx");
+  if (!layer) return;
+  const k = keepTarget(p), lx = 213, ly = 66, hit = SIEGE_T0 + SIEGE_FLY;
+  const arc = "M" + lx + " " + ly + " Q" + ((lx + k.x) / 2).toFixed(1) + " -22 " + k.x.toFixed(1) + " " + k.y.toFixed(1);
+  let g = "";
+  for (let i = 0; i < 4; i++) {
+    const b = (0.04 + i * 0.03).toFixed(2) + "s";
+    g += '<circle cx="' + (204 + i * 5) + '" cy="90" r="2" fill="#b9a98a" opacity="0"><animate attributeName="r" values="2;7" dur="0.7s" begin="' + b + '" fill="freeze"/>'
+      + '<animate attributeName="opacity" values="0;0.6;0" dur="0.7s" begin="' + b + '" fill="freeze"/></circle>';
+  }
+  for (let i = 4; i >= 1; i--) {
+    const b = (SIEGE_T0 + i * 0.035).toFixed(3);
+    g += '<circle r="' + (3.4 - i * 0.55).toFixed(2) + '" fill="#ff9a3a" opacity="0"><set attributeName="opacity" to="' + (0.55 - i * 0.1).toFixed(2) + '" begin="' + b + 's"/>'
+      + '<set attributeName="opacity" to="0" begin="' + (hit + i * 0.035).toFixed(3) + 's"/><animateMotion dur="' + SIEGE_FLY + 's" begin="' + b + 's" fill="freeze" path="' + arc + '"/></circle>';
+  }
+  g += '<g opacity="0"><set attributeName="opacity" to="1" begin="' + SIEGE_T0 + 's"/><set attributeName="opacity" to="0" begin="' + hit.toFixed(2) + 's"/>'
+    + '<animateMotion dur="' + SIEGE_FLY + 's" begin="' + SIEGE_T0 + 's" fill="freeze" path="' + arc + '"/>'
+    + '<circle r="7" fill="#ff8a2a" opacity="0.45"/><circle r="3.3" fill="#3a3530" stroke="#ffb347" stroke-width="1"/></g>';
+  g += burstFx(k.x, k.y, hit, 1);
+  if (key === "enemy") g = '<g transform="translate(300,0) scale(-1,1)">' + g + "</g>";
+  layer.innerHTML = '<svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMax meet">' + g + "</svg>";
+  const svg = layer.firstChild;
+  if (svg && svg.setCurrentTime) svg.setCurrentTime(0);
+  fxHoldUntil = Date.now() + SIEGE_HIT_MS + 700;
+  sfx.launch();
+  setTimeout(() => {
+    sfx.boom();
+    const wrap = document.getElementById(key + "-scenewrap");
+    if (wrap) { wrap.classList.remove("quake"); void wrap.offsetWidth; wrap.classList.add("quake"); }
+  }, SIEGE_HIT_MS);
+  setTimeout(() => { if (layer.firstChild === svg) layer.innerHTML = ""; }, 2700);
+}
+// Hold a modal back until a siege volley lands, so a killing blow is actually seen.
+function showAfterFx(id) {
+  const wait = Math.max(0, fxHoldUntil - Date.now());
+  const show = () => document.getElementById(id).classList.add("show");
+  clearTimeout(fxTimer);
+  if (wait) fxTimer = setTimeout(show, wait); else show();
+}
+
+// An archer volley for the battle stage: arrows arc from one line into the other.
+function volley(archers, x0, x1, tx0, tx1, t) {
+  const k = Math.min(8, archers * 2);
+  let g = "";
+  for (let i = 0; i < k; i++) {
+    const f = k > 1 ? i / (k - 1) : 0.5, sx = x0 + (x1 - x0) * f;
+    const ex = tx0 + (tx1 - tx0) * (((i * 5) % k) / Math.max(1, k - 1)), b = t + i * 0.045;
+    const path = "M" + sx.toFixed(1) + " 80 Q" + ((sx + ex) / 2).toFixed(1) + " " + (14 + (i % 3) * 6) + " " + ex.toFixed(1) + " 93";
+    g += '<g opacity="0"><set attributeName="opacity" to="1" begin="' + b.toFixed(2) + 's"/><set attributeName="opacity" to="0" begin="' + (b + 0.55).toFixed(2) + 's"/>'
+      + '<animateMotion dur="0.55s" begin="' + b.toFixed(2) + 's" fill="freeze" rotate="auto" path="' + path + '"/>'
+      + '<path d="M-5 0 H3 M3 0 l-2.2 -1.5 M3 0 l-2.2 1.5 M-5 0 l-1.5 -1.2 M-5 0 l-1.5 1.2" fill="none" stroke="#f1ead8" stroke-width="0.8" stroke-linecap="round"/></g>';
+  }
+  return g;
 }
 
 function render() {
   for (const [key, p] of [["you", you], ["enemy", enemy]]) {
     const hpPct = Math.max(0, p.hp) / CFG.startHP * 100;
-    document.getElementById(key + "-hpfill").style.width = hpPct + "%";
-    const ghost = document.getElementById(key + "-hpghost"), prevH = prevHp[key];
+    const prevH = prevHp[key], tookDmg = prevH !== undefined && p.hp < prevH;
+    const siegeHit = tookDmg && foeOf(p).sieging;          // a siege stone, not an assault
+    const lag = siegeHit ? SIEGE_HIT_MS / 1000 : 0;         // let the bar drop when the stone lands
+    const fill = document.getElementById(key + "-hpfill");
+    if (tookDmg) fill.style.transitionDelay = lag ? lag + "s" : "";
+    fill.style.width = hpPct + "%";
+    const ghost = document.getElementById(key + "-hpghost");
     if (ghost) {
-      if (prevH !== undefined && p.hp < prevH) {
+      if (tookDmg) {
         // damage: the ghost holds the old width for a beat, then decays to the new one
         ghost.style.transition = "none"; ghost.style.width = (Math.max(0, prevH) / CFG.startHP * 100) + "%";
-        void ghost.offsetWidth; ghost.style.transition = ""; ghost.style.width = hpPct + "%";
-        const panel = document.getElementById("panel-" + key);
-        panel.classList.remove("hurt"); void panel.offsetWidth; panel.classList.add("hurt");
-        spawnFloat(key, "−" + (prevH - Math.max(0, p.hp)));
+        void ghost.offsetWidth; ghost.style.transition = ""; ghost.style.transitionDelay = (lag + 0.35) + "s"; ghost.style.width = hpPct + "%";
+        const panel = document.getElementById("panel-" + key), lost = prevH - Math.max(0, p.hp), cut = Math.round((p.suppression || 0) * 100);
+        const hurt = () => {
+          panel.classList.remove("hurt"); void panel.offsetWidth; panel.classList.add("hurt");
+          spawnFloat(key, "−" + lost);
+          if (siegeHit && cut > 0) spawnFloat(key, "−" + cut + "% income", "econ");
+        };
+        if (siegeHit) setTimeout(hurt, SIEGE_HIT_MS); else hurt();
       } else ghost.style.width = hpPct + "%";
     }
     prevHp[key] = Math.max(0, p.hp);
@@ -1055,10 +1241,14 @@ function render() {
     const bn = boostLeft(p);
     bb.style.display = (p.boostUsed && bn > 0) ? "inline-block" : "none";
     bb.textContent = "BOOST x" + CFG.boostMult + " (" + bn + ")";
-    // "BESIEGED" flag when the opponent is actively besieging this side
+    // The rules clear a siege flag when the besieger's next turn starts. For display, the camp
+    // (and the BESIEGED flag) stays up until the besieger finishes a turn without renewing it.
+    if (foeOf(p).sieging) siegeCamp[key] = true;
+    else if (current !== (key === "you" ? "enemy" : "you")) siegeCamp[key] = false;
     const sb = document.getElementById(key + "-siegebadge");
-    if (sb) sb.style.display = foeOf(p).sieging ? "inline-block" : "none";
+    if (sb) sb.style.display = siegeCamp[key] ? "inline-block" : "none";
     drawScene(key, p);
+    if (siegeHit) playSiegeFx(key, p);
   }
   document.getElementById("you-income").textContent = "+" + income(you) + "/turn";
 
@@ -1266,6 +1456,7 @@ function battleStageSVG(snap, res) {
     + '<pattern id="bbrick" width="8" height="5" patternUnits="userSpaceOnUse"><path d="M0 2.5H8M4 0V2.5M0 2.5V5M8 2.5V5" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.6"/></pattern>'
     + '<pattern id="bgrass" width="14" height="9" patternUnits="userSpaceOnUse"><path d="M2 8l1-4M6 9l1.5-3M10 8l1-4M13 9l-1-3" fill="none" stroke="#6f9a47" stroke-width="0.6" stroke-opacity="0.35"/></pattern>'
     + '</defs>';
+  s += '<g class="cam">';
   s += '<rect width="320" height="96" fill="url(#bsky)"/>';
   for (const [x, y, o] of [[24,10,.8],[70,20,.5],[118,7,.7],[176,14,.55],[230,6,.8],[276,18,.5],[300,30,.4],[150,28,.4]])
     s += '<circle cx="' + x + '" cy="' + y + '" r="' + (0.6 + o * 0.5).toFixed(2) + '" fill="#fff6d8" opacity="' + (o * 0.7).toFixed(2) + '"/>';
@@ -1280,6 +1471,9 @@ function battleStageSVG(snap, res) {
   // defenders hold in front of their castle (face left); attackers charge in from the left
   s += lineUpBattle(snap.def, -1, 250, 205, "def", attWins);
   s += lineUpBattle(snap.att, 1, 22, 110, "att", !attWins);
+  // archers loose a volley before the lines meet
+  s += volley(snap.att.units.arc, 40, 100, 205, 248, 0.12);
+  s += volley(snap.def.units.arc, 210, 250, 120, 165, 0.32);
   // impact at the clash point: shockwave ring, flash, spark, dust burst
   s += '<g transform="translate(168,80)">';
   s += '<circle class="bring" r="6" fill="none" stroke="#fff2a8" stroke-width="2"/>';
@@ -1287,6 +1481,19 @@ function battleStageSVG(snap, res) {
   const puffs = [[-16,-4],[14,-6],[-8,8],[10,9],[-20,6],[20,2],[0,-12],[4,12]];
   for (let i = 0; i < puffs.length; i++)
     s += '<circle class="bdust" style="--dx:' + puffs[i][0] + 'px;--dy:' + puffs[i][1] + 'px;animation-delay:' + (0.78 + i * 0.03).toFixed(2) + 's" cx="0" cy="8" r="' + (2.2 + (i % 3)).toFixed(1) + '" fill="#d9c7a3"/>';
+  for (let i = 0; i < 8; i++)
+    s += '<g transform="rotate(' + (i * 45 + 20) + ')"><line class="bstreak" x1="6" y1="0" x2="22" y2="0" stroke="#fff6c8" stroke-width="1.3" stroke-linecap="round"/></g>';
+  for (let i = 0; i < 10; i++) {
+    const dx = (i - 4.5) * 7;
+    s += '<circle r="1" fill="#ffd27a" opacity="0"><set attributeName="opacity" to="1" begin="0.78s"/><set attributeName="opacity" to="0" begin="1.43s"/>'
+      + '<animateMotion dur="0.65s" begin="0.78s" fill="freeze" path="M0 0 Q' + (dx * 0.5).toFixed(1) + ' ' + (-14 - (i % 4) * 4) + ' ' + dx.toFixed(1) + ' ' + (10 + (i % 3) * 6) + '"/></circle>';
+  }
+  s += '</g>';
+  if (attWins) s += burstFx(286, 62, 0.95, 1.2);            // the breach: fire and rubble at the keep
+  else {                                                    // the line holds: a shield flare on the defenders
+    const lite = snap.def.side === "you" ? "#9fd4ff" : "#ffb0b0";
+    s += '<g transform="translate(198,78)"><path class="bshield" d="M0 -16 C9 -14 12 -9 12 -2 C12 8 6 14 0 18 C-6 14 -12 8 -12 -2 C-12 -9 -9 -14 0 -16 Z" fill="' + lite + '" fill-opacity="0.22" stroke="' + lite + '" stroke-width="1.6"/></g>';
+  }
   s += '</g>';
   s += '<rect class="bflash" width="320" height="150" fill="#fff"/>';
   if (res.dmg > 0) s += '<text class="bdmg" x="286" y="44" text-anchor="middle" font-family="Cinzel, Georgia, serif" font-weight="900" font-size="22" fill="#ffd97a" stroke="#4a2a00" stroke-width="0.9">−' + res.dmg + '</text>';
@@ -1306,7 +1513,9 @@ function battleResultText(res) {
 
 function playBattle(snap, res, onDone) {
   const ov = document.getElementById("battle-overlay");
-  document.getElementById("battle-stage").innerHTML = battleStageSVG(snap, res);
+  const stage = document.getElementById("battle-stage");
+  stage.innerHTML = battleStageSVG(snap, res);
+  if (stage.firstChild && stage.firstChild.setCurrentTime) stage.firstChild.setCurrentTime(0);
   const title = document.getElementById("battle-title");
   const sub = document.getElementById("battle-sub");
   title.textContent = res.attName + " assault!";
@@ -1314,22 +1523,40 @@ function playBattle(snap, res, onDone) {
   sub.textContent = res.outcome === "undefended"
     ? "atk " + res.aStr + "  ·  undefended"
     : "atk " + res.aStr + "   vs   def " + res.dStr;
+  const rt = battleResultText(res);
+  const attWins = res.outcome === "wipeDef" || res.outcome === "undefended";
+  document.getElementById("battle-box").className = "battle-box " + (rt.good ? "boom-good" : "boom-bad");
+
+  // power bar: starts even, then tips toward whoever won the clash
+  const cbA = document.getElementById("cb-att"), cbD = document.getElementById("cb-def");
+  const tint = (side) => side === "you" ? "linear-gradient(90deg, var(--you-deep), var(--you))" : "linear-gradient(90deg, var(--enemy), var(--enemy-deep))";
+  cbA.style.background = tint(snap.att.side); cbD.style.background = tint(snap.def.side);
+  for (const el of [cbA, cbD]) { el.style.transition = "none"; el.style.width = "50%"; }
+  void cbA.offsetWidth;
+  for (const el of [cbA, cbD]) el.style.transition = "";
+  const share = res.outcome === "undefended" ? 100 : Math.round(100 * res.aStr / (res.aStr + res.dStr));
   ov.classList.add("show");
 
-  const rt = battleResultText(res);
+  const timers = [];
+  const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+  if (snap.att.units.arc > 0) at(150, sfx.arrows);
+  if (snap.def.units.arc > 0) at(340, sfx.arrows);
+  at(780, () => { cbA.style.width = share + "%"; cbD.style.width = (100 - share) + "%"; sfx.clash(); });
+  if (attWins) at(950, sfx.boom); else at(820, sfx.shield);
+
   let ended = false;
   const reveal = () => { title.textContent = rt.t; title.className = "battle-title " + (rt.good ? "win" : "lose"); };
-  const t1 = setTimeout(reveal, 1150);
   const finish = () => {
     if (ended) return;
     ended = true;
-    clearTimeout(t1); clearTimeout(t2);
+    timers.forEach(clearTimeout);
     reveal();
     ov.classList.remove("show");
     ov.onclick = null;
     onDone();
   };
-  const t2 = setTimeout(finish, 2200);
+  at(1150, reveal);
+  at(2600, finish);
   ov.onclick = finish;                      // click to skip / speed up
 }
 
@@ -1389,12 +1616,12 @@ function showEnd(youWon) {
   modal.className = "modal " + cls;
   document.getElementById("modal-title").textContent = title;
   document.getElementById("modal-text").textContent = text;
-  document.getElementById("overlay").classList.add("show");
+  showAfterFx("overlay");
 }
 
 function showHandoff(side) {
   document.getElementById("handoff-title").textContent = sideName(side) + " — your turn";
-  document.getElementById("handoff-overlay").classList.add("show");
+  showAfterFx("handoff-overlay");
 }
 
 // ---- Player actions ---- (operate on whoever's turn it is)
@@ -1735,6 +1962,20 @@ document.getElementById("handoff-ready").addEventListener("click", () => {
   render();
 });
 document.getElementById("restart").addEventListener("click", reset);
+// Sound toggle, remembered per browser; the first click anywhere unlocks audio.
+function paintSound() {
+  const b = document.getElementById("sound-toggle");
+  b.classList.toggle("on", SFX.on);
+  b.textContent = SFX.on ? "Sound on" : "Muted";
+}
+document.getElementById("sound-toggle").addEventListener("click", () => {
+  SFX.on = !SFX.on;
+  try { localStorage.setItem("triarchy-sound", SFX.on ? "on" : "off"); } catch (e) { /* storage blocked */ }
+  paintSound();
+  if (SFX.on) sfx.clash();
+});
+document.addEventListener("pointerdown", () => audio(), { once: true });
+paintSound();
 
 reset();
 </script>
