@@ -31,6 +31,8 @@ The repository holds two independent games.
 - `<script id="battlefield">`: the 3D battlefield. Presentation only: it draws what the game tells it and owns no rules.
 - `<script id="game">`: the game itself, with every rule, the AI and the UI. Without WebGL it falls back to its own 2D scenes.
 
+`.github/workflows/deploy.yml` publishes both to GitHub Pages: FIRM's Vite build at the site root, and `triarchy/index.html` copied in at `/triarchy/`.
+
 ---
 
 ## Branch Strategy

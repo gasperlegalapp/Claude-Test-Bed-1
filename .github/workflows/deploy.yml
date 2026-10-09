@@ -30,6 +30,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # Triarchy is a single self-contained page; publish it next to FIRM at /triarchy/.
+      - run: mkdir -p dist/triarchy && cp triarchy/index.html dist/triarchy/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
