@@ -401,9 +401,6 @@
 
   /* ===== Wizard ===== */
   .act.wiz { --c: var(--tech); }
-  #btn-recruit { margin-bottom: 9px; }
-  .btngrid.two { grid-template-columns: repeat(2, 1fr); }
-  @media (max-width: 680px) { .btngrid.two { grid-template-columns: 1fr; } }
   .wardbadge { font-size: 9.5px; font-weight: 800; letter-spacing: 1px; color: #10151f; border-radius: 999px; padding: 2px 8px; vertical-align: middle;
     background: linear-gradient(180deg, #d4bcff, var(--tech)); box-shadow: 0 0 14px -2px var(--tech); }
   .scene .orb { transform-box: fill-box; transform-origin: center; animation: orbPulse 1.6s ease-in-out infinite; }
@@ -426,6 +423,42 @@
   .field-banner.bad { color: #ff8a8a; text-shadow: 0 0 22px rgba(255,90,90,.7), 0 3px 0 #3a0000; }
   @keyframes fieldBanner { 0% { opacity: 0; transform: scale(1.3); } 10% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
   .field-hint { position: absolute; right: 12px; bottom: 8px; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(233,238,247,.5); pointer-events: none; }
+
+  /* ===== Compact actions: one line per button, the description pops up on hover (or press-and-hold on touch) ===== */
+  .controls-top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 10px; }
+  .controls .controls-top h3 { margin: 0; }
+  .tiphint { font-size: 10.5px; color: var(--dim); letter-spacing: .4px; }
+  .tiphint::after { content: "Hover a button for details"; }
+  @media (hover: none) { .tiphint::after { content: "Press and hold a button for details"; } }
+  .group { margin-bottom: 12px; }
+  .grouplabel { margin-bottom: 7px; }
+  .btnrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .btnrow.wide { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }   /* longer labels: one column on phones */
+  .btngrid { gap: 8px; }
+  .act { overflow: visible; padding: 9px 12px 9px 14px; -webkit-touch-callout: none; user-select: none; }
+  .act::before { right: 0; width: auto; background: none; border-left: 3px solid var(--c); border-radius: inherit; }
+  button.act:hover:not(:disabled)::before { width: auto; border-left-width: 4px; }
+  button.act:disabled { opacity: 1; filter: none; background: linear-gradient(180deg, #121a2b, #0e1420); }
+  button.act:disabled .atitle { opacity: .4; filter: saturate(.35); }
+  .act .atitle { font-size: 13.5px; flex-wrap: wrap; row-gap: 3px; }
+  .act .atitle .usebadge { margin: 0 0 0 auto; }
+  .act .adesc {
+    position: absolute; z-index: 30; left: 50%; bottom: calc(100% + 9px); width: max(100%, 230px); max-width: 300px; margin: 0;
+    padding: 9px 11px; border-radius: 10px; font-size: 11.5px; font-weight: 500; line-height: 1.45; color: var(--text); text-align: left;
+    background: linear-gradient(180deg, #1d2740, #141b2c); border: 1px solid color-mix(in srgb, var(--c) 45%, var(--line));
+    box-shadow: 0 14px 30px -12px #000; pointer-events: none;
+    opacity: 0; visibility: hidden; transform: translate(-50%, 4px); transition: opacity .15s, transform .15s, visibility .15s;
+  }
+  .act .adesc::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border: 6px solid transparent; border-top-color: color-mix(in srgb, var(--c) 45%, var(--line)); }
+  .act.tip, .act:focus-visible { z-index: 25; }
+  .act.tip .adesc, .act:focus-visible .adesc { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+  @media (hover: hover) {
+    .act:hover { z-index: 25; }
+    .act:hover .adesc { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: .2s; }
+  }
+  @media (max-width: 680px) { .act .adesc { width: max(100%, 200px); } }
+  .train-tile .atitle .tcap { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .trainctl .trainbtn { flex: 1; margin-top: 0; }
 
   /* ===== Pinned stage: the battlefield stays at the top; each side's HP and stats sit in a bar above it ===== */
   .stage-turn { display: flex; align-items: center; justify-content: center; gap: 12px; grid-column: 1 / -1; order: -1; }
@@ -558,55 +591,12 @@
 
   <div class="intent" id="intent"><span class="intent-label">AI</span><span id="enemy-think">Waiting for your move...</span></div>
 
-  <div class="controls">
-    <h3 id="controls-head">Your move — take one action</h3>
-
-    <div class="group">
-      <div class="grouplabel">Upgrade — permanent boosts</div>
-      <div class="btngrid">
-        <button class="act atk" id="btn-ratk">
-          <div class="atitle"><span>Research: Attack</span><span class="acost" id="cost-ratk"></span></div>
-          <div class="adesc">+1 attack to <i>every</i> troop you own. <span class="usebadge" id="ratk-used"></span></div>
-        </button>
-        <button class="act def" id="btn-rdef">
-          <div class="atitle"><span>Research: Defense</span><span class="acost" id="cost-rdef"></span></div>
-          <div class="adesc">+1 defense to <i>every</i> troop you own. <span class="usebadge" id="rdef-used"></span></div>
-        </button>
-        <button class="act eco" id="btn-upgrade">
-          <div class="atitle"><span>Upgrade Farms</span><span class="acost" id="cost-upgrade"></span></div>
-          <div class="adesc" id="upgrade-desc">All farms +1 gold each.</div>
-        </button>
-      </div>
-    </div>
-
-    <div class="group">
-      <div class="grouplabel">Build &amp; Recruit</div>
-      <div class="btngrid">
-        <button class="act eco" id="btn-farm">
-          <div class="atitle"><span>Build Farm</span><span class="acost" id="cost-farm"></span></div>
-          <div class="adesc">+1 gold every turn. Cheap, compounds — but builds no defense.</div>
-        </button>
-        <div class="act mil train-tile">
-          <div class="atitle"><span>Train Troops</span><span class="acost" id="t-cost"></span></div>
-          <div class="typesel" id="typesel">
-            <span class="ty on" id="ty-inf" data-type="inf">Infantry<small id="ty-inf-stat"></small><small class="beats">&rsaquo; Knights</small></span>
-            <span class="ty" id="ty-arc" data-type="arc">Archers<small id="ty-arc-stat"></small><small class="beats">&rsaquo; Infantry</small></span>
-            <span class="ty" id="ty-kni" data-type="kni">Knights<small id="ty-kni-stat"></small><small class="beats">&rsaquo; Archers</small></span>
-          </div>
-          <div class="trainctl" id="trainctl">
-            <span class="step" id="t-minus">&minus;</span>
-            <span class="qty" id="t-qty">1</span>
-            <span class="step" id="t-plus">+</span>
-            <span class="tcap" id="t-cap"></span>
-          </div>
-          <button class="trainbtn" id="btn-train"><span id="train-label">Train</span></button>
-        </div>
-      </div>
-    </div>
+  <div class="controls" id="controls">
+    <div class="controls-top"><h3 id="controls-head">Your move — take one action</h3><span class="tiphint"></span></div>
 
     <div class="group">
       <div class="grouplabel">Engage — one strike per turn</div>
-      <div class="btngrid two">
+      <div class="btnrow">
         <button class="act attack" id="btn-attack">
           <div class="atitle"><span>Assault!</span><span class="acost" id="atk-cost">3g</span></div>
           <div class="adesc" id="atk-desc">Send your army at the enemy. Defenders have the edge.</div>
@@ -620,11 +610,11 @@
 
     <div class="group">
       <div class="grouplabel">Wizard — one per game, spells use your turn</div>
-      <button class="act wiz" id="btn-recruit">
-        <div class="atitle"><span>Recruit the Wizard</span><span class="acost" id="cost-recruit">10g</span></div>
-        <div class="adesc">Unlocks Fireball, Ward and Battle Blessing for the rest of the game.</div>
-      </button>
-      <div class="btngrid">
+      <div class="btnrow wide">
+        <button class="act wiz" id="btn-recruit">
+          <div class="atitle"><span>Recruit Wizard</span><span class="acost" id="cost-recruit">10g</span></div>
+          <div class="adesc">Unlocks Fireball, Ward and Battle Blessing for the rest of the game.</div>
+        </button>
         <button class="act wiz" id="btn-fireball">
           <div class="atitle"><span>Fireball</span><span class="acost" id="cost-fireball"></span></div>
           <div class="adesc" id="fireball-desc"></div>
@@ -636,6 +626,48 @@
         <button class="act boost" id="btn-boost">
           <div class="atitle"><span>Battle Blessing</span><span class="acost" id="boost-cost"></span></div>
           <div class="adesc" id="boost-desc"></div>
+        </button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="grouplabel">Build &amp; Recruit</div>
+      <div class="btngrid">
+        <button class="act eco" id="btn-farm">
+          <div class="atitle"><span>Build Farm</span><span class="acost" id="cost-farm"></span></div>
+          <div class="adesc">+1 gold every turn. Cheap, compounds — but builds no defense.</div>
+        </button>
+        <div class="act mil train-tile">
+          <div class="atitle"><span>Train Troops</span><span class="tcap" id="t-cap"></span></div>
+          <div class="typesel" id="typesel">
+            <span class="ty on" id="ty-inf" data-type="inf">Infantry<small id="ty-inf-stat"></small><small class="beats">&rsaquo; Knights</small></span>
+            <span class="ty" id="ty-arc" data-type="arc">Archers<small id="ty-arc-stat"></small><small class="beats">&rsaquo; Infantry</small></span>
+            <span class="ty" id="ty-kni" data-type="kni">Knights<small id="ty-kni-stat"></small><small class="beats">&rsaquo; Archers</small></span>
+          </div>
+          <div class="trainctl" id="trainctl">
+            <span class="step" id="t-minus">&minus;</span>
+            <span class="qty" id="t-qty">1</span>
+            <span class="step" id="t-plus">+</span>
+            <button class="trainbtn" id="btn-train"><span id="train-label">Train</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="grouplabel">Upgrade — permanent boosts</div>
+      <div class="btnrow wide">
+        <button class="act atk" id="btn-ratk">
+          <div class="atitle"><span>Research: Attack</span><span class="usebadge" id="ratk-used"></span><span class="acost" id="cost-ratk"></span></div>
+          <div class="adesc">+1 attack to <i>every</i> troop you own.</div>
+        </button>
+        <button class="act def" id="btn-rdef">
+          <div class="atitle"><span>Research: Defense</span><span class="usebadge" id="rdef-used"></span><span class="acost" id="cost-rdef"></span></div>
+          <div class="adesc">+1 defense to <i>every</i> troop you own.</div>
+        </button>
+        <button class="act eco" id="btn-upgrade">
+          <div class="atitle"><span>Upgrade Farms</span><span class="acost" id="cost-upgrade"></span></div>
+          <div class="adesc" id="upgrade-desc">All farms +1 gold each.</div>
         </button>
       </div>
     </div>
@@ -2393,15 +2425,14 @@ function render() {
     : "All farms +1 gold each (now +" + ap.farmLevel + " → +" + (ap.farmLevel + 1) + " each).";
   document.getElementById("cost-ratk").textContent = techMaxed ? "MAXED" : atkResCost + "g";
   document.getElementById("cost-rdef").textContent = techMaxed ? "MAXED" : defResCost + "g";
-  document.getElementById("ratk-used").textContent = techUsed + " of " + CFG.techCap + " used";
-  document.getElementById("rdef-used").textContent = techUsed + " of " + CFG.techCap + " used";
+  document.getElementById("ratk-used").textContent = techUsed + "/" + CFG.techCap;
+  document.getElementById("rdef-used").textContent = techUsed + "/" + CFG.techCap;
 
   // training: clamp the chosen quantity to what's affordable and under the cap
   const capLeft = CFG.armyCap - totalTroops(ap);
   const trainMax = maxTrainable(ap, selectedType);
   trainQty = Math.max(1, Math.min(trainQty, Math.max(1, trainMax)));
   const trainN = Math.min(trainQty, trainMax);
-  document.getElementById("t-cost").textContent = (trainN * TROOPS[selectedType].cost) + "g";
   document.getElementById("t-qty").textContent = trainN;
   document.getElementById("t-cap").textContent = capLeft + " slot" + (capLeft === 1 ? "" : "s") + " left";
   for (const ty of TYPES) {
@@ -3184,6 +3215,21 @@ if (view3d) {
   const markStuck = () => stage.classList.toggle("stuck", stage.getBoundingClientRect().top < 1);
   window.addEventListener("scroll", markStuck, { passive: true });
   markStuck();
+}
+// Touch screens have no hover: press and hold an action to read its description; letting go doesn't take the action.
+{
+  const controls = document.getElementById("controls");
+  let holdTimer = 0, held = null;
+  const drop = () => { clearTimeout(holdTimer); if (held) held.classList.remove("tip"); held = null; };
+  controls.addEventListener("touchstart", (e) => {
+    drop();
+    const b = e.target.closest(".act");
+    if (b && b.querySelector(".adesc")) holdTimer = setTimeout(() => { held = b; b.classList.add("tip"); }, 450);
+  }, { passive: true });
+  controls.addEventListener("touchmove", () => clearTimeout(holdTimer), { passive: true });
+  controls.addEventListener("touchend", (e) => { if (held) e.preventDefault(); drop(); });
+  controls.addEventListener("touchcancel", drop);
+  controls.addEventListener("contextmenu", (e) => { if (e.target.closest(".act")) e.preventDefault(); });
 }
 
 reset();
