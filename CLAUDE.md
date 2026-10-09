@@ -20,9 +20,12 @@ This repository serves as an environment for:
 
 ## Repository State
 
-The repository holds **Triarchy**, a 1v1 turn-based strategy game in a single self-contained `index.html` (HTML, CSS and JavaScript, no build step or dependencies). Open it in a browser to play. `tools/balance-sim.js` plays the real game code headlessly to measure balance.
+The repository holds **Triarchy**, a 1v1 turn-based strategy game in a single self-contained `index.html` (HTML, CSS and JavaScript, no build step). Open it in a browser to play; it runs offline. `tools/balance-sim.js` plays the real game code headlessly to measure balance.
 
-`prototype-3d.html` is a separate, non-playable look-and-feel test of the battlefield in 3D. It embeds three.js r149 (MIT) in its first `<script>` so it runs offline; its own code is the second `<script>`.
+`index.html` has three inline scripts:
+- three.js r149 (MIT), embedded so the game needs no network.
+- `<script id="battlefield">`: the 3D battlefield. Presentation only: it draws what the game tells it and owns no rules.
+- `<script id="game">`: the game itself, with every rule, the AI and the UI. Without WebGL it falls back to its own 2D scenes.
 
 ---
 

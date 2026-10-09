@@ -40,8 +40,8 @@ const SeededMath = Object.create(Math, { random: { value: random } });
 // Load the game with a minimal DOM stand-in. Timers queue up and run when drained, so animations finish instantly.
 function loadGame() {
   const html = fs.readFileSync(FILE, "utf8");
-  const match = html.match(/<script>([\s\S]*?)<\/script>/);
-  if (!match) throw new Error("no inline <script> found in " + FILE);
+  const match = html.match(/<script id="game">([\s\S]*?)<\/script>/);
+  if (!match) throw new Error('no <script id="game"> found in ' + FILE);
   const store = {};
   const mkEl = () => ({
     style: {}, textContent: "", innerHTML: "", disabled: false, className: "", offsetWidth: 0, firstChild: null,
