@@ -436,7 +436,7 @@
   .btnrow.wide { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }   /* longer labels: one column on phones */
   .btngrid { gap: 8px; }
   .act { overflow: visible; padding: 9px 12px 9px 14px; -webkit-touch-callout: none; user-select: none; }
-  .act::before { right: 0; width: auto; background: none; border-left: 3px solid var(--c); border-radius: inherit; }
+  .act::before { right: 0; width: auto; background: none; border-left: 3px solid var(--c); border-radius: inherit; pointer-events: none; }
   button.act:hover:not(:disabled)::before { width: auto; border-left-width: 4px; }
   button.act:disabled { opacity: 1; filter: none; background: linear-gradient(180deg, #121a2b, #0e1420); }
   button.act:disabled .atitle { opacity: .4; filter: saturate(.35); }
