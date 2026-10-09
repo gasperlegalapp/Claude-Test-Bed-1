@@ -427,47 +427,62 @@
   @keyframes fieldBanner { 0% { opacity: 0; transform: scale(1.3); } 10% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
   .field-hint { position: absolute; right: 12px; bottom: 8px; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(233,238,247,.5); pointer-events: none; }
 
-  /* ===== Pinned stage: the battlefield stays at the top with each side's HP and stats on it ===== */
-  .stage-turn { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0 0 14px; }
-  body.has3d .stage { position: sticky; top: 0; z-index: 20; padding: 8px 0 14px; margin-bottom: 2px; }
+  /* ===== Pinned stage: the battlefield stays at the top; each side's HP and stats sit in a bar above it ===== */
+  .stage-turn { display: flex; align-items: center; justify-content: center; gap: 12px; grid-column: 1 / -1; order: -1; }
+  body.has3d .stage { position: sticky; top: 0; z-index: 20; display: flex; flex-direction: column; padding: 8px 0 14px; margin-bottom: 2px; }
   body.has3d .stage.stuck { background: linear-gradient(180deg, var(--bg-1) calc(100% - 14px), transparent); }
-  body.has3d .field { aspect-ratio: auto; height: clamp(220px, 46vh, 440px); min-height: 0; margin: 0; }
-  body.has3d .field-banner { top: 42%; }
-  body.has3d .stage-turn { position: absolute; z-index: 3; top: 20px; left: 50%; transform: translateX(-50%); flex-direction: column; gap: 4px; margin: 0; pointer-events: none; }
+  body.has3d .field { aspect-ratio: auto; height: clamp(200px, 38vh, 400px); min-height: 0; margin: 0; }
+  body.has3d .board { order: -1; position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    margin-bottom: 8px; padding: 9px 16px 10px; border-radius: 14px; border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(23,31,50,.92), rgba(12,17,28,.92)); box-shadow: inset 0 1px 0 var(--line-hi), 0 10px 24px -16px #000; }
+  body.has3d .stage-turn { order: 0; flex-direction: column; gap: 3px; }
   body.has3d .stage-turn .turnchip { white-space: nowrap; }
-  body.has3d .stage-turn .turncount { white-space: nowrap; text-shadow: 0 1px 4px #000; }
-  body.has3d .board { position: absolute; z-index: 2; top: 8px; left: 0; right: 0; padding: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; pointer-events: none; }
-  body.has3d .player { width: min(330px, calc(50% - 5px)); padding: 9px 11px; border-radius: 14px; background: rgba(9,13,24,.68); backdrop-filter: blur(6px); }
-  body.has3d .pname { font-size: 12px; letter-spacing: 1.5px; margin-bottom: 6px; }
-  body.has3d .hpbar { height: 18px; border-radius: 7px; }
-  body.has3d .hptext { font-size: 11px; }
-  body.has3d .stats { gap: 5px; margin-top: 7px; }
-  body.has3d .stat { padding: 4px 3px; border-radius: 8px; background: rgba(8,12,22,.72); }
-  body.has3d .stat .label { font-size: 8.5px; letter-spacing: 1px; }
-  body.has3d .stat .val { font-size: 16px; margin-top: 1px; }
-  body.has3d .stat .sub { font-size: 8.5px; min-height: 10px; margin-top: 0; }
-  body.has3d .dmgfloat { top: 58px; font-size: 22px; }
-  body.has3d .dmgfloat.econ { top: 86px; font-size: 13px; }
-  /* No room between the two panels: the turn chip moves to the bottom of the field. */
+  body.has3d .stage-turn .turncount { white-space: nowrap; }
+  /* Each side reads as text on the bar: no card, the side whose turn it is lit and the other dimmed. */
+  body.has3d .player { width: min(390px, calc(50% - 90px)); padding: 0; overflow: visible; border: 0; border-radius: 0; background: none; box-shadow: none; transition: opacity .35s var(--ease); }
+  body.has3d .player::before { display: none; }
+  body.has3d .player.you.active, body.has3d .player.enemy.active { border: 0; box-shadow: none; }
+  body.has3d .player:not(.active) { opacity: .62; }
+  body.has3d .player.active .pname { text-shadow: 0 0 14px currentColor; }
+  body.has3d .player.enemy, body.has3d .player.enemy .stat { text-align: right; }
+  body.has3d .player.enemy .pname { justify-content: flex-end; }
+  body.has3d .player.enemy .stats { justify-content: end; }
+  body.has3d .pname { font-size: 12px; letter-spacing: 1.5px; margin-bottom: 5px; }
+  body.has3d .hpbar { height: 14px; border-radius: 6px; }
+  body.has3d .hptext { font-size: 10px; }
+  body.has3d .stats { grid-template-columns: repeat(4, auto); justify-content: start; gap: 20px; margin-top: 6px; }
+  body.has3d .stat { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; text-align: left; }
+  body.has3d .stat .label { font-size: 8.5px; letter-spacing: 1.2px; }
+  body.has3d .stat .val { font-size: 15px; margin-top: 0; text-shadow: 0 0 10px color-mix(in srgb, currentColor 55%, transparent); }
+  body.has3d .stat .sub { font-size: 8.5px; min-height: 0; margin-top: 0; white-space: nowrap; }
+  /* Damage numbers drift up from just under the bar, over the sky. */
+  body.has3d .dmgfloat { top: calc(100% + 30px); right: 4px; font-size: 22px; }
+  body.has3d .dmgfloat.econ { top: calc(100% + 56px); font-size: 13px; }
+  body.has3d .player.hurt::after { inset: -6px; border-radius: 10px; }
+  /* Too narrow for the turn chip between the sides: it gets its own row at the top of the bar. */
   @media (max-width: 900px) {
-    body.has3d .stage-turn { top: auto; bottom: 24px; flex-direction: row; gap: 10px; }
+    body.has3d .board { flex-wrap: wrap; row-gap: 6px; }
+    body.has3d .stage-turn { order: -1; width: 100%; flex-direction: row; gap: 10px; }
+    body.has3d .stage-turn .turnchip { padding: 4px 14px; font-size: 11px; }
+    body.has3d .player { width: calc(50% - 8px); }
     body.has3d .field-hint { display: none; }
   }
   @media (max-width: 720px) {
-    body.has3d .field { height: clamp(220px, 42vh, 360px); }
-    body.has3d .player { padding: 7px 8px; }
-    body.has3d .stage-turn .turnchip { padding: 5px 14px; font-size: 11px; }
-    body.has3d .pname { font-size: 10.5px; letter-spacing: 1px; margin-bottom: 5px; }
+    body.has3d .field { height: clamp(190px, 36vh, 320px); }
+    body.has3d .board { padding: 7px 10px 8px; gap: 12px; }
+    body.has3d .pname { font-size: 10.5px; letter-spacing: 1px; margin-bottom: 4px; }
     body.has3d .boostbadge, body.has3d .siegebadge, body.has3d .wardbadge { font-size: 8px; padding: 1px 5px; }
-    body.has3d .stats { gap: 3px; margin-top: 5px; }
-    body.has3d .stat { padding: 3px 1px; }
+    body.has3d .hpbar { height: 12px; }
+    body.has3d .hptext { font-size: 9px; }
+    body.has3d .stats { grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 5px; }
+    body.has3d .stat, body.has3d .player.enemy .stat { text-align: center; }
     body.has3d .stat .label { font-size: 7.5px; letter-spacing: .3px; }
     body.has3d .stat .label[data-short] { font-size: 0; }
     body.has3d .stat .label[data-short]::before { content: attr(data-short); font-size: 7.5px; }
-    body.has3d .stat .val { font-size: 13px; }
+    body.has3d .stat .val { font-size: 12.5px; }
     body.has3d .stat .sub { display: none; }
-    body.has3d .dmgfloat { top: 40px; right: 12px; font-size: 18px; }
-    body.has3d .dmgfloat.econ { top: 62px; font-size: 11px; }
+    body.has3d .dmgfloat { font-size: 18px; }
+    body.has3d .dmgfloat.econ { font-size: 11px; }
   }
   /* Too short to pin without crowding out the controls: let it scroll. */
   @media (max-height: 520px) { body.has3d .stage { position: static; } }
@@ -507,11 +522,6 @@
   <div class="stage" id="stage">
   <div class="field" id="field"><div class="field-hint">Drag to look around &middot; double-click to reset</div></div>
 
-  <div class="stage-turn">
-    <span id="turnchip" class="turnchip you">YOUR TURN</span>
-    <span class="turncount">Turn <b id="turnnum">1</b></span>
-  </div>
-
   <div class="board">
     <!-- PLAYER 1 -->
     <div class="player you active" id="panel-you">
@@ -524,6 +534,11 @@
         <div class="stat tech"><div class="label" data-short="Tech">Research</div><div class="val" id="you-tech">0</div><div class="sub" id="you-techsub"></div></div>
         <div class="stat mil"><div class="label">Army</div><div class="val" id="you-army">0</div><div class="sub" id="you-str"></div></div>
       </div>
+    </div>
+
+    <div class="stage-turn">
+      <span id="turnchip" class="turnchip you">YOUR TURN</span>
+      <span class="turncount">Turn <b id="turnnum">1</b></span>
     </div>
 
     <!-- PLAYER 2 -->
