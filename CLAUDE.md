@@ -20,9 +20,13 @@ This repository serves as an environment for:
 
 ## Repository State
 
-The repository holds **Triarchy**, a 1v1 turn-based strategy game in a single self-contained `index.html` (HTML, CSS and JavaScript, no build step). Open it in a browser to play; it runs offline. `tools/balance-sim.js` plays the real game code headlessly to measure balance.
+The repository holds two independent games.
 
-`index.html` has three inline scripts:
+**FIRM** (repository root) is a law-firm management game built with Vite and TypeScript. Game logic lives in `src/engine/` with its tests in `src/engine/__tests__/`, content in `src/data/`, and rendering in `src/ui/render.ts`. Run `npm install` once, then `npm run dev` to play, `npm run build` to build, and `npm test` to run the tests.
+
+**Triarchy** (`triarchy/`) is a 1v1 turn-based strategy game in a single self-contained `triarchy/index.html` (HTML, CSS and JavaScript, no build step). Open it in a browser to play; it runs offline. `triarchy/tools/balance-sim.cjs` plays the real game code headlessly to measure balance.
+
+`triarchy/index.html` has three inline scripts:
 - three.js r149 (MIT), embedded so the game needs no network.
 - `<script id="battlefield">`: the 3D battlefield. Presentation only: it draws what the game tells it and owns no rules.
 - `<script id="game">`: the game itself, with every rule, the AI and the UI. Without WebGL it falls back to its own 2D scenes.
@@ -160,17 +164,21 @@ PRs should include:
 
 ## Testing & Linting
 
-There is no unit test suite or linter. The balance simulator is the check for any change to game rules or the AI, and it needs only Node:
+There is no linter for either project.
+
+**FIRM:** `npm test` runs the Vitest suite in `src/engine/__tests__/`.
+
+**Triarchy:** the balance simulator is the check for any change to game rules or the AI, and it needs only Node:
 
 ```bash
-node tools/balance-sim.js                   # all reports, 300 games per matchup, seed 1
-node tools/balance-sim.js --report mirror   # one of: mirror, wizard, ai, ai-wizard, all
-node tools/balance-sim.js --games 500 --seed 7
+node triarchy/tools/balance-sim.cjs                   # all reports, 300 games per matchup, seed 1
+node triarchy/tools/balance-sim.cjs --report mirror   # one of: mirror, wizard, ai, ai-wizard, all
+node triarchy/tools/balance-sim.cjs --games 500 --seed 7
 ```
 
 - Runs are seeded, so run the same command before and after a change and compare.
 - It exits non-zero if any simulated game breaks a rule: negative gold, an army, income or research cap exceeded, or a crash.
-- The header of `tools/balance-sim.js` explains how to read each report.
+- The header of `triarchy/tools/balance-sim.cjs` explains how to read each report.
 
 ---
 

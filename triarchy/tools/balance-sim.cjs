@@ -5,10 +5,10 @@
 // Runs the real game script from index.html headlessly and plays scripted strategies against each other and
 // against the built-in AI. Use it before and after any rules or AI change to see whether the meta moved.
 //
-//   node triarchy/tools/balance-sim.js                      all reports, 300 games per matchup, seed 1
-//   node triarchy/tools/balance-sim.js --games 500 --seed 7
-//   node triarchy/tools/balance-sim.js --report mirror      one of: mirror, wizard, ai, ai-wizard, all
-//   node triarchy/tools/balance-sim.js --file other.html
+//   node triarchy/tools/balance-sim.cjs                      all reports, 300 games per matchup, seed 1
+//   node triarchy/tools/balance-sim.cjs --games 500 --seed 7
+//   node triarchy/tools/balance-sim.cjs --report mirror      one of: mirror, wizard, ai, ai-wizard, all
+//   node triarchy/tools/balance-sim.cjs --file other.html
 //
 // Reading the output:
 //   mirror     Four strategies (Greed, Rush, Balanced, Turtle) play each other. A healthy meta has no strategy
