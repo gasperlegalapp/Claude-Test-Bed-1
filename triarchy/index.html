@@ -427,6 +427,51 @@
   @keyframes fieldBanner { 0% { opacity: 0; transform: scale(1.3); } 10% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
   .field-hint { position: absolute; right: 12px; bottom: 8px; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(233,238,247,.5); pointer-events: none; }
 
+  /* ===== Pinned stage: the battlefield stays at the top with each side's HP and stats on it ===== */
+  .stage-turn { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0 0 14px; }
+  body.has3d .stage { position: sticky; top: 0; z-index: 20; padding: 8px 0 14px; margin-bottom: 2px; }
+  body.has3d .stage.stuck { background: linear-gradient(180deg, var(--bg-1) calc(100% - 14px), transparent); }
+  body.has3d .field { aspect-ratio: auto; height: clamp(220px, 46vh, 440px); min-height: 0; margin: 0; }
+  body.has3d .field-banner { top: 42%; }
+  body.has3d .stage-turn { position: absolute; z-index: 3; top: 20px; left: 50%; transform: translateX(-50%); flex-direction: column; gap: 4px; margin: 0; pointer-events: none; }
+  body.has3d .stage-turn .turnchip { white-space: nowrap; }
+  body.has3d .stage-turn .turncount { white-space: nowrap; text-shadow: 0 1px 4px #000; }
+  body.has3d .board { position: absolute; z-index: 2; top: 8px; left: 0; right: 0; padding: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; pointer-events: none; }
+  body.has3d .player { width: min(330px, calc(50% - 5px)); padding: 9px 11px; border-radius: 14px; background: rgba(9,13,24,.68); backdrop-filter: blur(6px); }
+  body.has3d .pname { font-size: 12px; letter-spacing: 1.5px; margin-bottom: 6px; }
+  body.has3d .hpbar { height: 18px; border-radius: 7px; }
+  body.has3d .hptext { font-size: 11px; }
+  body.has3d .stats { gap: 5px; margin-top: 7px; }
+  body.has3d .stat { padding: 4px 3px; border-radius: 8px; background: rgba(8,12,22,.72); }
+  body.has3d .stat .label { font-size: 8.5px; letter-spacing: 1px; }
+  body.has3d .stat .val { font-size: 16px; margin-top: 1px; }
+  body.has3d .stat .sub { font-size: 8.5px; min-height: 10px; margin-top: 0; }
+  body.has3d .dmgfloat { top: 58px; font-size: 22px; }
+  body.has3d .dmgfloat.econ { top: 86px; font-size: 13px; }
+  /* No room between the two panels: the turn chip moves to the bottom of the field. */
+  @media (max-width: 900px) {
+    body.has3d .stage-turn { top: auto; bottom: 24px; flex-direction: row; gap: 10px; }
+    body.has3d .field-hint { display: none; }
+  }
+  @media (max-width: 720px) {
+    body.has3d .field { height: clamp(220px, 42vh, 360px); }
+    body.has3d .player { padding: 7px 8px; }
+    body.has3d .stage-turn .turnchip { padding: 5px 14px; font-size: 11px; }
+    body.has3d .pname { font-size: 10.5px; letter-spacing: 1px; margin-bottom: 5px; }
+    body.has3d .boostbadge, body.has3d .siegebadge, body.has3d .wardbadge { font-size: 8px; padding: 1px 5px; }
+    body.has3d .stats { gap: 3px; margin-top: 5px; }
+    body.has3d .stat { padding: 3px 1px; }
+    body.has3d .stat .label { font-size: 7.5px; letter-spacing: .3px; }
+    body.has3d .stat .label[data-short] { font-size: 0; }
+    body.has3d .stat .label[data-short]::before { content: attr(data-short); font-size: 7.5px; }
+    body.has3d .stat .val { font-size: 13px; }
+    body.has3d .stat .sub { display: none; }
+    body.has3d .dmgfloat { top: 40px; right: 12px; font-size: 18px; }
+    body.has3d .dmgfloat.econ { top: 62px; font-size: 11px; }
+  }
+  /* Too short to pin without crowding out the controls: let it scroll. */
+  @media (max-height: 520px) { body.has3d .stage { position: static; } }
+
   /* ===== Help ===== */
   .help { margin-top: 20px; }
   .help summary { cursor: pointer; color: var(--muted); font-size: 13px; letter-spacing: .3px; }
@@ -444,8 +489,6 @@
   </header>
 
   <div class="turnbar">
-    <span id="turnchip" class="turnchip you">YOUR TURN</span>
-    <span class="turncount">Turn <b id="turnnum">1</b></span>
     <span class="diffbar">
       <span class="difflabel">Mode</span>
       <button class="diff on" id="mode-ai">vs AI</button>
@@ -461,7 +504,13 @@
     <span class="diffbar" id="cinebar"><button class="diff on" id="cine-toggle">Cinematic camera</button></span>
   </div>
 
+  <div class="stage" id="stage">
   <div class="field" id="field"><div class="field-hint">Drag to look around &middot; double-click to reset</div></div>
+
+  <div class="stage-turn">
+    <span id="turnchip" class="turnchip you">YOUR TURN</span>
+    <span class="turncount">Turn <b id="turnnum">1</b></span>
+  </div>
 
   <div class="board">
     <!-- PLAYER 1 -->
@@ -471,8 +520,8 @@
       <div class="scenewrap" id="you-scenewrap"><div class="scene" id="you-scene"></div><div class="fxlayer" id="you-fx"></div></div>
       <div class="stats">
         <div class="stat gold"><div class="label">Gold</div><div class="val" id="you-gold">0</div><div class="sub" id="you-income"></div></div>
-        <div class="stat eco"><div class="label">Economy</div><div class="val" id="you-eco">0</div><div class="sub" id="you-ecosub">income/turn</div></div>
-        <div class="stat tech"><div class="label">Research</div><div class="val" id="you-tech">0</div><div class="sub" id="you-techsub"></div></div>
+        <div class="stat eco"><div class="label" data-short="Econ">Economy</div><div class="val" id="you-eco">0</div><div class="sub" id="you-ecosub">income/turn</div></div>
+        <div class="stat tech"><div class="label" data-short="Tech">Research</div><div class="val" id="you-tech">0</div><div class="sub" id="you-techsub"></div></div>
         <div class="stat mil"><div class="label">Army</div><div class="val" id="you-army">0</div><div class="sub" id="you-str"></div></div>
       </div>
     </div>
@@ -484,11 +533,12 @@
       <div class="scenewrap" id="enemy-scenewrap"><div class="scene" id="enemy-scene"></div><div class="fxlayer" id="enemy-fx"></div></div>
       <div class="stats">
         <div class="stat gold"><div class="label">Gold</div><div class="val" id="enemy-gold">0</div><div class="sub">&nbsp;</div></div>
-        <div class="stat eco"><div class="label">Economy</div><div class="val" id="enemy-eco">0</div><div class="sub" id="enemy-ecosub">income/turn</div></div>
-        <div class="stat tech"><div class="label">Research</div><div class="val" id="enemy-tech">0</div><div class="sub" id="enemy-techsub"></div></div>
+        <div class="stat eco"><div class="label" data-short="Econ">Economy</div><div class="val" id="enemy-eco">0</div><div class="sub" id="enemy-ecosub">income/turn</div></div>
+        <div class="stat tech"><div class="label" data-short="Tech">Research</div><div class="val" id="enemy-tech">0</div><div class="sub" id="enemy-techsub"></div></div>
         <div class="stat mil"><div class="label">Army</div><div class="val" id="enemy-army">0</div><div class="sub" id="enemy-str"></div></div>
       </div>
     </div>
+  </div>
   </div>
 
   <div class="intent" id="intent"><span class="intent-label">AI</span><span id="enemy-think">Waiting for your move...</span></div>
@@ -680,7 +730,10 @@ function createBattlefield(container, opts) {
   function fit() {
     const w = container.clientWidth, h = container.clientHeight;
     if (!w || !h) return;
-    camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h);
+    camera.aspect = w / h;
+    // Narrower than the 2.4:1 the scene is framed for (phones): widen the view so both castles stay in shot.
+    camera.fov = camera.aspect >= 2.4 ? 34 : 2 * Math.atan(Math.tan(17 * Math.PI / 180) * 2.4 / camera.aspect) * 180 / Math.PI;
+    camera.updateProjectionMatrix(); renderer.setSize(w, h);
   }
   if (window.ResizeObserver) new ResizeObserver(fit).observe(container); else window.addEventListener("resize", fit);
   fit();
@@ -3110,6 +3163,13 @@ document.getElementById("cine-toggle").addEventListener("click", () => {
   paintCinematic();
 });
 paintCinematic();
+// The battlefield pins to the top of the screen; once pinned it gets a backdrop so the controls scroll under it cleanly.
+if (view3d) {
+  const stage = document.getElementById("stage");
+  const markStuck = () => stage.classList.toggle("stuck", stage.getBoundingClientRect().top < 1);
+  window.addEventListener("scroll", markStuck, { passive: true });
+  markStuck();
+}
 
 reset();
 </script>
