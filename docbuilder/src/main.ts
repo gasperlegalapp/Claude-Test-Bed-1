@@ -7,6 +7,7 @@ import type { Answers, DocTemplate, Question, Value, Workflow } from "./engine/t
 import { builderHtml, issuesHtml, slug, textToOptions } from "./ui/builder.ts";
 import { documentsHtml, interviewHtml } from "./ui/interview.ts";
 import { load, resetAll, save, type Saved } from "./store.ts";
+import { fitToWidth, renderWordPreview } from "./ui/wordPreview.ts";
 import "./styles.css";
 
 type Tab = "build" | "interview" | "documents" | "json";
@@ -118,18 +119,38 @@ function fixShape(q: Question): void {
   }
 }
 
-function previewDoc(wf: Workflow, doc: DocTemplate): string {
+function previewDoc(wf: Workflow, doc: DocTemplate, index: number): string {
   try {
     const scope = createScope(wf, answers(), data.caseData);
-    return renderDocument(doc, scope.lookup, { file: false }).html;
+    const out = renderDocument(doc, scope.lookup, { file: Boolean(doc.docx) });
+    return out.file ? wordPreviewHost(`word-build-${index}`, out.file, out.html) : out.html;
   } catch (e) {
     return `<p class="bad">${esc((e as Error).message)}</p>`;
   }
 }
 
 function previews(wf: Workflow): Record<string, string> {
-  return Object.fromEntries(wf.documents.map((d) => [d.id, previewDoc(wf, d)]));
+  return Object.fromEntries(wf.documents.map((d, i) => [d.id, previewDoc(wf, d, i)]));
 }
+
+// Word previews are drawn after render() puts their hosts in the page. Until
+// then (or if drawing fails) each host shows the plain-text preview.
+const pendingWord = new Map<string, Uint8Array>();
+
+function wordPreviewHost(id: string, file: Uint8Array, fallback: string): string {
+  pendingWord.set(id, file);
+  return `<div class="word-preview" id="${id}"><div class="word-fallback">${fallback}</div></div>`;
+}
+
+function drawWordPreviews(): void {
+  for (const [id, file] of pendingWord) {
+    const host = root.querySelector<HTMLElement>(`#${id}`);
+    if (host) renderWordPreview(host, file).catch(() => host.classList.add("word-failed"));
+  }
+  pendingWord.clear();
+}
+
+window.addEventListener("resize", () => root.querySelectorAll<HTMLElement>(".word-preview").forEach(fitToWidth));
 
 // ----------------------------------------------------------------- render
 
@@ -214,13 +235,15 @@ function bodyHtml(): string {
   }
   if (ui.tab === "documents") {
     renderedDocs = assemble(wf, ans, data.caseData);
-    return documentsHtml(renderedDocs, missing);
+    return documentsHtml(renderedDocs, missing, (i) => wordPreviewHost(`word-doc-${i}`, renderedDocs[i].file!, renderedDocs[i].html));
   }
   return jsonHtml();
 }
 
 function render(): void {
+  pendingWord.clear();
   root.innerHTML = `${headerHtml()}<main class="tab-${ui.tab}">${bodyHtml()}</main>`;
+  drawWordPreviews();
 }
 
 /** Identifies an input so focus can be put back after a re-render. */
@@ -287,9 +310,10 @@ function refreshBuilder(): void {
     const wf = current();
     const issues = root.querySelector("#issues");
     if (issues) issues.innerHTML = issuesHtml(validateWorkflow(wf, { caseFields: caseFields() }));
+    // Typing here doesn't change a Word template, so its formatted preview is left alone.
     wf.documents.forEach((d, i) => {
       const el = root.querySelector(`#preview-${i}`);
-      if (el) el.innerHTML = previewDoc(wf, d);
+      if (el && !d.docx) el.innerHTML = previewDoc(wf, d, i);
     });
   }, 250);
 }
