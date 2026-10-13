@@ -17,7 +17,9 @@ export async function renderWordPreview(host: HTMLElement, bytes: Uint8Array): P
     className: "docx",
     inWrapper: true,
     breakPages: true,
-    ignoreLastRenderedPageBreak: true,
+    // Word saves where it last broke pages; following those markers splits
+    // the preview into pages where Word put them.
+    ignoreLastRenderedPageBreak: false,
     renderHeaders: true,
     renderFooters: true,
     renderFootnotes: true,
