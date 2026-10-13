@@ -10,6 +10,7 @@
 // would move.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { loadDocx } from "../engine/docx.ts";
 import { FUNCTION_DOCS } from "../engine/expr.ts";
 import { normalizeWorkflow, validateWorkflow, QUESTION_TYPES, type Issue } from "../engine/validate.ts";
 import type { Workflow } from "../engine/types.ts";
@@ -108,6 +109,7 @@ ${fields}
 - Every question should be used in a rule, a computed value, or a document.
 - Write documents in plain, professional legal English. Use bracketed placeholders only where no question fits.
 - When revising an existing workflow, keep the ids and content the user didn't ask to change.
+- A document whose body starts with "${WORD_MARKER}" is an uploaded Word file that you can't edit. Return it with the same id and the body exactly as given. Its text shows the tags it uses: make sure every variable they read exists as a question or computed value with exactly that name.
 - summary: two or three sentences on what you built or changed and any assumptions the lawyer should check.`;
 }
 
@@ -127,13 +129,13 @@ export async function generateWorkflow(opts: {
   const client = new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
   const system = systemPrompt(opts.caseFields);
   const first = opts.current
-    ? `Here is the current workflow:\n\n${JSON.stringify(opts.current)}\n\nRevise it as follows:\n${opts.request}`
+    ? `Here is the current workflow:\n\n${JSON.stringify(forAi(opts.current))}\n\nRevise it as follows:\n${opts.request}`
     : `Build a new workflow:\n${opts.request}`;
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: first }];
 
   opts.onStatus?.("Drafting…");
   let response = await requestWorkflow(client, system, messages);
-  let result = readResult(response, opts.caseFields);
+  let result = readResult(response, opts.caseFields, opts.current);
 
   const errors = result.issues.filter((i) => i.level === "error");
   if (errors.length) {
@@ -144,7 +146,7 @@ export async function generateWorkflow(opts: {
       content: `The workflow has these errors. Return the full corrected workflow.\n${errors.map((e) => `- ${e.where}: ${e.message}`).join("\n")}`,
     });
     response = await requestWorkflow(client, system, messages);
-    result = readResult(response, opts.caseFields);
+    result = readResult(response, opts.caseFields, opts.current);
   }
   return result;
 }
@@ -164,7 +166,26 @@ async function requestWorkflow(client: Anthropic, system: string, messages: Anth
     .finalMessage();
 }
 
-function readResult(response: Anthropic.Beta.BetaMessage, caseFields: string[]): GenerateResult {
+const WORD_MARKER = "[Word template";
+
+/** The workflow as Claude sees it: Word files become their text and tags instead of file data. */
+export function forAi(wf: Workflow): Workflow {
+  return {
+    ...wf,
+    documents: wf.documents.map(({ docx, ...doc }) => {
+      if (!docx) return doc;
+      let text: string;
+      try {
+        text = loadDocx(docx.data).text;
+      } catch (e) {
+        text = `(The file can't be read: ${(e as Error).message})`;
+      }
+      return { ...doc, body: `${WORD_MARKER} "${docx.fileName}". Read-only.]\n${text}` };
+    }),
+  };
+}
+
+function readResult(response: Anthropic.Beta.BetaMessage, caseFields: string[], current?: Workflow): GenerateResult {
   if (response.stop_reason === "refusal") throw new Error("Claude declined this request. Try rewording it.");
   if (response.stop_reason === "max_tokens") throw new Error("The workflow was too long to finish. Try asking for a smaller piece at a time.");
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
@@ -175,6 +196,11 @@ function readResult(response: Anthropic.Beta.BetaMessage, caseFields: string[]):
     throw new Error("Claude's reply wasn't valid JSON. Please try again.");
   }
   const workflow = normalizeWorkflow(raw.workflow);
+  // Put uploaded Word files back on the documents Claude kept.
+  for (const doc of workflow.documents) {
+    const original = current?.documents.find((d) => d.id === doc.id && d.docx);
+    if (original) Object.assign(doc, { body: original.body, docx: original.docx });
+  }
   return { workflow, summary: typeof raw.summary === "string" ? raw.summary : "", issues: validateWorkflow(workflow, { caseFields }) };
 }
 

@@ -14,7 +14,8 @@ function inline(s: string): string {
   return escapeHtml(s)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*(?!\s)(.+?)\*/g, "$1<em>$2</em>")
-    .replace(/__(.+?)__/g, "<u>$1</u>");
+    // Underline needs text inside, so signature lines (______) stay as written.
+    .replace(/__([^_\s](?:.*?[^_\s])?)__/g, "<u>$1</u>");
 }
 
 export function markdownToHtml(text: string): string {

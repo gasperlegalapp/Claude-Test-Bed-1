@@ -1,3 +1,5 @@
+/// <reference types="node" />
+import { readFileSync } from "node:fs";
 import { WORKFLOW_SCHEMA, generateWorkflow, systemPrompt } from "../generate.ts";
 import { ENGAGEMENT_LETTER } from "../../data/samples.ts";
 
@@ -81,5 +83,34 @@ describe("generateWorkflow", () => {
     await generateWorkflow({ apiKey: "sk-test", request: "Add a due date", current: ENGAGEMENT_LETTER, caseFields: [] });
     expect(sent).toContain('"id":"engagement_letter"');
     expect(sent).toContain("Revise it as follows:\nAdd a due date");
+  });
+});
+
+describe("Word templates and AI", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends a Word template's text and tags, not the file, and keeps the file", async () => {
+    const data = readFileSync(new URL("../../../public/samples/engagement-letter.docx", import.meta.url)).toString("base64");
+    const current = structuredClone(ENGAGEMENT_LETTER);
+    current.documents.push({ id: "word_letter", name: "Word letter", body: "", docx: { fileName: "engagement-letter.docx", data } });
+
+    let sent = "";
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body)).messages[0].content;
+      // Claude returns the Word document as it was shown, with a changed name.
+      const shown = JSON.parse(sent.slice(sent.indexOf("{"), sent.lastIndexOf("}") + 1));
+      shown.documents[2].name = "Engagement letter (Word)";
+      return sseResponse(JSON.stringify({ summary: "ok", workflow: shown }));
+    });
+
+    const result = await generateWorkflow({ apiKey: "sk-test", request: "Rename the Word letter", current, caseFields: [] });
+    expect(sent).not.toContain(data.slice(0, 40));
+    expect(sent).toContain('[Word template \\"engagement-letter.docx\\". Read-only.]');
+    expect(sent).toContain("{{ money(hourly_rate) }}");
+    const word = result.workflow.documents[2];
+    expect(word.name).toBe("Engagement letter (Word)");
+    expect(word.docx?.data).toBe(data);
+    expect(word.body).toBe("");
+    expect(result.issues.filter((i) => i.level === "error")).toEqual([]);
   });
 });

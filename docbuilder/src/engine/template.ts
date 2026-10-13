@@ -18,15 +18,18 @@
 import { evaluate, parse, display, truthy, ExprError, type Lookup, type Node as ExprNode } from "./expr.ts";
 import type { Value } from "./types.ts";
 
-type TNode =
+export type TNode =
   | { kind: "text"; text: string }
   | { kind: "out"; expr: ExprNode }
   | { kind: "if"; branches: { cond: ExprNode; body: TNode[] }[]; otherwise: TNode[] }
   | { kind: "for"; varName: string; list: ExprNode; body: TNode[] };
 
 export class TemplateError extends Error {
-  constructor(message: string, readonly line: number) {
-    super(`Line ${line}: ${message}`);
+  constructor(
+    readonly reason: string,
+    readonly line: number,
+  ) {
+    super(`Line ${line}: ${reason}`);
   }
 }
 
@@ -35,21 +38,18 @@ type Piece =
   | { kind: "out"; src: string; line: number }
   | { kind: "tag"; src: string; line: number };
 
-function lineAt(src: string, index: number): number {
-  let line = 1;
-  for (let i = 0; i < index; i++) if (src[i] === "\n") line++;
-  return line;
-}
-
-function split(src: string): Piece[] {
+function split(src: string, standalone: boolean): Piece[] {
   const pieces: Piece[] = [];
   const re = /\{\{([\s\S]*?)\}\}|\{%([\s\S]*?)%\}/g;
   let last = 0;
+  let line = 1;
+  let counted = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
+    for (; counted < m.index; counted++) if (src[counted] === "\n") line++;
     let start = m.index;
     let end = re.lastIndex;
-    if (m[2] !== undefined) {
+    if (m[2] !== undefined && standalone) {
       // Standalone tag: swallow its indentation and its line break.
       const lineStart = src.lastIndexOf("\n", start - 1) + 1;
       const nl = src.indexOf("\n", end);
@@ -60,7 +60,6 @@ function split(src: string): Piece[] {
       }
     }
     if (start > last) pieces.push({ kind: "text", text: src.slice(last, start) });
-    const line = lineAt(src, m.index);
     if (m[1] !== undefined) pieces.push({ kind: "out", src: m[1].trim(), line });
     else pieces.push({ kind: "tag", src: m[2].trim(), line });
     last = end;
@@ -79,8 +78,12 @@ function parseExpr(src: string, line: number): ExprNode {
   }
 }
 
-export function parseTemplate(src: string): TNode[] {
-  const pieces = split(src);
+/**
+ * `standalone: false` keeps whitespace around block tags as written; Word
+ * templates use it, since their source is XML rather than lines of text.
+ */
+export function parseTemplate(src: string, opts: { standalone?: boolean } = {}): TNode[] {
+  const pieces = split(src, opts.standalone ?? true);
   let i = 0;
 
   // Parses until one of `stops` is reached; returns the body and the stop tag.
@@ -147,7 +150,8 @@ export function parseTemplate(src: string): TNode[] {
   return body;
 }
 
-export function renderTemplate(nodes: TNode[], lookup: Lookup): string {
+/** `escape` is applied to every inserted value (Word templates escape for XML). */
+export function renderTemplate(nodes: TNode[], lookup: Lookup, escape: (s: string) => string = (s) => s): string {
   let out = "";
   for (const node of nodes) {
     switch (node.kind) {
@@ -155,11 +159,11 @@ export function renderTemplate(nodes: TNode[], lookup: Lookup): string {
         out += node.text;
         break;
       case "out":
-        out += display(evaluate(node.expr, lookup));
+        out += escape(display(evaluate(node.expr, lookup)));
         break;
       case "if": {
         const branch = node.branches.find((b) => truthy(evaluate(b.cond, lookup)));
-        out += renderTemplate(branch ? branch.body : node.otherwise, lookup);
+        out += renderTemplate(branch ? branch.body : node.otherwise, lookup, escape);
         break;
       }
       case "for": {
@@ -168,7 +172,7 @@ export function renderTemplate(nodes: TNode[], lookup: Lookup): string {
         items.forEach((item, index) => {
           const loop: Value = { index: index + 1, first: index === 0, last: index === items.length - 1, count: items.length };
           const inner: Lookup = (name) => (name === node.varName ? item : name === "loop" ? loop : lookup(name));
-          out += renderTemplate(node.body, inner);
+          out += renderTemplate(node.body, inner, escape);
         });
         break;
       }

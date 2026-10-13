@@ -37,11 +37,13 @@ export function load(): Saved {
   }
 }
 
-export function save(data: Saved): void {
+/** False when the browser refused (storage full or blocked); the app keeps working in memory. */
+export function save(data: Saved): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
+    return true;
   } catch {
-    // Storage can be full or blocked (private windows); the app keeps working in memory.
+    return false;
   }
 }
 

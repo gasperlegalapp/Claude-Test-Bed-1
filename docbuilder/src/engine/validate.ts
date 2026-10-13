@@ -6,6 +6,7 @@
 import { referencedPaths, type Node } from "./expr.ts";
 import { compile } from "./session.ts";
 import { parseTemplate, templateExprs } from "./template.ts";
+import { docxExprs, loadDocx } from "./docx.ts";
 import type { Computed, DocTemplate, Field, Option, Page, Question, QuestionType, Workflow } from "./types.ts";
 
 export interface Issue {
@@ -90,6 +91,8 @@ export function normalizeWorkflow(raw: unknown): Workflow {
       const doc: DocTemplate = { id: str(dr.id) || `doc_${i + 1}`, name: str(dr.name), body: str(dr.body) };
       const showIf = opt(dr.showIf);
       if (showIf) doc.showIf = showIf;
+      const docx = obj(dr.docx);
+      if (typeof docx.data === "string" && docx.data) doc.docx = { fileName: str(docx.fileName) || "template.docx", data: docx.data };
       return doc;
     }),
   };
@@ -238,7 +241,8 @@ export function validateWorkflow(wf: Workflow, opts: ValidateOptions = {}): Issu
     const where = `Document "${doc.name || doc.id}"`;
     if (doc.showIf) check(doc.showIf, `${where} show-if`);
     try {
-      for (const { expr, loops } of templateExprs(parseTemplate(doc.body))) checkPaths(referencedPaths(expr), where, { loops });
+      const exprs = doc.docx ? docxExprs(loadDocx(doc.docx.data)) : templateExprs(parseTemplate(doc.body));
+      for (const { expr, loops } of exprs) checkPaths(referencedPaths(expr), where, { loops });
     } catch (e) {
       err(where, (e as Error).message);
     }

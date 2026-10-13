@@ -9,6 +9,8 @@
 
 import { evaluate, parse, truthy, type Lookup, type Node } from "./expr.ts";
 import { parseTemplate, renderTemplate } from "./template.ts";
+import { docxPreviewHtml, fillDocx, fillDocxText, loadDocx } from "./docx.ts";
+import { markdownToHtml } from "./markdown.ts";
 import type { Answers, DocTemplate, Page, Question, Value, Workflow } from "./types.ts";
 
 const parsed = new Map<string, Node | Error>();
@@ -140,7 +142,21 @@ export function missingRequired(workflow: Workflow, answers: Answers, scope: Sco
 export interface RenderedDoc {
   doc: DocTemplate;
   text: string;
+  html: string;
+  /** The filled .docx, for documents built from a Word template. */
+  file?: Uint8Array;
   error?: string;
+}
+
+/** Fills one document. `file: false` skips building the .docx (for live previews). */
+export function renderDocument(doc: DocTemplate, lookup: Lookup, opts: { file: boolean }): Omit<RenderedDoc, "doc" | "error"> {
+  if (doc.docx) {
+    const template = loadDocx(doc.docx.data);
+    const text = fillDocxText(template, lookup);
+    return { text, html: docxPreviewHtml(text), file: opts.file ? fillDocx(template, lookup) : undefined };
+  }
+  const text = renderTemplate(parseTemplate(doc.body), lookup);
+  return { text, html: markdownToHtml(text) };
 }
 
 /** Renders every document whose show-if passes. */
@@ -151,9 +167,9 @@ export function assemble(workflow: Workflow, answers: Answers, caseData: Value =
     // As with questions, a broken show-if keeps the document rather than dropping it.
     if (doc.showIf && !(compile(doc.showIf) instanceof Error) && !truthy(scope.eval(doc.showIf))) continue;
     try {
-      out.push({ doc, text: renderTemplate(parseTemplate(doc.body), scope.lookup) });
+      out.push({ doc, ...renderDocument(doc, scope.lookup, { file: true }) });
     } catch (e) {
-      out.push({ doc, text: "", error: (e as Error).message });
+      out.push({ doc, text: "", html: "", error: (e as Error).message });
     }
   }
   return out;

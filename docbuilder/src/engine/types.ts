@@ -68,6 +68,8 @@ export interface DocTemplate {
   showIf?: string;
   /** Template text: Markdown-lite with `{{ expr }}`, `{% if %}` and `{% for %}` tags. */
   body: string;
+  /** An uploaded Word template; when present it is used instead of `body`. */
+  docx?: { fileName: string; data: string };
 }
 
 export interface Workflow {

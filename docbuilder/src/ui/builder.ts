@@ -5,7 +5,8 @@
 import { FUNCTION_DOCS } from "../engine/expr.ts";
 import { escapeHtml as esc } from "../engine/markdown.ts";
 import { QUESTION_TYPES, type Issue } from "../engine/validate.ts";
-import type { Field, Option, Question, Workflow } from "../engine/types.ts";
+import { loadDocx } from "../engine/docx.ts";
+import type { DocTemplate, Field, Option, Question, Workflow } from "../engine/types.ts";
 
 export const TYPE_LABELS: Record<string, string> = {
   text: "Short text",
@@ -103,6 +104,30 @@ function questionEditor(q: Question, pi: number, qi: number, open: boolean, last
   </div>`;
 }
 
+function wordInput(target: string): string {
+  return `<input type="file" data-docx-for="${target}" accept=".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>`;
+}
+
+function wordSource(d: DocTemplate, di: number): string {
+  const docx = d.docx!;
+  let text: string;
+  try {
+    text = loadDocx(docx.data).text;
+  } catch (e) {
+    text = `Couldn't read this file: ${(e as Error).message}`;
+  }
+  const kb = Math.round((docx.data.length * 3) / 4 / 1024);
+  return `<div class="word-source">
+    <div class="word-file"><strong>${esc(docx.fileName)}</strong> <span class="hint">${kb} KB Word template</span></div>
+    <div class="row-actions">
+      <button class="small" data-action="download-template" data-index="${di}">Download template</button>
+      <label class="button small">Replace file${wordInput(String(di))}</label>
+      <button class="small danger" data-action="remove-docx" data-index="${di}">Stop using this file</button>
+    </div>
+    <pre class="word-text">${esc(text)}</pre>
+  </div>`;
+}
+
 export function issuesHtml(issues: Issue[]): string {
   if (issues.length === 0) return `<p class="ok">No problems found.</p>`;
   const errors = issues.filter((i) => i.level === "error").length;
@@ -150,9 +175,10 @@ export function builderHtml(wf: Workflow, openQuestion: string | null, issues: I
         </div>
         <label class="inline">Generate only if${input(`documents.${di}.showIf`, d.showIf, { optional: true, code: true, placeholder: "always" })}</label>
         <div class="doc-edit">
-          <textarea class="code body" data-bind="documents.${di}.body" rows="18" spellcheck="false">${esc(d.body)}</textarea>
+          ${d.docx ? wordSource(d, di) : `<textarea class="code body" data-bind="documents.${di}.body" rows="18" spellcheck="false">${esc(d.body)}</textarea>`}
           <div class="paper mini" id="preview-${di}">${previews[d.id] ?? ""}</div>
         </div>
+        ${d.docx ? "" : `<div class="row-actions"><label class="button small">Use a Word file instead${wordInput(String(di))}</label></div>`}
       </section>`,
     )
     .join("");
@@ -173,7 +199,11 @@ export function builderHtml(wf: Workflow, openQuestion: string | null, issues: I
       <section class="card">${computed || `<p class="hint">None yet.</p>`}<button class="small" data-action="add-computed">+ Computed value</button></section>
       <h2>Documents <span class="hint">preview uses the current interview answers</span></h2>
       ${docs}
-      <button data-action="add-document">+ Document</button>
+      <div class="row-actions">
+        <button data-action="add-document">+ Document</button>
+        <label class="button">+ Word template${wordInput("new")}</label>
+        <span class="hint">Type the same tags in Word. Try the <a href="samples/engagement-letter.docx" download>sample Word template</a>, made for the sample Engagement Letter.</span>
+      </div>
     </div>
     <aside class="side-col">
       <section class="card sticky">
@@ -191,6 +221,7 @@ export function builderHtml(wf: Workflow, openQuestion: string | null, issues: I
             <p><code>and or not == != &lt; &gt; + - * /</code><br><code>x in ["a","b"]</code> · <code>list contains x</code></p>
             <p><code>{{ expr }}</code><br><code>{% if expr %} … {% elif expr %} … {% else %} … {% endif %}</code><br><code>{% for item in list %} … {% endfor %}</code></p>
             <p><code># Heading</code> · <code>**bold**</code> · <code>- bullet</code> · <code>-&gt; centered &lt;-</code> · <code>---pagebreak---</code></p>
+            <p><strong>In Word:</strong> a block tag alone on its line includes, removes or repeats whole paragraphs, and the tag lines disappear. Put <code>{% for x in list %}</code> in the first cell of a table row and <code>{% endfor %}</code> in the last cell to repeat the row. Values keep the formatting they were typed in.</p>
             <ul>${Object.values(FUNCTION_DOCS).map((d) => `<li><code>${esc(d)}</code></li>`).join("")}</ul>
           </div>
         </details>

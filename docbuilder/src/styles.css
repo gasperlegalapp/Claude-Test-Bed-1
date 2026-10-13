@@ -499,6 +499,45 @@ label.inline input {
   padding-left: 1rem;
 }
 
+.word-source {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.word-source .row-actions {
+  margin: 0.4rem 0 0.6rem;
+}
+
+.word-text {
+  flex: 1;
+  margin: 0;
+  min-height: 20rem;
+  max-height: 34rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem;
+}
+
+.paper.word p {
+  margin: 0 0 0.5em;
+}
+
+.doc-note {
+  max-width: 8.5in;
+  margin: -0.25rem auto 0.5rem;
+}
+
+.banner.storage {
+  margin: 0;
+  border-radius: 0;
+  border-width: 0 0 1px;
+}
+
 /* --------------------------------------------------------------- interview */
 
 .steps ol {

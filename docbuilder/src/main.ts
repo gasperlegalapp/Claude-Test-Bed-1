@@ -1,7 +1,7 @@
 import { casePaths } from "./data/samples.ts";
+import { base64ToBytes, bytesToBase64, DOCX_MIME, isDocx } from "./engine/docx.ts";
 import { escapeHtml as esc, markdownToHtml } from "./engine/markdown.ts";
-import { assemble, createScope, missingRequired, prefillAnswers, type RenderedDoc } from "./engine/session.ts";
-import { parseTemplate, renderTemplate } from "./engine/template.ts";
+import { assemble, createScope, missingRequired, prefillAnswers, renderDocument, type RenderedDoc } from "./engine/session.ts";
 import { normalizeWorkflow, validateWorkflow, type Issue } from "./engine/validate.ts";
 import type { Answers, DocTemplate, Question, Value, Workflow } from "./engine/types.ts";
 import { builderHtml, issuesHtml, slug, textToOptions } from "./ui/builder.ts";
@@ -53,9 +53,15 @@ function answers(): Answers {
 }
 
 let saveTimer = 0;
+let storageFull = false;
 function persist(): void {
   clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => save(data), 300);
+  saveTimer = window.setTimeout(() => {
+    const full = !save(data);
+    if (full === storageFull) return;
+    storageFull = full;
+    render();
+  }, 300);
 }
 
 function uniqueId(base: string, taken: Iterable<string>): string {
@@ -115,7 +121,7 @@ function fixShape(q: Question): void {
 function previewDoc(wf: Workflow, doc: DocTemplate): string {
   try {
     const scope = createScope(wf, answers(), data.caseData);
-    return markdownToHtml(renderTemplate(parseTemplate(doc.body), scope.lookup));
+    return renderDocument(doc, scope.lookup, { file: false }).html;
   } catch (e) {
     return `<p class="bad">${esc((e as Error).message)}</p>`;
   }
@@ -147,7 +153,8 @@ function headerHtml(): string {
     <button class="ai-btn${ui.ai.open ? " on" : ""}" data-action="ai-toggle">Build with AI</button>
   </header>
   ${ui.ai.open ? aiHtml() : ""}
-  <nav class="tabs">${tabs.map(([id, label]) => `<button class="${ui.tab === id ? "on" : ""}" data-action="tab" data-tab="${id}">${label}</button>`).join("")}</nav>`;
+  <nav class="tabs">${tabs.map(([id, label]) => `<button class="${ui.tab === id ? "on" : ""}" data-action="tab" data-tab="${id}">${label}</button>`).join("")}</nav>
+  ${storageFull ? `<div class="banner storage">This browser's storage is full, so recent changes won't survive a reload. Export your workflows from the JSON tab, or remove Word files you no longer need.</div>` : ""}`;
 }
 
 function aiHtml(): string {
@@ -168,7 +175,7 @@ function aiHtml(): string {
       <span class="spacer"></span>
       <label class="key">Anthropic API key <input type="password" id="ai-key" value="${esc(key)}" autocomplete="off" placeholder="sk-ant-..."></label>
     </div>
-    <p class="hint">The key stays in this browser tab and is sent only to Anthropic. In the case app this call runs on your server instead.</p>
+    <p class="hint">Tip: add your Word template under Documents first, then ask to "build the questions this Word template needs". The key stays in this browser tab and is sent only to Anthropic. In the case app this call runs on your server instead.</p>
     ${ai.busy ? `<p class="status">${esc(ai.status)}</p>` : ""}
     ${ai.error ? `<p class="bad">${esc(ai.error)}</p>` : ""}
     ${ai.summary ? `<div class="ai-result"><strong>Done.</strong> ${esc(ai.summary)}${ai.issues.length ? ` <em>(${errors} error${errors === 1 ? "" : "s"}, ${ai.issues.length - errors} warning${ai.issues.length - errors === 1 ? "" : "s"}; see Problems)</em>` : ""}</div>` : ""}
@@ -329,8 +336,9 @@ function move<T>(list: T[], index: number, dir: number): void {
   [list[index], list[to]] = [list[to], list[index]];
 }
 
-function downloadFile(name: string, type: string, content: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type }));
+function downloadFile(name: string, type: string, content: string | Uint8Array): void {
+  // fflate's bytes are typed over ArrayBufferLike; they are always plain ArrayBuffers here.
+  const url = URL.createObjectURL(new Blob([content as BlobPart], { type }));
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
@@ -343,6 +351,25 @@ function standaloneHtml(title: string, body: string): string {
 body{font-family:Georgia,"Times New Roman",serif;font-size:12pt;line-height:1.5;max-width:6.5in;margin:1in auto;color:#000}
 h1{text-align:center;font-size:16pt}h2{font-size:13pt}.center{text-align:center}.page-break{page-break-after:always}
 </style></head><body>${body}</body></html>`;
+}
+
+/** Attaches an uploaded Word file to document `target` (an index), or adds a new document for "new". */
+async function attachWordFile(file: File, target: string): Promise<void> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!isDocx(bytes)) {
+    alert(`"${file.name}" isn't a Word document. Save it from Word as .docx and try again.`);
+    return render();
+  }
+  const docx = { fileName: file.name, data: bytesToBase64(bytes) };
+  const wf = current();
+  if (target === "new") {
+    const id = uniqueId(slug(file.name.replace(/\.(docx|dotx)$/i, "")), wf.documents.map((d) => d.id));
+    wf.documents.push({ id, name: file.name.replace(/\.(docx|dotx)$/i, ""), body: "", docx });
+  } else {
+    wf.documents[Number(target)].docx = docx;
+  }
+  persist();
+  render();
 }
 
 async function runAi(modify: boolean): Promise<void> {
@@ -524,6 +551,19 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     const doc = renderedDocs[Number(el.dataset.index)];
     downloadFile(`${slug(doc.doc.name)}.html`, "text/html", standaloneHtml(doc.doc.name, markdownToHtml(doc.text)));
   },
+  "download-docx"(el) {
+    const doc = renderedDocs[Number(el.dataset.index)];
+    if (doc.file) downloadFile(`${slug(doc.doc.name)}.docx`, DOCX_MIME, doc.file);
+  },
+  "download-template"(el) {
+    const docx = current().documents[Number(el.dataset.index)].docx;
+    if (docx) downloadFile(docx.fileName, DOCX_MIME, base64ToBytes(docx.data));
+  },
+  "remove-docx"(el) {
+    const doc = current().documents[Number(el.dataset.index)];
+    if (!confirm(`Stop using "${doc.docx?.fileName}" and write this document in the app instead?`)) return;
+    delete doc.docx;
+  },
   "new-workflow"() {
     addWorkflow(blankWorkflow());
     ui.tab = "build";
@@ -582,7 +622,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   },
 };
 
-const ASYNC_ACTIONS = new Set(["ai-create", "ai-modify", "copy-doc", "download-doc", "print-doc"]);
+const ASYNC_ACTIONS = new Set(["ai-create", "ai-modify", "copy-doc", "download-doc", "download-docx", "download-template", "print-doc"]);
 
 root.addEventListener("click", (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>("[data-action]");
@@ -619,6 +659,11 @@ root.addEventListener("change", (e) => {
     ui.jsonDraft = null;
     persist();
     return render();
+  }
+  if (el.dataset.docxFor !== undefined) {
+    const file = (el as HTMLInputElement).files?.[0];
+    if (file) void attachWordFile(file, el.dataset.docxFor);
+    return;
   }
   if (el.id === "import-file") {
     const file = (el as HTMLInputElement).files?.[0];

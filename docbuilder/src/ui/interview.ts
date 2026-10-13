@@ -2,7 +2,7 @@
 // Answer inputs carry `data-answer` (plus `data-item` / `data-field` inside
 // lists); main.ts reads them back into the answers.
 
-import { escapeHtml as esc, markdownToHtml } from "../engine/markdown.ts";
+import { escapeHtml as esc } from "../engine/markdown.ts";
 import type { Missing, RenderedDoc, Scope } from "../engine/session.ts";
 import type { Answers, Field, Page, Question, Value, Workflow } from "../engine/types.ts";
 
@@ -133,11 +133,14 @@ export function documentsHtml(docs: RenderedDoc[], missing: Missing[]): string {
     .map(
       (d, i) => `<section class="doc-out">
         <div class="doc-bar"><h2>${esc(d.doc.name)}</h2>
-          <button data-action="print-doc" data-index="${i}">Print / Save as PDF</button>
+          ${d.file
+            ? `<button class="primary" data-action="download-docx" data-index="${i}">Download Word file</button>`
+            : `<button data-action="print-doc" data-index="${i}">Print / Save as PDF</button>`}
           <button data-action="copy-doc" data-index="${i}">Copy text</button>
-          <button data-action="download-doc" data-index="${i}">Download HTML</button>
+          ${d.file ? "" : `<button data-action="download-doc" data-index="${i}">Download HTML</button>`}
         </div>
-        ${d.error ? `<p class="bad">${esc(d.error)}</p>` : `<article class="paper" id="doc-${i}">${markdownToHtml(d.text)}</article>`}
+        ${d.file ? `<p class="hint doc-note">Text preview. The Word file keeps the template's formatting.</p>` : ""}
+        ${d.error ? `<p class="bad">${esc(d.error)}</p>` : `<article class="paper${d.file ? " word" : ""}" id="doc-${i}">${d.html}</article>`}
       </section>`,
     )
     .join("");

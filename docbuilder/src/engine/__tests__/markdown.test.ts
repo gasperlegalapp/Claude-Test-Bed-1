@@ -11,6 +11,11 @@ describe("markdown", () => {
     expect(markdownToHtml("---pagebreak---")).toBe('<div class="page-break"></div>');
   });
 
+  it("keeps signature lines and underlines text", () => {
+    expect(markdownToHtml("______________________________")).toBe("<p>______________________________</p>");
+    expect(markdownToHtml("__Notice__ follows")).toBe("<p><u>Notice</u> follows</p>");
+  });
+
   it("escapes HTML in answers", () => {
     expect(markdownToHtml('<img src=x onerror="alert(1)">')).toBe("<p>&lt;img src=x onerror=&quot;alert(1)&quot;&gt;</p>");
   });
