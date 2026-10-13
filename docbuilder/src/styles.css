@@ -538,6 +538,49 @@ label.inline input {
   border-width: 0 0 1px;
 }
 
+/* Formatted Word previews (docx-preview draws the pages inside .word-pages). */
+.word-preview {
+  overflow-x: auto;
+  background: #e4e7ec;
+  border-radius: 6px;
+}
+
+.word-preview .docx-wrapper {
+  background: transparent;
+  padding: 16px;
+}
+
+.word-preview .docx-wrapper > section.docx {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  margin-bottom: 16px;
+}
+
+.word-fallback {
+  background: #fff;
+  color: #000;
+  font-family: Georgia, "Times New Roman", serif;
+  padding: 1.25rem;
+}
+
+.word-doc {
+  max-width: 8.5in;
+  margin: 0 auto;
+}
+
+.doc-edit > * {
+  min-width: 0;
+}
+
+/* Auto side margins would stop the preview stretching to its grid column. */
+.doc-edit > .paper.mini {
+  margin: 0;
+}
+
+.paper.mini:has(.word-preview) {
+  padding: 0;
+  background: #e4e7ec;
+}
+
 /* --------------------------------------------------------------- interview */
 
 .steps ol {

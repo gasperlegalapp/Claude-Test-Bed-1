@@ -123,7 +123,8 @@ export function interviewHtml(
   </div>`;
 }
 
-export function documentsHtml(docs: RenderedDoc[], missing: Missing[]): string {
+/** `wordPreview(i)` returns the host for document i's formatted Word preview. */
+export function documentsHtml(docs: RenderedDoc[], missing: Missing[], wordPreview: (index: number) => string): string {
   const warning = missing.length
     ? `<div class="banner">Some required answers are missing, so these drafts have gaps:
         <ul>${missing.map((m) => `<li>${esc(m.label)}</li>`).join("")}</ul>
@@ -139,8 +140,8 @@ export function documentsHtml(docs: RenderedDoc[], missing: Missing[]): string {
           <button data-action="copy-doc" data-index="${i}">Copy text</button>
           ${d.file ? "" : `<button data-action="download-doc" data-index="${i}">Download HTML</button>`}
         </div>
-        ${d.file ? `<p class="hint doc-note">Text preview. The Word file keeps the template's formatting.</p>` : ""}
-        ${d.error ? `<p class="bad">${esc(d.error)}</p>` : `<article class="paper${d.file ? " word" : ""}" id="doc-${i}">${d.html}</article>`}
+        ${d.file ? `<p class="hint doc-note">Preview. The downloaded Word file is the exact document.</p>` : ""}
+        ${d.error ? `<p class="bad">${esc(d.error)}</p>` : d.file ? `<article class="word-doc" id="doc-${i}">${wordPreview(i)}</article>` : `<article class="paper" id="doc-${i}">${d.html}</article>`}
       </section>`,
     )
     .join("");
