@@ -147,6 +147,7 @@ function headerHtml(): string {
       .map((w) => `<option value="${esc(w.id)}"${w.id === wf.id ? " selected" : ""}>${esc(w.name)}</option>`)
       .join("")}</select>
     <button class="small" data-action="new-workflow">New</button>
+    <label class="button small" title="Load a workflow file (.json)">Import${importInput()}</label>
     <button class="small" data-action="duplicate-workflow">Duplicate</button>
     <button class="small danger" data-action="delete-workflow"${data.workflows.length <= 1 ? " disabled" : ""}>Delete</button>
     <span class="spacer"></span>
@@ -191,7 +192,7 @@ function jsonHtml(): string {
     <div class="row-actions">
       <button class="primary" data-action="apply-json">Apply changes</button>
       <button data-action="export-json">Export file</button>
-      <label class="button">Import file<input type="file" id="import-file" accept=".json,application/json" hidden></label>
+      <label class="button">Import file${importInput()}</label>
       <span class="spacer"></span>
       <button class="small danger" data-action="reset-all">Reset everything to the sample</button>
     </div>
@@ -351,6 +352,34 @@ function standaloneHtml(title: string, body: string): string {
 body{font-family:Georgia,"Times New Roman",serif;font-size:12pt;line-height:1.5;max-width:6.5in;margin:1in auto;color:#000}
 h1{text-align:center;font-size:16pt}h2{font-size:13pt}.center{text-align:center}.page-break{page-break-after:always}
 </style></head><body>${body}</body></html>`;
+}
+
+function importInput(): string {
+  return `<input type="file" data-import-workflow accept=".json,application/json" hidden>`;
+}
+
+/** Loads a workflow file. One with the same id as an existing workflow can replace it, e.g. an updated version. */
+async function importWorkflow(file: File): Promise<void> {
+  let wf: Workflow;
+  try {
+    wf = normalizeWorkflow(JSON.parse(await file.text()));
+  } catch {
+    alert(`"${file.name}" isn't a workflow file.`);
+    return render();
+  }
+  const existing = data.workflows.findIndex((w) => w.id === wf.id);
+  if (existing !== -1 && confirm(`Replace your existing "${data.workflows[existing].name}" with the one in this file?\n\nChoose Cancel to keep both.`)) {
+    data.workflows[existing] = wf;
+    data.currentId = wf.id;
+    ui.pageIndex = 0;
+    ui.openQuestion = null;
+  } else {
+    addWorkflow(wf);
+  }
+  ui.tab = "build";
+  ui.jsonDraft = null;
+  persist();
+  render();
 }
 
 /** Attaches an uploaded Word file to document `target` (an index), or adds a new document for "new". */
@@ -665,19 +694,9 @@ root.addEventListener("change", (e) => {
     if (file) void attachWordFile(file, el.dataset.docxFor);
     return;
   }
-  if (el.id === "import-file") {
+  if (el.dataset.importWorkflow !== undefined) {
     const file = (el as HTMLInputElement).files?.[0];
-    if (!file) return;
-    file.text().then((text) => {
-      try {
-        addWorkflow(normalizeWorkflow(JSON.parse(text)));
-        ui.tab = "build";
-        persist();
-      } catch {
-        alert("That file isn't a valid workflow JSON file.");
-      }
-      render();
-    });
+    if (file) void importWorkflow(file);
     return;
   }
   if (el.dataset.action === "toggle-values") {
