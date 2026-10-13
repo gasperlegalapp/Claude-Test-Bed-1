@@ -7,6 +7,7 @@ describe("templates", () => {
   it("fills in values", () => {
     expect(render("Dear {{ name }}, you owe {{ money(fee) }}.", { name: "Ada", fee: 50 })).toBe("Dear Ada, you owe $50.00.");
     expect(render("Agreed: {{ ok }}", { ok: true })).toBe("Agreed: Yes");
+    expect(render("Born {{ dob }}", { dob: "1980-05-02" })).toBe("Born May 2, 1980");
   });
 
   it("chooses if / elif / else branches and removes tag-only lines", () => {

@@ -44,7 +44,7 @@ type Token =
   | { t: "eof"; pos: number };
 
 const KEYWORD_OPS: Record<string, string> = { and: "and", or: "or", not: "not", contains: "contains", in: "in" };
-const SYMBOL_OPS = ["==", "!=", "<=", ">=", "&&", "||", "<", ">", "=", "!", "+", "-", "*", "/", "(", ")", "[", "]", ",", "."];
+const SYMBOL_OPS = ["==", "!=", "<=", ">=", "&&", "||", "<", ">", "=", "!", "+", "-", "*", "/", "(", ")", "[", "]", ",", ".", "|"];
 const SYMBOL_ALIASES: Record<string, string> = { "&&": "and", "||": "or", "!": "not", "=": "==" };
 
 function tokenize(src: string): Token[] {
@@ -164,14 +164,34 @@ export function parse(src: string): Node {
     }
     return postfix();
   }
+  // Fields (`a.b`) and Jinja-style filters (`a | upper`, `a | join(", ")`), which
+  // call the function with the value as its first argument.
   function postfix(): Node {
     let node = primary();
-    while (isOp(".")) {
+    while (isOp(".") || isOp("|")) {
+      const filter = isOp("|");
       p++;
       const tok = peek();
-      if (tok.t !== "id") throw new ExprError("Expected a field name after \".\"", tok.pos);
+      if (tok.t !== "id") throw new ExprError(filter ? "Expected a filter name after \"|\"" : "Expected a field name after \".\"", tok.pos);
       p++;
-      node = { kind: "member", object: node, prop: tok.v };
+      if (!filter) {
+        node = { kind: "member", object: node, prop: tok.v };
+        continue;
+      }
+      if (!FUNCTIONS[tok.v]) throw new ExprError(`Unknown filter "${tok.v}"`, tok.pos);
+      const args: Node[] = [node];
+      if (isOp("(")) {
+        p++;
+        if (!isOp(")")) {
+          args.push(orExpr());
+          while (isOp(",")) {
+            p++;
+            args.push(orExpr());
+          }
+        }
+        expectOp(")");
+      }
+      node = { kind: "call", fn: tok.v, args };
     }
     return node;
   }
@@ -438,6 +458,8 @@ export const FUNCTION_DOCS: Record<string, string> = {
   title: "title(text) → Title Case",
   join: 'join(list, sep, last_sep) → "A, B and C" with join(names, ", ", " and ")',
   money: "money(number) → $1,234.50",
+  currency: "currency(number) → $1,234.50 (same as money, and as Gavel's currency)",
+  single_paragraph: "single_paragraph(text) → joins lines into one paragraph",
   number_words: "number_words(number) → twelve (0 to 999,999)",
   today: "today() → today's date (YYYY-MM-DD)",
   date_long: "date_long(date) → January 5, 2026",
@@ -485,6 +507,8 @@ const FUNCTIONS: Record<string, Fn> = {
     if (items.length <= 1) return items.join("");
     return items.slice(0, -1).join(s) + last + items[items.length - 1];
   },
+  currency: (args) => FUNCTIONS.money(args),
+  single_paragraph: ([v]) => str(v).replace(/\s*\n\s*/g, " ").trim(),
   money: ([v]) => {
     const n = num(v);
     if (n === null) return "";
@@ -520,8 +544,9 @@ const FUNCTIONS: Record<string, Fn> = {
   },
 };
 
-/** Text a value prints as inside a document. */
+/** Text a value prints as inside a document. Dates (YYYY-MM-DD) print long, as Gavel does. */
 export function display(v: Value): string {
   if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return str(FUNCTIONS.date_long([v]));
   return str(v);
 }

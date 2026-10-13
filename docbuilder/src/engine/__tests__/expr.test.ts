@@ -55,6 +55,16 @@ describe("expressions", () => {
     expect(run("answered(x)", { x: 0 })).toBe(true);
   });
 
+  it("applies Jinja-style filters, binding tighter than operators", () => {
+    expect(run("addr | single_paragraph", { addr: "12 Elm St\n  Springfield, IL\n62701" })).toBe("12 Elm St Springfield, IL 62701");
+    expect(run('names | join(" & ")', { names: ["A", "B"] })).toBe("A & B");
+    expect(run('"x" + name | upper', { name: "ada" })).toBe("xADA");
+    expect(run("fee | currency", { fee: 2500 })).toBe("$2,500.00");
+    expect(() => parse("x | nope")).toThrow(/Unknown filter "nope"/);
+    expect(() => parse("x |")).toThrow(/filter name/);
+    expect(run("a || b", { b: true })).toBe(true);
+  });
+
   it("rejects unknown functions and bad syntax with a position", () => {
     expect(() => parse("eval(x)")).toThrow(ExprError);
     expect(() => parse("a ==")).toThrow(/ended too early/);

@@ -218,7 +218,7 @@ export function builderHtml(wf: Workflow, openQuestion: string | null, issues: I
         <details>
           <summary>Rule and template syntax</summary>
           <div class="syntax">
-            <p><code>and or not == != &lt; &gt; + - * /</code><br><code>x in ["a","b"]</code> · <code>list contains x</code></p>
+            <p><code>and or not == != &lt; &gt; + - * /</code><br><code>x in ["a","b"]</code> · <code>list contains x</code> · filters: <code>x | upper</code></p>
             <p><code>{{ expr }}</code><br><code>{% if expr %} … {% elif expr %} … {% else %} … {% endif %}</code><br><code>{% for item in list %} … {% endfor %}</code></p>
             <p><code># Heading</code> · <code>**bold**</code> · <code>- bullet</code> · <code>-&gt; centered &lt;-</code> · <code>---pagebreak---</code></p>
             <p><strong>In Word:</strong> a block tag alone on its line includes, removes or repeats whole paragraphs, and the tag lines disappear. Put <code>{% for x in list %}</code> in the first cell of a table row and <code>{% endfor %}</code> in the last cell to repeat the row. Values keep the formatting they were typed in.</p>
