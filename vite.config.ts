@@ -8,5 +8,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
+    // DocBuilder is a separate npm project with its own tests and dependencies.
+    include: ["src/**/*.test.ts"],
   },
 });
