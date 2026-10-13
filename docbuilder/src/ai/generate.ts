@@ -89,7 +89,8 @@ export function systemPrompt(caseFields: string[]): string {
 - Names: question ids, computed ids, and case.* fields. Use dots for fields: case.client.name, children.name (on a list, gives that field from every item).
 - Literals: "text", 12.5, true, false, null, ["a", "b"].
 - Operators: and, or, not, ==, !=, <, <=, >, >=, + - * /, x in ["a","b"], list contains value, text contains "word".
-- Unanswered values are null: comparisons with null are false, math with null is null.
+- Filters: value | function or value | function(more, args) passes the value as the first argument, e.g. address | single_paragraph.
+- Unanswered values are null: comparisons with null are false, math with null is null. Dates print as "January 5, 2026" in documents.
 - Functions (no others exist):
 ${functions}
 
