@@ -95,6 +95,8 @@ export const SAMPLE_ACCOUNTING: Accounting = {
   ],
   categories: structuredClone(DEFAULT_CATEGORIES),
   rules: "Deposits from the brokerage are sales of estate assets.\nUtility, insurance and upkeep for the residence go under Housing and utilities.",
+  attachments: [],
+  packet: { separate: false, maxPages: null },
 };
 
 for (const c of SAMPLE_ACCOUNTING.checks) {
@@ -216,4 +218,6 @@ export const SAMPLE_GUARDIANSHIP: Accounting = {
   assets: [],
   categories: structuredClone(DEFAULT_CATEGORIES),
   rules: "Transfers to the ward's prepaid card are disbursements, payee \"Prepaid card transfer\".\nSocial Security deposits: payee \"SSA Direct Deposit\".",
+  attachments: [],
+  packet: { separate: false, maxPages: null },
 };

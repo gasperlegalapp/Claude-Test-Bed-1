@@ -1934,6 +1934,55 @@ table.entries tr.reviewed td:first-child {
   padding: 16px;
 }
 
+.packet-list .att-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 11px;
+}
+
+.packet-list .att-name span {
+  overflow-wrap: anywhere;
+}
+
+.packet-list tr.fixed td {
+  color: var(--ink-2);
+  background: var(--surface-2);
+}
+
+.packet-list tr.excluded .att-name {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+.packet-list td:first-child {
+  width: 28px;
+  padding-top: 11px;
+}
+
+.packet-list td:nth-child(3) {
+  width: 14rem;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.packet-choices {
+  margin-bottom: 12px;
+}
+
+.split-field .input {
+  max-width: 7rem;
+}
+
+p.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 @media (max-width: 1000px) {
   main {
     padding: 12px;
