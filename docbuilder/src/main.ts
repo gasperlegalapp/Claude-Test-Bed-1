@@ -4,21 +4,29 @@ import { escapeHtml as esc, markdownToHtml } from "./engine/markdown.ts";
 import { assemble, createScope, missingRequired, prefillAnswers, renderDocument, type RenderedDoc } from "./engine/session.ts";
 import { normalizeWorkflow, validateWorkflow, type Issue } from "./engine/validate.ts";
 import type { Answers, DocTemplate, Question, Value, Workflow } from "./engine/types.ts";
-import { builderHtml, issuesHtml, slug, textToOptions } from "./ui/builder.ts";
-import { documentsHtml, interviewHtml } from "./ui/interview.ts";
+import { calculationsHtml, issuesBadgeHtml, issuesHtml, outlineHtml, questionnaireHtml, slug, templatesHtml, textToOptions } from "./ui/builder.ts";
+import { documentsHtml, runHtml } from "./ui/interview.ts";
+import { icon } from "./ui/icons.ts";
 import { load, resetAll, save, type Saved } from "./store.ts";
 import { fitToWidth, renderWordPreview } from "./ui/wordPreview.ts";
 import "./styles.css";
 
-type Tab = "build" | "interview" | "documents" | "json";
+type Tab = "questions" | "templates" | "calculations" | "settings" | "run" | "documents";
 
 const KEY_STORAGE = "docbuilder.apikey";
 
 let data: Saved = load();
 const ui = {
-  tab: "build" as Tab,
-  openQuestion: null as string | null,
+  tab: "questions" as Tab,
+  // Questionnaire: the page being edited, the outline filters, and a question to scroll to.
+  builderPage: 0,
+  search: "",
+  typeFilter: "",
+  focusQuestion: null as string | null,
+  // Run: the page being answered (pages.length is the Review step) and pages already seen.
   pageIndex: 0,
+  visited: new Set<number>(),
+  showTestData: false,
   showValues: false,
   jsonDraft: null as string | null,
   jsonError: "",
@@ -91,8 +99,15 @@ function addWorkflow(wf: Workflow): void {
   wf.id = uniqueId(slug(wf.id || wf.name), data.workflows.map((w) => w.id));
   data.workflows.push(wf);
   data.currentId = wf.id;
+  resetPositions();
+}
+
+/** Back to the first page in the builder and in Run, e.g. after switching workflows. */
+function resetPositions(): void {
+  ui.builderPage = 0;
   ui.pageIndex = 0;
-  ui.openQuestion = null;
+  ui.visited = new Set();
+  ui.focusQuestion = null;
 }
 
 /** Writes `value` at a dotted path like `pages.0.questions.2.label`; undefined deletes. */
@@ -156,27 +171,37 @@ window.addEventListener("resize", () => root.querySelectorAll<HTMLElement>(".wor
 
 function headerHtml(): string {
   const wf = current();
-  const tabs: [Tab, string][] = [
-    ["build", "Build"],
-    ["interview", "Interview"],
-    ["documents", "Documents"],
-    ["json", "JSON"],
+  const build: [Tab, string, string][] = [
+    ["questions", "Questionnaire", "list"],
+    ["templates", "Templates", "doc"],
+    ["calculations", "Calculations", "calc"],
+    ["settings", "Settings", "settings"],
   ];
+  const use: [Tab, string, string][] = [
+    ["run", "Run", "play"],
+    ["documents", "Finished documents", "folder"],
+  ];
+  const tab = ([id, label, ic]: [Tab, string, string]) =>
+    `<button class="${ui.tab === id ? "on" : ""}" data-action="tab" data-tab="${id}">${icon(ic, 14)}${label}</button>`;
   return `<header class="top">
-    <div class="brand">DocBuilder</div>
-    <select id="workflow-select" aria-label="Workflow">${data.workflows
-      .map((w) => `<option value="${esc(w.id)}"${w.id === wf.id ? " selected" : ""}>${esc(w.name)}</option>`)
-      .join("")}</select>
-    <button class="small" data-action="new-workflow">New</button>
-    <label class="button small" title="Load a workflow file (.json)">Import${importInput()}</label>
-    <button class="small" data-action="duplicate-workflow">Duplicate</button>
-    <button class="small danger" data-action="delete-workflow"${data.workflows.length <= 1 ? " disabled" : ""}>Delete</button>
-    <span class="spacer"></span>
-    <button class="ai-btn${ui.ai.open ? " on" : ""}" data-action="ai-toggle">Build with AI</button>
+    <div class="top-row">
+      <div class="brand"><span class="brand-mark">${icon("doc", 16)}</span><span>DocBuilder</span></div>
+      <select id="workflow-select" aria-label="Workflow">${data.workflows
+        .map((w) => `<option value="${esc(w.id)}"${w.id === wf.id ? " selected" : ""}>${esc(w.name)}</option>`)
+        .join("")}</select>
+      <div class="top-actions">
+        <button class="hbtn" data-action="new-workflow">${icon("plus", 14)} New</button>
+        <label class="hbtn" title="Load a workflow file (.json)">${icon("upload", 14)} Import${importInput()}</label>
+        <button class="hbtn" data-action="duplicate-workflow">${icon("copy", 14)} Duplicate</button>
+        <button class="hbtn" data-action="delete-workflow"${data.workflows.length <= 1 ? " disabled" : ""}>${icon("trash", 14)} Delete</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="hbtn ai-btn${ui.ai.open ? " on" : ""}" data-action="ai-toggle">${icon("wand", 14)} Build with AI</button>
+    </div>
+    <nav class="tabs">${build.map(tab).join("")}<span class="sep"></span>${use.map(tab).join("")}</nav>
   </header>
   ${ui.ai.open ? aiHtml() : ""}
-  <nav class="tabs">${tabs.map(([id, label]) => `<button class="${ui.tab === id ? "on" : ""}" data-action="tab" data-tab="${id}">${label}</button>`).join("")}</nav>
-  ${storageFull ? `<div class="banner storage">This browser's storage is full, so recent changes won't survive a reload. Export your workflows from the JSON tab, or remove Word files you no longer need.</div>` : ""}`;
+  ${storageFull ? `<div class="banner storage">This browser's storage is full, so recent changes won't survive a reload. Export your workflows from Settings, or remove Word files you no longer need.</div>` : ""}`;
 }
 
 function aiHtml(): string {
@@ -189,61 +214,93 @@ function aiHtml(): string {
   }
   const errors = ai.issues.filter((i) => i.level === "error").length;
   return `<section class="ai-panel">
-    <textarea id="ai-request" rows="3" placeholder="Describe the workflow to build, or the change to make. e.g. &quot;Simple will for a married couple with minor children, guardian nomination and a pour-over trust option&quot; or &quot;Add a question for the retainer due date and mention it in the letter&quot;"${ai.busy ? " disabled" : ""}>${esc(ai.request)}</textarea>
+    <textarea id="ai-request" class="textarea" rows="3" placeholder="Describe the workflow to build, or the change to make. e.g. &quot;Simple will for a married couple with minor children, guardian nomination and a pour-over trust option&quot; or &quot;Add a question for the retainer due date and mention it in the letter&quot;"${ai.busy ? " disabled" : ""}>${esc(ai.request)}</textarea>
     <div class="ai-row">
-      <button class="primary" data-action="ai-create"${ai.busy ? " disabled" : ""}>Create new workflow</button>
-      <button data-action="ai-modify"${ai.busy ? " disabled" : ""}>Change "${esc(current().name)}"</button>
-      ${ai.undo ? `<button class="small" data-action="ai-undo">Undo AI change</button>` : ""}
+      <button class="btn btn-primary" data-action="ai-create"${ai.busy ? " disabled" : ""}>Create new workflow</button>
+      <button class="btn" data-action="ai-modify"${ai.busy ? " disabled" : ""}>Change "${esc(current().name)}"</button>
+      ${ai.undo ? `<button class="btn btn-sm" data-action="ai-undo">Undo AI change</button>` : ""}
       <span class="spacer"></span>
-      <label class="key">Anthropic API key <input type="password" id="ai-key" value="${esc(key)}" autocomplete="off" placeholder="sk-ant-..."></label>
+      <label class="key">Anthropic API key <input type="password" class="input" id="ai-key" value="${esc(key)}" autocomplete="off" placeholder="sk-ant-..."></label>
     </div>
-    <p class="hint">Tip: add your Word template under Documents first, then ask to "build the questions this Word template needs". The key stays in this browser tab and is sent only to Anthropic. In the case app this call runs on your server instead.</p>
+    <p class="hint">Tip: add your Word template under Templates first, then ask to "build the questions this Word template needs". The key stays in this browser tab and is sent only to Anthropic. In the case app this call runs on your server instead.</p>
     ${ai.busy ? `<p class="status">${esc(ai.status)}</p>` : ""}
     ${ai.error ? `<p class="bad">${esc(ai.error)}</p>` : ""}
     ${ai.summary ? `<div class="ai-result"><strong>Done.</strong> ${esc(ai.summary)}${ai.issues.length ? ` <em>(${errors} error${errors === 1 ? "" : "s"}, ${ai.issues.length - errors} warning${ai.issues.length - errors === 1 ? "" : "s"}; see Problems)</em>` : ""}</div>` : ""}
   </section>`;
 }
 
-function jsonHtml(): string {
-  const text = ui.jsonDraft ?? JSON.stringify(current(), null, 2);
-  return `<section class="card">
-    <p class="hint">The workflow is plain data. Edit it here, or move it between systems with export and import.</p>
-    <textarea id="json-edit" class="code" rows="30" spellcheck="false">${esc(text)}</textarea>
-    ${ui.jsonError ? `<p class="bad">${esc(ui.jsonError)}</p>` : ""}
-    <div class="row-actions">
-      <button class="primary" data-action="apply-json">Apply changes</button>
-      <button data-action="export-json">Export file</button>
-      <label class="button">Import file${importInput()}</label>
-      <span class="spacer"></span>
-      <button class="small danger" data-action="reset-all">Reset everything to the sample</button>
-    </div>
-  </section>`;
+function settingsHtml(): string {
+  const wf = current();
+  const text = ui.jsonDraft ?? JSON.stringify(wf, null, 2);
+  return `<div class="settings">
+    <div class="section-head"><div><h1>Settings</h1></div></div>
+    <section class="card">
+      <div class="row-2">
+        <label class="field"><span class="label">Workflow name</span><input type="text" class="input" data-bind="name" value="${esc(wf.name)}"></label>
+        <label class="field"><span class="label">Description</span><input type="text" class="input" data-bind="description" data-kind="optional" value="${esc(wf.description ?? "")}"></label>
+      </div>
+    </section>
+    <section class="card">
+      <div class="panel-title">Workflow data</div>
+      <p class="hint">The workflow is plain data. Edit it here, or move it between systems with export and import.</p>
+      <textarea id="json-edit" class="textarea code" rows="24" spellcheck="false">${esc(text)}</textarea>
+      ${ui.jsonError ? `<p class="bad">${esc(ui.jsonError)}</p>` : ""}
+      <div class="card-actions">
+        <button class="btn btn-primary" data-action="apply-json">Apply changes</button>
+        <button class="btn" data-action="export-json">${icon("download")} Export file</button>
+        <label class="btn">${icon("upload")} Import file${importInput()}</label>
+        <span class="spacer"></span>
+        <button class="btn btn-sm btn-danger" data-action="reset-all">Reset everything to the sample</button>
+      </div>
+    </section>
+  </div>`;
 }
 
 function bodyHtml(): string {
   const wf = current();
-  if (ui.tab === "build") {
-    return builderHtml(wf, ui.openQuestion, validateWorkflow(wf, { caseFields: caseFields() }), caseFields(), previews(wf));
+  if (ui.tab === "questions" || ui.tab === "templates" || ui.tab === "calculations") {
+    const issues = validateWorkflow(wf, { caseFields: caseFields() });
+    if (ui.tab === "questions") {
+      ui.builderPage = Math.max(0, Math.min(ui.builderPage, wf.pages.length - 1));
+      return questionnaireHtml(wf, outlineState(), issues);
+    }
+    if (ui.tab === "templates") return templatesHtml(wf, issues, caseFields(), previews(wf));
+    return calculationsHtml(wf, issues, caseFields());
   }
+  if (ui.tab === "settings") return settingsHtml();
   const ans = answers();
   const scope = createScope(wf, ans, data.caseData);
   const missing = missingRequired(wf, ans, scope);
-  if (ui.tab === "interview") {
+  if (ui.tab === "run") {
     const pages = wf.pages.filter((p) => scope.pageVisible(p));
-    ui.pageIndex = Math.max(0, Math.min(ui.pageIndex, pages.length - 1));
-    return interviewHtml(wf, pages, ui.pageIndex, ans, scope, missing, JSON.stringify(data.caseData, null, 2), ui.showValues);
+    ui.pageIndex = Math.max(0, Math.min(ui.pageIndex, pages.length));
+    return runHtml(wf, pages, { pageIndex: ui.pageIndex, showTestData: ui.showTestData, showValues: ui.showValues, visited: ui.visited }, ans, scope, missing, JSON.stringify(data.caseData, null, 2));
   }
-  if (ui.tab === "documents") {
-    renderedDocs = assemble(wf, ans, data.caseData);
-    return documentsHtml(renderedDocs, missing, (i) => wordPreviewHost(`word-doc-${i}`, renderedDocs[i].file!, renderedDocs[i].html));
-  }
-  return jsonHtml();
+  renderedDocs = assemble(wf, ans, data.caseData);
+  return documentsHtml(renderedDocs, missing, (i) => wordPreviewHost(`word-doc-${i}`, renderedDocs[i].file!, renderedDocs[i].html));
+}
+
+function outlineState() {
+  return { page: ui.builderPage, search: ui.search, type: ui.typeFilter };
 }
 
 function render(): void {
   pendingWord.clear();
+  // A Problems panel the user opened stays open through edits.
+  const problemsOpen = root.querySelector<HTMLDetailsElement>("details.problems")?.open;
   root.innerHTML = `${headerHtml()}<main class="tab-${ui.tab}">${bodyHtml()}</main>`;
+  const problems = root.querySelector<HTMLDetailsElement>("details.problems");
+  if (problems && problemsOpen) problems.open = true;
   drawWordPreviews();
+  if (ui.focusQuestion) {
+    const card = root.querySelector<HTMLElement>(`#qcard-${ui.focusQuestion}`);
+    ui.focusQuestion = null;
+    if (card) {
+      card.scrollIntoView({ block: "center" });
+      card.classList.add("flash");
+      card.querySelector<HTMLInputElement>(".q-text")?.focus({ preventScroll: true });
+    }
+  }
 }
 
 /** Identifies an input so focus can be put back after a re-render. */
@@ -308,8 +365,14 @@ function refreshBuilder(): void {
   clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => {
     const wf = current();
+    const found = validateWorkflow(wf, { caseFields: caseFields() });
     const issues = root.querySelector("#issues");
-    if (issues) issues.innerHTML = issuesHtml(validateWorkflow(wf, { caseFields: caseFields() }));
+    if (issues) issues.innerHTML = issuesHtml(found);
+    const badge = root.querySelector("#issues-badge");
+    if (badge) badge.innerHTML = issuesBadgeHtml(found);
+    // A new error opens the collapsed Problems panel so it isn't missed.
+    const panel = issues?.closest("details");
+    if (panel && found.some((i) => i.level === "error")) panel.open = true;
     // Typing here doesn't change a Word template, so its formatted preview is left alone.
     wf.documents.forEach((d, i) => {
       const el = root.querySelector(`#preview-${i}`);
@@ -395,12 +458,11 @@ async function importWorkflow(file: File): Promise<void> {
   if (existing !== -1 && confirm(`Replace your existing "${data.workflows[existing].name}" with the one in this file?\n\nChoose Cancel to keep both.`)) {
     data.workflows[existing] = wf;
     data.currentId = wf.id;
-    ui.pageIndex = 0;
-    ui.openQuestion = null;
+    resetPositions();
   } else {
     addWorkflow(wf);
   }
-  ui.tab = "build";
+  ui.tab = "questions";
   ui.jsonDraft = null;
   persist();
   render();
@@ -472,7 +534,7 @@ async function runAi(modify: boolean): Promise<void> {
     ui.ai.summary = result.summary;
     ui.ai.issues = result.issues;
     ui.ai.request = "";
-    ui.tab = "build";
+    ui.tab = "questions";
     persist();
   } catch (e) {
     ui.ai.error = describeError(e);
@@ -490,42 +552,60 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     ui.jsonDraft = null;
     ui.jsonError = "";
   },
-  "toggle-question"(el) {
-    ui.openQuestion = ui.openQuestion === el.dataset.key ? null : el.dataset.key!;
+  "builder-page"(el) {
+    ui.builderPage = Number(el.dataset.index);
+    window.scrollTo(0, 0);
+  },
+  "select-question"(el) {
+    ui.builderPage = Number(el.dataset.page);
+    ui.focusQuestion = `${el.dataset.page}-${el.dataset.q}`;
   },
   "add-page"() {
     const wf = current();
     const id = uniqueId(`page_${wf.pages.length + 1}`, wf.pages.map((p) => p.id));
     wf.pages.push({ id, title: `Page ${wf.pages.length + 1}`, questions: [] });
+    ui.builderPage = wf.pages.length - 1;
   },
   "remove-page"(el) {
     const wf = current();
     const page = wf.pages[Number(el.dataset.page)];
     if (page.questions.length && !confirm(`Delete "${page.title}" and its ${page.questions.length} question(s)?`)) return;
     wf.pages.splice(Number(el.dataset.page), 1);
-    ui.openQuestion = null;
   },
   "move-page"(el) {
-    move(current().pages, Number(el.dataset.page), Number(el.dataset.dir));
-    ui.openQuestion = null;
+    const pi = Number(el.dataset.page);
+    const dir = Number(el.dataset.dir);
+    move(current().pages, pi, dir);
+    ui.builderPage = pi + dir;
   },
   "add-question"(el) {
     const wf = current();
     const pi = Number(el.dataset.page);
     const qs = wf.pages[pi].questions;
     qs.push({ id: uniqueId("question", allNames(wf)), label: "New question", type: "text" });
-    ui.openQuestion = `${pi}.${qs.length - 1}`;
+    ui.builderPage = pi;
+    ui.focusQuestion = `${pi}-${qs.length - 1}`;
+  },
+  "duplicate-question"(el) {
+    const wf = current();
+    const pi = Number(el.dataset.page);
+    const qi = Number(el.dataset.q);
+    const copy = structuredClone(wf.pages[pi].questions[qi]);
+    copy.id = uniqueId(copy.id, allNames(wf));
+    wf.pages[pi].questions.splice(qi + 1, 0, copy);
+    ui.focusQuestion = `${pi}-${qi + 1}`;
   },
   "remove-question"(el) {
+    const q = current().pages[Number(el.dataset.page)].questions[Number(el.dataset.q)];
+    if (!confirm(`Delete the question "${q.label || q.id}"?`)) return;
     current().pages[Number(el.dataset.page)].questions.splice(Number(el.dataset.q), 1);
-    ui.openQuestion = null;
   },
   "move-question"(el) {
     const pi = Number(el.dataset.page);
     const qi = Number(el.dataset.q);
     const dir = Number(el.dataset.dir);
     move(current().pages[pi].questions, qi, dir);
-    ui.openQuestion = `${pi}.${qi + dir}`;
+    ui.focusQuestion = `${pi}-${qi + dir}`;
   },
   "add-field"(el) {
     const q = current().pages[Number(el.dataset.page)].questions[Number(el.dataset.q)];
@@ -554,6 +634,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     wf.documents.splice(Number(el.dataset.index), 1);
   },
   "goto-page"(el) {
+    ui.visited.add(ui.pageIndex);
     ui.pageIndex = Number(el.dataset.index);
     window.scrollTo(0, 0);
   },
@@ -561,6 +642,10 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     if (!confirm("Clear all answers and start again from the case record?")) return;
     data.answers[current().id] = prefillAnswers(current(), data.caseData);
     ui.pageIndex = 0;
+    ui.visited = new Set();
+  },
+  "toggle-test-data"() {
+    ui.showTestData = !ui.showTestData;
   },
   "apply-case"() {
     const text = root.querySelector<HTMLTextAreaElement>("#case-json")!.value;
@@ -619,7 +704,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   },
   "new-workflow"() {
     addWorkflow(blankWorkflow());
-    ui.tab = "build";
+    ui.tab = "questions";
   },
   "duplicate-workflow"() {
     const copy = structuredClone(current());
@@ -632,6 +717,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     data.workflows = data.workflows.filter((w) => w !== wf);
     delete data.answers[wf.id];
     data.currentId = data.workflows[0].id;
+    resetPositions();
   },
   "apply-json"() {
     const text = root.querySelector<HTMLTextAreaElement>("#json-edit")!.value;
@@ -654,6 +740,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     if (!confirm("Delete all workflows and answers and restore the sample?")) return;
     data = resetAll();
     ui.ai.undo = null;
+    resetPositions();
   },
   "ai-toggle"() {
     ui.ai.open = !ui.ai.open;
@@ -700,6 +787,10 @@ root.addEventListener("input", (e) => {
     applyAnswer(el);
   } else if (el.id === "ai-request") {
     ui.ai.request = el.value;
+  } else if (el.id === "outline-search") {
+    ui.search = el.value;
+    const outline = root.querySelector("#outline");
+    if (outline) outline.innerHTML = outlineHtml(current(), outlineState());
   }
 });
 
@@ -707,11 +798,20 @@ root.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement | HTMLSelectElement;
   if (el.id === "workflow-select") {
     data.currentId = el.value;
-    ui.pageIndex = 0;
-    ui.openQuestion = null;
+    resetPositions();
     ui.jsonDraft = null;
     persist();
     return render();
+  }
+  if (el.id === "page-select") {
+    ui.builderPage = Number(el.value);
+    return render();
+  }
+  if (el.id === "outline-type") {
+    ui.typeFilter = el.value;
+    const outline = root.querySelector("#outline");
+    if (outline) outline.innerHTML = outlineHtml(current(), outlineState());
+    return;
   }
   if (el.dataset.docxFor !== undefined) {
     const file = (el as HTMLInputElement).files?.[0];
