@@ -2,21 +2,50 @@ import { casePaths } from "./data/samples.ts";
 import { base64ToBytes, bytesToBase64, DOCX_MIME, isDocx } from "./engine/docx.ts";
 import { escapeHtml as esc, markdownToHtml } from "./engine/markdown.ts";
 import { assemble, createScope, missingRequired, prefillAnswers, renderDocument, type RenderedDoc } from "./engine/session.ts";
-import { normalizeWorkflow, validateWorkflow, type Issue } from "./engine/validate.ts";
+import { hasOptions, normalizeWorkflow, validateWorkflow, type Issue } from "./engine/validate.ts";
 import type { Answers, DocTemplate, Question, Value, Workflow } from "./engine/types.ts";
 import { calculationsHtml, issuesBadgeHtml, issuesHtml, outlineHtml, questionnaireHtml, slug, templatesHtml, textToOptions } from "./ui/builder.ts";
 import { documentsHtml, runHtml } from "./ui/interview.ts";
 import { icon } from "./ui/icons.ts";
 import { load, resetAll, save, type Saved } from "./store.ts";
 import { fitToWidth, renderWordPreview } from "./ui/wordPreview.ts";
+import { createAccountingApp } from "./accountingApp.ts";
 import "./styles.css";
 
 type Tab = "questions" | "templates" | "calculations" | "settings" | "run" | "documents";
 
 const KEY_STORAGE = "docbuilder.apikey";
+const MODE_STORAGE = "docbuilder.mode";
+
+type Mode = "workflows" | "accountings";
+
+function storedMode(): Mode {
+  try {
+    return localStorage.getItem(MODE_STORAGE) === "accountings" ? "accountings" : "workflows";
+  } catch {
+    return "workflows";
+  }
+}
+
+function storedKey(): string {
+  try {
+    return sessionStorage.getItem(KEY_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberKey(key: string): void {
+  try {
+    sessionStorage.setItem(KEY_STORAGE, key);
+  } catch {
+    // Not remembered; it still works for this page.
+  }
+}
 
 let data: Saved = load();
 const ui = {
+  mode: storedMode(),
   tab: "questions" as Tab,
   // Questionnaire: the page being edited, the outline filters, and a question to scroll to.
   builderPage: 0,
@@ -44,6 +73,15 @@ const ui = {
 let renderedDocs: RenderedDoc[] = [];
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
+
+const accounting = createAccountingApp({
+  root,
+  render: () => render(),
+  rerender: () => rerenderKeepingFocus(),
+  download: (name, type, content) => downloadFile(name, type, content),
+  apiKey: storedKey,
+  setApiKey: rememberKey,
+});
 
 // ------------------------------------------------------------------ state
 
@@ -122,13 +160,13 @@ function setPath(target: unknown, path: string, value: unknown): void {
 
 /** Keeps options and fields consistent with a question's type after it changes. */
 function fixShape(q: Question): void {
-  const choice = q.type === "choice" || q.type === "multichoice";
+  const choice = hasOptions(q.type);
   if (choice && !q.options) q.options = [{ value: "option_1", label: "Option 1" }];
   if (!choice) delete q.options;
   if (q.type === "list" && !q.fields?.length) q.fields = [{ id: "name", label: "Name", type: "text" }];
   if (q.type !== "list") delete q.fields;
   for (const f of q.fields ?? []) {
-    const fChoice = f.type === "choice" || f.type === "multichoice";
+    const fChoice = hasOptions(f.type);
     if (fChoice && !f.options) f.options = [{ value: "option_1", label: "Option 1" }];
     if (!fChoice) delete f.options;
   }
@@ -183,9 +221,20 @@ function headerHtml(): string {
   ];
   const tab = ([id, label, ic]: [Tab, string, string]) =>
     `<button class="${ui.tab === id ? "on" : ""}" data-action="tab" data-tab="${id}">${icon(ic, 14)}${label}</button>`;
+  const modes = `<div class="mode-switch" role="tablist">
+    <button class="${ui.mode === "workflows" ? "on" : ""}" data-action="mode" data-mode="workflows" role="tab">Workflows</button>
+    <button class="${ui.mode === "accountings" ? "on" : ""}" data-action="mode" data-mode="accountings" role="tab">Accountings</button>
+  </div>`;
+  const brand = `<div class="brand"><span class="brand-mark">${icon("doc", 16)}</span><span>DocBuilder</span></div>`;
+  if (ui.mode === "accountings") {
+    return `<header class="top">
+      <div class="top-row">${brand}${modes}${accounting.picker()}</div>
+      <nav class="tabs">${accounting.tabs()}</nav>
+    </header>`;
+  }
   return `<header class="top">
     <div class="top-row">
-      <div class="brand"><span class="brand-mark">${icon("doc", 16)}</span><span>DocBuilder</span></div>
+      ${brand}${modes}
       <select id="workflow-select" aria-label="Workflow">${data.workflows
         .map((w) => `<option value="${esc(w.id)}"${w.id === wf.id ? " selected" : ""}>${esc(w.name)}</option>`)
         .join("")}</select>
@@ -206,12 +255,7 @@ function headerHtml(): string {
 
 function aiHtml(): string {
   const ai = ui.ai;
-  let key = "";
-  try {
-    key = sessionStorage.getItem(KEY_STORAGE) ?? "";
-  } catch {
-    // Session storage blocked; the key just isn't remembered.
-  }
+  const key = storedKey();
   const errors = ai.issues.filter((i) => i.level === "error").length;
   return `<section class="ai-panel">
     <textarea id="ai-request" class="textarea" rows="3" placeholder="Describe the workflow to build, or the change to make. e.g. &quot;Simple will for a married couple with minor children, guardian nomination and a pour-over trust option&quot; or &quot;Add a question for the retainer due date and mention it in the letter&quot;"${ai.busy ? " disabled" : ""}>${esc(ai.request)}</textarea>
@@ -257,6 +301,7 @@ function settingsHtml(): string {
 }
 
 function bodyHtml(): string {
+  if (ui.mode === "accountings") return accounting.body();
   const wf = current();
   if (ui.tab === "questions" || ui.tab === "templates" || ui.tab === "calculations") {
     const issues = validateWorkflow(wf, { caseFields: caseFields() });
@@ -288,10 +333,11 @@ function render(): void {
   pendingWord.clear();
   // A Problems panel the user opened stays open through edits.
   const problemsOpen = root.querySelector<HTMLDetailsElement>("details.problems")?.open;
-  root.innerHTML = `${headerHtml()}<main class="tab-${ui.tab}">${bodyHtml()}</main>`;
+  root.innerHTML = `${headerHtml()}<main class="${ui.mode === "accountings" ? "accountings" : `tab-${ui.tab}`}">${bodyHtml()}</main>`;
   const problems = root.querySelector<HTMLDetailsElement>("details.problems");
   if (problems && problemsOpen) problems.open = true;
   drawWordPreviews();
+  if (ui.mode === "accountings") accounting.afterRender();
   if (ui.focusQuestion) {
     const card = root.querySelector<HTMLElement>(`#qcard-${ui.focusQuestion}`);
     ui.focusQuestion = null;
@@ -309,6 +355,9 @@ function focusKey(el: Element | null): string | null {
   if (el.id) return `#${CSS.escape(el.id)}`;
   const d = el.dataset;
   if (d.bind) return `[data-bind="${CSS.escape(d.bind)}"]`;
+  if (d.abind) return `[data-abind="${CSS.escape(d.abind)}"]`;
+  if (d.txn) return `[data-txn="${CSS.escape(d.txn)}"][data-field="${CSS.escape(d.field ?? "")}"]`;
+  if (d.stmt) return `[data-stmt="${CSS.escape(d.stmt)}"][data-field="${CSS.escape(d.field ?? "")}"]`;
   if (d.answer) {
     let sel = `[data-answer="${CSS.escape(d.answer)}"]`;
     if (d.item) sel += `[data-item="${d.item}"][data-field="${CSS.escape(d.field ?? "")}"]`;
@@ -501,11 +550,7 @@ async function runAi(modify: boolean): Promise<void> {
     ui.ai.error = "Paste an Anthropic API key to use AI.";
     return render();
   }
-  try {
-    sessionStorage.setItem(KEY_STORAGE, apiKey);
-  } catch {
-    // Not remembered; it still works for this call.
-  }
+  rememberKey(apiKey);
   const before = current();
   ui.ai.busy = true;
   ui.ai.status = "Starting…";
@@ -547,6 +592,15 @@ async function runAi(modify: boolean): Promise<void> {
 // ----------------------------------------------------------------- events
 
 const actions: Record<string, (el: HTMLElement) => void> = {
+  mode(el) {
+    ui.mode = el.dataset.mode === "accountings" ? "accountings" : "workflows";
+    try {
+      localStorage.setItem(MODE_STORAGE, ui.mode);
+    } catch {
+      // Opens on workflows next time; nothing else is lost.
+    }
+    window.scrollTo(0, 0);
+  },
   tab(el) {
     ui.tab = el.dataset.tab as Tab;
     ui.jsonDraft = null;
@@ -768,6 +822,11 @@ root.addEventListener("click", (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>("[data-action]");
   if (!el || el instanceof HTMLInputElement) return;
   const name = el.dataset.action!;
+  if (name.startsWith("acct-")) {
+    e.preventDefault();
+    if (!accounting.run(name, el)) render();
+    return;
+  }
   const action = actions[name];
   if (!action) return;
   e.preventDefault();
@@ -779,6 +838,7 @@ root.addEventListener("click", (e) => {
 
 root.addEventListener("input", (e) => {
   const el = e.target as HTMLInputElement | HTMLTextAreaElement;
+  if (ui.mode === "accountings" && accounting.onInput(el)) return;
   if (el instanceof HTMLInputElement && (el.type === "radio" || el.type === "checkbox")) return;
   if (el.dataset.bind) {
     applyBinding(el);
@@ -796,6 +856,7 @@ root.addEventListener("input", (e) => {
 
 root.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement | HTMLSelectElement;
+  if (ui.mode === "accountings" && accounting.onChange(el)) return;
   if (el.id === "workflow-select") {
     data.currentId = el.value;
     resetPositions();
@@ -839,6 +900,9 @@ root.addEventListener("change", (e) => {
 });
 
 // Typing saves after a short pause; flush it if the page goes away first.
-window.addEventListener("pagehide", () => save(data));
+window.addEventListener("pagehide", () => {
+  save(data);
+  accounting.flush();
+});
 
 render();

@@ -28,6 +28,13 @@ function control(q: Answerable | Field, value: Value | undefined, attrs: string)
       return `<div class="choices">${(q.options ?? [])
         .map((o) => `<label class="choice"><input type="radio" value="${esc(o.value)}" ${attrs}${v === o.value ? " checked" : ""}><span>${esc(o.label)}</span></label>`)
         .join("")}</div>`;
+    case "combobox": {
+      // Suggestions from the options; anything typed is kept as the answer.
+      const listId = `opts-${(/name="([^"]*)"/.exec(attrs)?.[1] ?? q.id).replace(/[^\w-]/g, "_")}`;
+      return `<input type="text" class="input" list="${listId}" ${attrs} value="${esc(typeof v === "string" ? v : "")}" placeholder="Pick or type"><datalist id="${listId}">${(q.options ?? [])
+        .map((o) => `<option value="${esc(o.value)}"${o.label !== o.value ? ` label="${esc(o.label)}"` : ""}></option>`)
+        .join("")}</datalist>`;
+    }
     case "multichoice": {
       const picked = Array.isArray(v) ? v : [];
       return `<div class="choices">${(q.options ?? [])

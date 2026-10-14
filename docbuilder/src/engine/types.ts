@@ -13,6 +13,8 @@ export type QuestionType =
   | "yesno"
   | "choice"
   | "multichoice"
+  /** Pick from the options or type something else; the answer is text. */
+  | "combobox"
   | "list";
 
 /** Field types allowed inside a repeating list item (no nested lists). */

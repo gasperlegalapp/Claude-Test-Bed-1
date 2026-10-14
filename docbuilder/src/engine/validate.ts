@@ -20,7 +20,12 @@ export interface ValidateOptions {
   caseFields?: string[];
 }
 
-export const QUESTION_TYPES: QuestionType[] = ["text", "textarea", "number", "currency", "date", "yesno", "choice", "multichoice", "list"];
+export const QUESTION_TYPES: QuestionType[] = ["text", "textarea", "number", "currency", "date", "yesno", "choice", "multichoice", "combobox", "list"];
+
+/** Types whose questions list options. */
+export function hasOptions(type: string): boolean {
+  return type === "choice" || type === "multichoice" || type === "combobox";
+}
 const ID_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RESERVED = new Set(["case", "loop", "true", "false", "null", "and", "or", "not", "contains", "in"]);
 const LOOP_PROPS = new Set(["index", "first", "last", "count"]);
@@ -43,7 +48,7 @@ function options(v: unknown): Option[] {
 function field(v: unknown): Field {
   const r = obj(v);
   const f: Field = { id: str(r.id), label: str(r.label), type: str(r.type) as Field["type"] };
-  if (f.type === "choice" || f.type === "multichoice") f.options = options(r.options);
+  if (hasOptions(f.type)) f.options = options(r.options);
   if (r.required === true) f.required = true;
   return f;
 }
@@ -54,7 +59,7 @@ function question(v: unknown): Question {
   const help = opt(r.help);
   if (help) q.help = help;
   if (r.required === true) q.required = true;
-  if (q.type === "choice" || q.type === "multichoice") q.options = options(r.options);
+  if (hasOptions(q.type)) q.options = options(r.options);
   const showIf = opt(r.showIf);
   if (showIf) q.showIf = showIf;
   const prefill = opt(r.prefill);
@@ -261,7 +266,7 @@ export function validateWorkflow(wf: Workflow, opts: ValidateOptions = {}): Issu
 }
 
 function checkOptions(type: string, options: Option[] | undefined, where: string, err: (w: string, m: string) => void) {
-  if (type !== "choice" && type !== "multichoice") return;
+  if (!hasOptions(type)) return;
   if (!options || options.length === 0) {
     err(where, "A choice question needs at least one option.");
     return;
