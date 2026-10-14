@@ -2,7 +2,7 @@ import { casePaths } from "./data/samples.ts";
 import { base64ToBytes, bytesToBase64, DOCX_MIME, isDocx } from "./engine/docx.ts";
 import { escapeHtml as esc, markdownToHtml } from "./engine/markdown.ts";
 import { assemble, createScope, missingRequired, prefillAnswers, renderDocument, type RenderedDoc } from "./engine/session.ts";
-import { normalizeWorkflow, validateWorkflow, type Issue } from "./engine/validate.ts";
+import { hasOptions, normalizeWorkflow, validateWorkflow, type Issue } from "./engine/validate.ts";
 import type { Answers, DocTemplate, Question, Value, Workflow } from "./engine/types.ts";
 import { calculationsHtml, issuesBadgeHtml, issuesHtml, outlineHtml, questionnaireHtml, slug, templatesHtml, textToOptions } from "./ui/builder.ts";
 import { documentsHtml, runHtml } from "./ui/interview.ts";
@@ -122,13 +122,13 @@ function setPath(target: unknown, path: string, value: unknown): void {
 
 /** Keeps options and fields consistent with a question's type after it changes. */
 function fixShape(q: Question): void {
-  const choice = q.type === "choice" || q.type === "multichoice";
+  const choice = hasOptions(q.type);
   if (choice && !q.options) q.options = [{ value: "option_1", label: "Option 1" }];
   if (!choice) delete q.options;
   if (q.type === "list" && !q.fields?.length) q.fields = [{ id: "name", label: "Name", type: "text" }];
   if (q.type !== "list") delete q.fields;
   for (const f of q.fields ?? []) {
-    const fChoice = f.type === "choice" || f.type === "multichoice";
+    const fChoice = hasOptions(f.type);
     if (fChoice && !f.options) f.options = [{ value: "option_1", label: "Option 1" }];
     if (!fChoice) delete f.options;
   }

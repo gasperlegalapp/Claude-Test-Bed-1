@@ -5,7 +5,7 @@
 
 import { FUNCTION_DOCS } from "../engine/expr.ts";
 import { escapeHtml as esc } from "../engine/markdown.ts";
-import { QUESTION_TYPES, type Issue } from "../engine/validate.ts";
+import { hasOptions, QUESTION_TYPES, type Issue } from "../engine/validate.ts";
 import { loadDocx } from "../engine/docx.ts";
 import type { DocTemplate, Field, Option, Question, Workflow } from "../engine/types.ts";
 import { icon } from "./icons.ts";
@@ -19,6 +19,7 @@ export const TYPE_LABELS: Record<string, string> = {
   yesno: "Yes / No",
   choice: "Pick one",
   multichoice: "Pick any",
+  combobox: "Pick or type",
   list: "Repeating list",
 };
 
@@ -32,6 +33,7 @@ const TYPE_CHIPS: Record<string, string> = {
   yesno: "Y/N",
   choice: "1",
   multichoice: "✓",
+  combobox: "1+",
   list: "≡",
 };
 
@@ -73,7 +75,7 @@ function requiredSwitch(bind: string, on: boolean | undefined): string {
 
 function fieldRow(f: Field, base: string, pi: number, qi: number, fi: number): string {
   const b = `${base}.fields.${fi}`;
-  const choice = f.type === "choice" || f.type === "multichoice";
+  const choice = hasOptions(f.type);
   return `<div class="field-row">
     ${input(`${b}.label`, f.label, { placeholder: "Label" })}
     ${input(`${b}.id`, f.id, { placeholder: "name", code: true })}
@@ -86,7 +88,7 @@ function fieldRow(f: Field, base: string, pi: number, qi: number, fi: number): s
 
 function questionCard(q: Question, pi: number, qi: number, count: number): string {
   const b = `pages.${pi}.questions.${qi}`;
-  const choice = q.type === "choice" || q.type === "multichoice";
+  const choice = hasOptions(q.type);
   return `<section class="card q-card" id="qcard-${pi}-${qi}">
     <div class="q-card-head">
       <span class="num">${qi + 1}</span>

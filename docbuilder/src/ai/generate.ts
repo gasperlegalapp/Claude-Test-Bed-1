@@ -75,6 +75,7 @@ export function systemPrompt(caseFields: string[]): string {
 - pages: each has an id, a title, an optional showIf, and questions.
 - questions: id is the variable name (snake_case, unique across the workflow). Types: ${QUESTION_TYPES.join(", ")}.
   - choice / multichoice need options (value is a snake_case code, label is what the user sees). multichoice answers are lists.
+  - combobox offers options as suggestions but takes any typed text; its answer is text. Use the wording to print as both value and label.
   - yesno answers are true/false. currency and number answers are numbers. date answers are "YYYY-MM-DD".
   - list asks for repeating items (children, assets, parties); its fields are asked for each item. Fields cannot be lists.
   - required: true for answers the documents can't do without.

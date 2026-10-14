@@ -71,4 +71,16 @@ describe("validation", () => {
     expect(wf.computed).toEqual([]);
     expect(wf.documents).toEqual([]);
   });
+
+  it("keeps a combobox's suggestions and checks them like other options", () => {
+    const wf = normalizeWorkflow({
+      name: "X",
+      pages: [{ id: "p", title: "P", questions: [{ id: "matter", label: "Matter", type: "combobox", options: [{ value: "Guardianship of", label: "Guardianship of" }] }] }],
+      documents: [{ id: "d", name: "D", body: "{{ matter }}" }],
+    });
+    expect(wf.pages[0].questions[0].options).toHaveLength(1);
+    expect(errors(wf)).toEqual([]);
+    wf.pages[0].questions[0].options = [];
+    expect(errors(wf).map((e) => e.message).join(" ")).toMatch(/needs at least one option/);
+  });
 });
