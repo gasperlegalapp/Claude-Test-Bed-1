@@ -5,6 +5,8 @@
 import { normalizeWorkflow } from "./engine/validate.ts";
 import type { Answers, Value, Workflow } from "./engine/types.ts";
 import { ENGAGEMENT_LETTER, SAMPLE_CASE } from "./data/samples.ts";
+import { SAMPLE_ACCOUNTING, SAMPLE_GUARDIANSHIP } from "./data/accountingSample.ts";
+import { normalizeAccounting, type Accounting } from "./engine/accounting.ts";
 
 const KEY = "docbuilder.v1";
 
@@ -54,4 +56,49 @@ export function resetAll(): Saved {
     // See save().
   }
   return fresh();
+}
+
+// ------------------------------------------------------------ accountings
+
+const ACCOUNTING_KEY = "docbuilder.accountings.v1";
+
+export interface SavedAccountings {
+  accountings: Accounting[];
+  currentId: string;
+}
+
+function freshAccountings(): SavedAccountings {
+  return { accountings: [structuredClone(SAMPLE_GUARDIANSHIP), structuredClone(SAMPLE_ACCOUNTING)], currentId: SAMPLE_GUARDIANSHIP.id };
+}
+
+export function loadAccountings(): SavedAccountings {
+  try {
+    const raw = localStorage.getItem(ACCOUNTING_KEY);
+    if (!raw) return freshAccountings();
+    const data = JSON.parse(raw) as Partial<SavedAccountings>;
+    const accountings = Array.isArray(data.accountings) ? data.accountings.map(normalizeAccounting) : [];
+    if (!accountings.length) return freshAccountings();
+    return { accountings, currentId: accountings.some((a) => a.id === data.currentId) ? data.currentId! : accountings[0].id };
+  } catch {
+    return freshAccountings();
+  }
+}
+
+/** False when the browser refused (storage full or blocked). */
+export function saveAccountings(data: SavedAccountings): boolean {
+  try {
+    localStorage.setItem(ACCOUNTING_KEY, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function resetAccountings(): SavedAccountings {
+  try {
+    localStorage.removeItem(ACCOUNTING_KEY);
+  } catch {
+    // See saveAccountings().
+  }
+  return freshAccountings();
 }

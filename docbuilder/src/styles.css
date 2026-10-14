@@ -1437,6 +1437,503 @@ table.values td:first-child {
 
 /* ---------------------------------------------------------- responsive */
 
+/* ---------------------------------------------------------------- accountings */
+
+.mode-switch {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.mode-switch button {
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font: 500 13px var(--font-sans);
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.mode-switch button.on {
+  background: #fff;
+  color: var(--brand);
+}
+
+#accounting-select {
+  max-width: 20rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  padding: 5px 8px;
+  font: 500 14px var(--font-sans);
+}
+
+#accounting-select option {
+  color: var(--ink);
+}
+
+.tab-badge {
+  margin-left: 6px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  color: #fff;
+}
+
+.tab-badge.bad {
+  background: var(--bad);
+}
+
+.tab-badge.warn {
+  background: var(--warn);
+}
+
+.acct-page {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.acct-page.wide {
+  max-width: none;
+}
+
+.acct-page > .card + .card,
+.acct-page > .card + .banner,
+.acct-page > .banner + .card {
+  margin-top: 14px;
+}
+
+.acct-page .section-head {
+  margin-bottom: 14px;
+}
+
+.row-3,
+.row-4 {
+  display: grid;
+  gap: 12px;
+}
+
+.row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.row-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.grid-row {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.grid-row.head {
+  margin-bottom: 4px;
+}
+
+.accounts-row {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) 6rem minmax(0, 1fr) auto;
+}
+
+.assets-row {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.categories-row {
+  grid-template-columns: minmax(0, 2fr) 10rem auto auto;
+}
+
+.upload-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.upload-grid .card + .card {
+  margin-top: 0;
+}
+
+.upload-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upload-card .hint {
+  flex: 1;
+  margin: 0;
+}
+
+.upload-card > .btn {
+  align-self: flex-start;
+}
+
+.upload-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--brand);
+}
+
+.upload-head h2 {
+  font-size: 14px;
+  color: var(--ink);
+  flex: 1;
+}
+
+label.btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.key-card .field.inline .input {
+  max-width: 24rem;
+}
+
+.key-card .hint {
+  margin: 6px 0 0;
+}
+
+.jobs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.job {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.job:first-child {
+  border-top: 0;
+}
+
+.job.done > .icon-svg {
+  color: var(--ok);
+}
+
+.job.error > .icon-svg {
+  color: var(--bad);
+}
+
+.job.error .hint {
+  color: #b91c1c;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--brand-soft);
+  border-top-color: var(--brand-2);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.grid th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+
+table.grid td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+table.grid .num,
+.input.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+table.grid td .input {
+  padding: 4px 7px;
+  font-size: 13px;
+}
+
+table.grid td .input.num {
+  max-width: 9rem;
+}
+
+table.grid.compact td {
+  padding: 5px 4px;
+}
+
+table.recap tr.total td {
+  font-weight: 600;
+  border-top: 1px solid var(--line-strong);
+}
+
+.table-card {
+  padding: 0;
+}
+
+.entries-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.entries-toolbar .select {
+  width: auto;
+}
+
+.entries-toolbar .search {
+  min-width: 16rem;
+}
+
+table.entries td:nth-child(1) {
+  width: 28px;
+  padding-top: 11px;
+}
+
+table.entries td:nth-child(2) {
+  width: 9.5rem;
+}
+
+table.entries td.payee-cell {
+  min-width: 14rem;
+}
+
+table.entries td:nth-child(4) {
+  min-width: 8rem;
+}
+
+table.entries td:nth-child(5) {
+  width: 6rem;
+}
+
+table.entries td:nth-child(6) {
+  width: 11rem;
+}
+
+table.entries td:nth-child(7) {
+  width: 8.5rem;
+}
+
+table.entries td.flags {
+  width: 5rem;
+  white-space: nowrap;
+  padding-top: 10px;
+}
+
+table.entries tr.out .amount {
+  color: #b42318;
+}
+
+table.entries tr.in .amount {
+  color: #047857;
+}
+
+table.entries tr.transfer .amount {
+  color: var(--brand-2);
+}
+
+table.entries tr.attention {
+  background: #fff8eb;
+}
+
+table.entries tr.outside {
+  opacity: 0.6;
+}
+
+table.entries tr.reviewed td:first-child {
+  box-shadow: inset 3px 0 0 var(--ok);
+}
+
+.bank-text {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 26rem;
+}
+
+.check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+}
+
+.flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  margin-right: 2px;
+  cursor: help;
+}
+
+.flag.bad {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.flag.warn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.flag.ai {
+  background: var(--brand-soft);
+  color: var(--brand-2);
+}
+
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-card p {
+  margin: 2px 0 0;
+}
+
+.status-card.ok > .icon-svg {
+  color: var(--ok);
+}
+
+.status-card.warn > .icon-svg {
+  color: var(--warn);
+}
+
+.status-card.bad > .icon-svg {
+  color: var(--bad);
+}
+
+.status-card.bad {
+  border-left: 3px solid var(--bad);
+}
+
+.status-card.warn {
+  border-left: 3px solid var(--warn);
+}
+
+.status-card.ok {
+  border-left: 3px solid var(--ok);
+}
+
+.findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.finding {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.finding:first-child {
+  border-top: 0;
+}
+
+.finding p {
+  margin: 3px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.finding-icon {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
+.finding.error .finding-icon {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.finding.warning .finding-icon {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.banner.focus,
+.banner.soft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.banner.soft {
+  background: var(--brand-soft);
+  border-color: #c9d6ea;
+  color: var(--ink-2);
+}
+
+.pdf-frame {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.pdf-frame iframe {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 210px);
+  min-height: 560px;
+  border: 0;
+}
+
+.pad {
+  padding: 16px;
+}
+
 @media (max-width: 1000px) {
   main {
     padding: 12px;
@@ -1446,8 +1943,21 @@ table.values td:first-child {
   .run,
   .run.with-test,
   .doc-edit,
-  .row-2 {
+  .row-2,
+  .row-3,
+  .row-4,
+  .upload-grid,
+  .accounts-row,
+  .assets-row,
+  .categories-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .grid-row.head {
+    display: none;
+  }
+  .grid-row {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
   }
   .sidebar,
   .steps,
