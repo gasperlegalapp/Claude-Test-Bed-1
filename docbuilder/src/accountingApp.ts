@@ -1,6 +1,7 @@
 // The Accountings side of DocBuilder: state, editing, reading bank records,
 // and downloads. main.ts owns the page and hands events here.
 
+import { zipSync } from "fflate";
 import {
   accountFor,
   addDays,
@@ -12,6 +13,7 @@ import {
   normalizeAccounting,
   removeStatement,
   type Accounting,
+  type AttachmentKind,
 } from "./engine/accounting.ts";
 import { accountingWorkbook } from "./engine/accountingExport.ts";
 import { readBankCsv } from "./engine/bankCsv.ts";
@@ -19,7 +21,8 @@ import { courtForm, courtFormSheets } from "./engine/courtForm.ts";
 import { escapeHtml as esc } from "./engine/markdown.ts";
 import { writeXlsx, XLSX_MIME } from "./engine/xlsx.ts";
 import { loadAccountings, resetAccountings, saveAccountings, type SavedAccountings } from "./store.ts";
-import { ACCT_TABS, entriesHtml, formHtml, recordsHtml, reviewHtml, setupHtml, type AcctTab, type AcctView, type EntryFilter, type Job } from "./ui/accounting.ts";
+import { clearFiles, deleteFiles, getFile, hasFile, putFile } from "./fileStore.ts";
+import { ACCT_TABS, entriesHtml, formHtml, packetHtml, recordsHtml, reviewHtml, setupHtml, type AcctTab, type AcctView, type EntryFilter, type Job } from "./ui/accounting.ts";
 import { icon } from "./ui/icons.ts";
 import type { FileInput } from "./ai/extract.ts";
 
@@ -58,7 +61,18 @@ function moneyValue(raw: string): number | null {
 
 export function createAccountingApp(host: Host) {
   let data: SavedAccountings = loadAccountings();
-  const view: AcctView = { tab: "setup", filter: "all", search: "", account: "", focus: null, jobs: [], busy: false, reasons: {}, apiKey: host.apiKey() };
+  const view: AcctView = {
+    tab: "setup",
+    filter: "all",
+    search: "",
+    account: "",
+    focus: null,
+    jobs: [],
+    busy: false,
+    reasons: {},
+    apiKey: host.apiKey(),
+    packet: { missing: new Set(), building: false, status: "", error: "", built: [], previewing: false, previewNote: "" },
+  };
   let storageFull = false;
   let saveTimer = 0;
   let previewUrl = "";
@@ -84,6 +98,7 @@ export function createAccountingApp(host: Host) {
     view.account = "";
     view.filter = "all";
     view.reasons = {};
+    view.packet = { missing: new Set(), building: false, status: "", error: "", built: [], previewing: false, previewNote: "" };
   }
 
   function job(fileName: string, what: string): Job {
@@ -98,6 +113,38 @@ export function createAccountingApp(host: Host) {
     return { name: file.name, type, bytes: new Uint8Array(await file.arrayBuffer()) };
   }
 
+  /** Photos other than PNG and JPEG are redrawn as PNG, which PDFs can hold. */
+  async function pdfReady(file: File, bytes: Uint8Array): Promise<{ type: string; bytes: Uint8Array }> {
+    const type = file.type || (/\.pdf$/i.test(file.name) ? "application/pdf" : "");
+    if (type === "application/pdf" || type === "image/png" || type === "image/jpeg") return { type, bytes };
+    if (!type.startsWith("image/")) throw new Error("Only PDFs and photos (PNG, JPEG, WebP) can be filed.");
+    const bitmap = await createImageBitmap(new Blob([bytes as BlobPart], { type }));
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The photo couldn't be converted."))), "image/png"));
+    return { type: "image/png", bytes: new Uint8Array(await blob.arrayBuffer()) };
+  }
+
+  const KIND_ORDER: Record<AttachmentKind, number> = { statement: 0, checks: 1, other: 2 };
+
+  /** Keeps a file to be filed behind the account. Returns a note for the person, or "" when all went well. */
+  async function attach(a: Accounting, file: File, bytes: Uint8Array, kind: AttachmentKind): Promise<string> {
+    if (a.attachments.some((x) => x.name === file.name && x.size === file.size)) return "";
+    const ready = await pdfReady(file, bytes);
+    const { countPages } = await import("./engine/packet.ts");
+    const pages = await countPages({ name: file.name, type: ready.type, bytes: ready.bytes });
+    const id = newId("file");
+    const kept = await putFile(id, ready.bytes);
+    // Statements before check copies before anything else, keeping the order they were added.
+    const at = a.attachments.findIndex((x) => KIND_ORDER[x.kind] > KIND_ORDER[kind]);
+    const entry = { id, name: file.name, kind, type: ready.type, pages, size: file.size, include: true };
+    if (at === -1) a.attachments.push(entry);
+    else a.attachments.splice(at, 0, entry);
+    return kept ? "" : "This browser won't keep the file after the page is closed, so add it again to the packet next time.";
+  }
+
   function needKey(): string | null {
     const key = view.apiKey.trim();
     if (key) return key;
@@ -107,6 +154,22 @@ export function createAccountingApp(host: Host) {
 
   async function readFiles(kind: string, files: File[]): Promise<void> {
     const a = current();
+    if (kind === "attachment") {
+      for (const file of files) {
+        const j = job(file.name, "Filing packet");
+        try {
+          const note = await attach(a, file, new Uint8Array(await file.arrayBuffer()), "other");
+          j.status = "done";
+          j.message = note || "Added to the filing packet.";
+        } catch (e) {
+          j.status = "error";
+          j.message = (e as Error).message;
+          alert(j.message);
+        }
+      }
+      persist();
+      return host.render();
+    }
     if (kind === "csv") {
       for (const file of files) {
         const j = job(file.name, "Bank download");
@@ -145,11 +208,13 @@ export function createAccountingApp(host: Host) {
           const off = findings(a).filter((f) => f.level === "error" && added.some((s) => s.id === f.statementId));
           j.what = "Statement";
           j.message = `${lines} lines in ${statements.length} statement${statements.length === 1 ? "" : "s"}. ${off.length ? `Not balanced yet: ${off.map((f) => f.title).join("; ")}.` : "It balances."}${notes ? ` Note: ${notes}` : ""}`;
+          j.message += await keepForPacket(a, file, input.bytes, "statement");
         } else if (kind === "checks") {
           const { checks, notes } = await ai.readChecks({ apiKey: key, file: input });
           for (const c of checks) a.checks.push({ id: newId("chk"), fileName: file.name, number: c.number, date: c.date, payee: c.payee, amount: c.amount, memo: c.memo, ...(c.doubt ? { doubt: c.doubt } : {}) });
           const matched = matchChecks(a);
           j.message = `${checks.length} check${checks.length === 1 ? "" : "s"} read, ${matched} matched to statement lines.${notes ? ` Note: ${notes}` : ""}`;
+          j.message += await keepForPacket(a, file, input.bytes, "checks");
         } else if (kind === "prior") {
           const prior = await ai.readPriorAccount({ apiKey: key, file: input });
           for (const p of prior.accounts) {
@@ -172,6 +237,103 @@ export function createAccountingApp(host: Host) {
     }
     view.busy = false;
     host.render();
+  }
+
+  async function keepForPacket(a: Accounting, file: File, bytes: Uint8Array, kind: AttachmentKind): Promise<string> {
+    try {
+      const note = await attach(a, file, bytes, kind);
+      return note ? ` ${note}` : " Added to the filing packet.";
+    } catch (e) {
+      return ` It couldn't be added to the filing packet: ${(e as Error).message}`;
+    }
+  }
+
+  /** Notes which attachments' files this browser no longer has. */
+  async function checkFiles(): Promise<void> {
+    const a = current();
+    const missing = new Set<string>();
+    for (const x of a.attachments) if (!(await hasFile(x.id))) missing.add(x.id);
+    const before = [...view.packet.missing].sort().join();
+    view.packet.missing = missing;
+    if ([...missing].sort().join() !== before) host.render();
+  }
+
+  function packetBase(a: Accounting): string {
+    return slug(`${a.details.subject} ${a.details.title} account`);
+  }
+
+  async function buildPacketFiles(): Promise<{ name: string; bytes: Uint8Array }[] | null> {
+    const a = current();
+    const p = view.packet;
+    p.building = true;
+    p.error = "";
+    p.status = "Drawing the account…";
+    p.built = [];
+    host.render();
+    try {
+      const [{ courtFormPdf }, { buildPacket }] = await Promise.all([import("./engine/courtFormPdf.ts"), import("./engine/packet.ts")]);
+      const account = await courtFormPdf(courtForm(a));
+      const files = [];
+      const skipped: string[] = [];
+      for (const x of a.attachments.filter((y) => y.include)) {
+        const bytes = await getFile(x.id);
+        if (bytes) files.push({ name: x.name, type: x.type, bytes });
+        else skipped.push(x.name);
+      }
+      p.status = `Adding ${files.length} document${files.length === 1 ? "" : "s"}…`;
+      host.render();
+      const form = courtForm(a);
+      const parts = await buildPacket(account, files, { ...a.packet, title: `${form.title} — ${a.details.subject}`.trim() });
+      const base = packetBase(a);
+      const out = parts.map((x) => ({ name: `${base}-${x.suffix}.pdf`, bytes: x.bytes, pages: x.pages }));
+      p.built = out.map((x) => ({ name: x.name, pages: x.pages }));
+      p.status = skipped.length ? `Left out because the file is missing: ${skipped.join(", ")}.` : "";
+      return out;
+    } catch (e) {
+      p.error = (e as Error).message;
+      p.status = "";
+      return null;
+    } finally {
+      p.building = false;
+      host.render();
+    }
+  }
+
+  let packetUrl = "";
+
+  /** A change to the contents or options makes the last preview out of date. */
+  function packetChanged(): void {
+    view.packet.previewing = false;
+    view.packet.previewNote = "";
+    view.packet.built = [];
+    view.packet.status = "";
+    view.packet.error = "";
+  }
+  async function previewPacket(): Promise<void> {
+    const p = view.packet;
+    p.previewing = true;
+    p.previewNote = "";
+    if (packetUrl) URL.revokeObjectURL(packetUrl);
+    packetUrl = "";
+    const out = await buildPacketFiles();
+    if (!out) {
+      p.previewing = false;
+      return;
+    }
+    // Without a built-in PDF viewer (some phone browsers), a framed PDF downloads instead of showing.
+    if (!navigator.pdfViewerEnabled) {
+      p.previewNote = "This browser can't show PDFs on the page. Use Download packet to open it.";
+      return;
+    }
+    if (out.length > 1) p.previewNote = `Showing ${out[0].name}, the first of ${out.length} files.`;
+    packetUrl = URL.createObjectURL(new Blob([out[0].bytes as BlobPart], { type: "application/pdf" }));
+  }
+
+  async function downloadPacket(): Promise<void> {
+    const out = await buildPacketFiles();
+    if (!out) return;
+    if (out.length === 1) host.download(out[0].name, "application/pdf", out[0].bytes);
+    else host.download(`${packetBase(current())}-filing.zip`, "application/zip", zipSync(Object.fromEntries(out.map((x) => [x.name, x.bytes]))));
   }
 
   async function suggest(): Promise<void> {
@@ -258,6 +420,7 @@ export function createAccountingApp(host: Host) {
     "acct-delete"() {
       const a = current();
       if (!confirm(`Delete the accounting "${a.name}" and everything read into it?`)) return;
+      void deleteFiles(a.attachments.map((x) => x.id));
       data.accountings = data.accountings.filter((x) => x !== a);
       if (!data.accountings.length) data.accountings.push(blankAccounting(newId("acctg")));
       select(data.accountings[0].id);
@@ -323,6 +486,26 @@ export function createAccountingApp(host: Host) {
       view.tab = "entries";
       window.scrollTo(0, 0);
     },
+    "acct-att-move"(el) {
+      packetChanged();
+      const list = current().attachments;
+      const i = Number(el.dataset.index);
+      const to = i + Number(el.dataset.dir);
+      if (to < 0 || to >= list.length) return;
+      [list[i], list[to]] = [list[to], list[i]];
+    },
+    "acct-att-remove"(el) {
+      packetChanged();
+      const a = current();
+      const [x] = a.attachments.splice(Number(el.dataset.index), 1);
+      void deleteFiles([x.id]);
+    },
+    "acct-packet-preview"() {
+      return previewPacket();
+    },
+    "acct-packet-download"() {
+      return downloadPacket();
+    },
     "acct-clear-focus"() {
       view.focus = null;
     },
@@ -349,16 +532,28 @@ export function createAccountingApp(host: Host) {
     "acct-reset"() {
       if (!confirm("Delete every accounting in this browser and restore the samples?")) return;
       data = resetAccountings();
+      void clearFiles();
       select(data.currentId);
     },
   };
 
-  const ASYNC = new Set(["acct-suggest", "acct-download-pdf", "acct-download-form-xlsx", "acct-download-review-xlsx", "acct-export"]);
+  const ASYNC = new Set(["acct-suggest", "acct-download-pdf", "acct-download-form-xlsx", "acct-download-review-xlsx", "acct-export", "acct-packet-preview", "acct-packet-download"]);
 
   function applyBinding(el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void {
     const a = current();
     const kind = el.dataset.kind;
-    const value = kind === "bool" ? (el as HTMLInputElement).checked : kind === "money" ? moneyValue(el.value) : el.value;
+    const value =
+      kind === "bool"
+        ? (el as HTMLInputElement).checked
+        : kind === "boolstr"
+          ? el.value === "true"
+          : kind === "money"
+            ? moneyValue(el.value)
+            : kind === "int"
+              ? Number.parseInt(el.value, 10) > 0
+                ? Number.parseInt(el.value, 10)
+                : null
+              : el.value;
     setPath(a, el.dataset.abind!, value);
     if (el.dataset.abind!.endsWith(".last4")) a.accounts.forEach((x) => x.last4 && (x.last4 = x.last4.replace(/\D/g, "").slice(-4)));
     persist();
@@ -420,6 +615,8 @@ export function createAccountingApp(host: Host) {
           return banner + entriesHtml(a, view);
         case "review":
           return banner + reviewHtml(a);
+        case "packet":
+          return banner + packetHtml(a, view);
         case "form":
           return banner + formHtml(a);
         default:
@@ -428,6 +625,11 @@ export function createAccountingApp(host: Host) {
     },
     afterRender(): void {
       if (view.tab === "form") void drawPreview();
+      if (view.tab === "packet") {
+        void checkFiles();
+        const frame = host.root.querySelector<HTMLElement>("#packet-preview");
+        if (frame && packetUrl && !view.packet.building) frame.insertAdjacentHTML("beforeend", `<iframe title="Filing packet preview" src="${packetUrl}#view=FitH"></iframe>`);
+      }
     },
     /** Runs an accounting action; true when it re-renders by itself later. */
     run(name: string, el: HTMLElement): boolean | undefined {
@@ -452,7 +654,7 @@ export function createAccountingApp(host: Host) {
         searchTimer = window.setTimeout(() => host.rerender(), 200);
         return true;
       }
-      if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) return Boolean(el.dataset.abind || el.dataset.txn);
+      if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) return Boolean(el.dataset.abind || el.dataset.txn || el.dataset.att);
       if (el.dataset.abind) {
         applyBinding(el);
         return true;
@@ -492,12 +694,22 @@ export function createAccountingApp(host: Host) {
       }
       if (el.dataset.abind) {
         applyBinding(el);
+        if (el.dataset.abind.startsWith("packet.")) packetChanged();
         host.rerender();
         return true;
       }
       if (el.dataset.txn) {
         applyTxn(el as HTMLInputElement);
         host.rerender();
+        return true;
+      }
+      if (el.dataset.att) {
+        const x = current().attachments.find((y) => y.id === el.dataset.att);
+        if (x && el.dataset.field === "include") x.include = (el as HTMLInputElement).checked;
+        if (x && el.dataset.field === "kind") x.kind = el.value as AttachmentKind;
+        packetChanged();
+        persist();
+        host.render();
         return true;
       }
       if (el.dataset.stmt) {

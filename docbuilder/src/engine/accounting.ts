@@ -90,6 +90,26 @@ export interface HeldAsset {
 
 export type AccountingKind = "estate" | "guardianship" | "trust" | "other";
 
+export type AttachmentKind = "statement" | "checks" | "other";
+
+/** A document filed behind the account, e.g. bank statements or check copies. The file itself is kept separately (fileStore.ts). */
+export interface Attachment {
+  id: string;
+  name: string;
+  kind: AttachmentKind;
+  type: string;
+  pages: number;
+  size: number;
+  include: boolean;
+}
+
+export interface PacketOptions {
+  /** File the account and the attachments as separate PDFs. */
+  separate: boolean;
+  /** Split into parts of at most this many pages; null for no limit. */
+  maxPages: number | null;
+}
+
 export interface Accounting {
   id: string;
   name: string;
@@ -126,6 +146,9 @@ export interface Accounting {
   categories: Category[];
   /** The firm's instructions for sorting transactions, given to the AI. */
   rules: string;
+  /** Documents filed behind the account, in filing order. */
+  attachments: Attachment[];
+  packet: PacketOptions;
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
@@ -178,6 +201,8 @@ export function blankAccounting(id: string): Accounting {
     assets: [],
     categories: structuredClone(DEFAULT_CATEGORIES),
     rules: "",
+    attachments: [],
+    packet: { separate: false, maxPages: null },
   };
 }
 
@@ -673,5 +698,10 @@ export function normalizeAccounting(raw: unknown): Accounting {
     assets: list<HeldAsset>(r.assets).map((x) => ({ ...x, begin: num(x.begin), end: num(x.end) })),
     categories: Array.isArray(r.categories) ? (r.categories as Category[]) : base.categories,
     rules: typeof r.rules === "string" ? r.rules : "",
+    attachments: list<Attachment>(r.attachments).filter((x) => typeof x.id === "string" && typeof x.name === "string").map((x) => ({ ...x, pages: num(x.pages) ?? 0, size: num(x.size) ?? 0, include: x.include !== false })),
+    packet: {
+      separate: r.packet?.separate === true,
+      maxPages: typeof r.packet?.maxPages === "number" && r.packet.maxPages > 0 ? Math.floor(r.packet.maxPages) : null,
+    },
   };
 }

@@ -20,10 +20,11 @@ import {
   type Txn,
 } from "../engine/accounting.ts";
 import { courtForm, shortDate } from "../engine/courtForm.ts";
+import type { AttachmentKind } from "../engine/accounting.ts";
 import { escapeHtml as esc } from "../engine/markdown.ts";
 import { icon } from "./icons.ts";
 
-export type AcctTab = "setup" | "records" | "entries" | "review" | "form";
+export type AcctTab = "setup" | "records" | "entries" | "review" | "form" | "packet";
 export type EntryFilter = "all" | "attention" | "unreviewed" | "receipts" | "disbursements" | "transfers";
 
 export interface Job {
@@ -46,6 +47,20 @@ export interface AcctView {
   /** Why the AI suggested what it did, by transaction id. */
   reasons: Record<string, string>;
   apiKey: string;
+  packet: PacketView;
+}
+
+export interface PacketView {
+  /** Attachment ids whose file is no longer kept in this browser. */
+  missing: Set<string>;
+  building: boolean;
+  status: string;
+  error: string;
+  /** Pages in each file of the last packet built. */
+  built: { name: string; pages: number }[];
+  previewing: boolean;
+  /** Shown in place of the preview, e.g. when the browser can't show PDFs. */
+  previewNote: string;
 }
 
 export const ACCT_TABS: [AcctTab, string, string][] = [
@@ -54,6 +69,7 @@ export const ACCT_TABS: [AcctTab, string, string][] = [
   ["entries", "Entries", "list"],
   ["review", "Review", "check-circle"],
   ["form", "Court form", "doc"],
+  ["packet", "Filing packet", "folder"],
 ];
 
 const KIND_SUBJECT = { guardianship: "Ward", estate: "Decedent", trust: "Trust", other: "Subject" } as const;
@@ -459,4 +475,81 @@ export function formHtml(a: Accounting): string {
 
 export function accountingPicker(list: Accounting[], current: Accounting): string {
   return `<select id="accounting-select" aria-label="Accounting">${list.map((x) => `<option value="${esc(x.id)}"${x.id === current.id ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`;
+}
+
+// ------------------------------------------------------------------ packet
+
+const KIND_LABELS: Record<AttachmentKind, string> = { statement: "Bank statements", checks: "Check copies (vouchers)", other: "Other" };
+
+function size(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+export function packetHtml(a: Accounting, v: AcctView): string {
+  const p = v.packet;
+  const list = a.attachments;
+  const included = list.filter((x) => x.include && !p.missing.has(x.id));
+  const pages = included.reduce((n, x) => n + x.pages, 0);
+  const rows = list
+    .map((x, i) => {
+      const missing = p.missing.has(x.id);
+      return `<tr class="${x.include && !missing ? "" : "excluded"}">
+        <td><input type="checkbox" class="check" data-att="${esc(x.id)}" data-field="include" title="Include in the packet"${x.include ? " checked" : ""}${missing ? " disabled" : ""}></td>
+        <td class="att-name">${icon(x.type === "application/pdf" ? "file" : "copy", 15)} <span>${esc(x.name)}</span>${missing ? ` <span class="badge bad">File missing: add it again</span>` : ""}</td>
+        <td><select class="select" data-att="${esc(x.id)}" data-field="kind">${(Object.keys(KIND_LABELS) as AttachmentKind[]).map((k) => `<option value="${k}"${x.kind === k ? " selected" : ""}>${KIND_LABELS[k]}</option>`).join("")}</select></td>
+        <td class="num">${x.pages}</td>
+        <td class="num">${size(x.size)}</td>
+        <td class="nowrap">
+          <button class="btn btn-ghost btn-icon" data-action="acct-att-move" data-index="${i}" data-dir="-1" title="Earlier"${i === 0 ? " disabled" : ""}>${icon("up")}</button>
+          <button class="btn btn-ghost btn-icon" data-action="acct-att-move" data-index="${i}" data-dir="1" title="Later"${i === list.length - 1 ? " disabled" : ""}>${icon("down")}</button>
+          <button class="btn btn-ghost btn-icon danger" data-action="acct-att-remove" data-index="${i}" title="Remove from the packet">${icon("trash")}</button>
+        </td>
+      </tr>`;
+    })
+    .join("");
+  const errors = findings(a).filter((f) => f.level === "error").length;
+  return `<div class="acct-page">
+    <div class="section-head">
+      <div><h1>Filing packet</h1><p class="hint">The account, followed by the documents filed behind it, in this order.</p></div>
+      <span class="spacer"></span>
+      <button class="btn" data-action="acct-packet-preview"${p.building ? " disabled" : ""}>${icon("play")} Preview</button>
+      <button class="btn btn-primary" data-action="acct-packet-download"${p.building ? " disabled" : ""}>${icon("download")} Download packet</button>
+    </div>
+    ${errors ? `<div class="banner">The account doesn't balance yet: ${errors} problem${errors === 1 ? "" : "s"} on Review. <button class="btn btn-sm" data-action="acct-tab" data-tab="review">See Review</button></div>` : ""}
+    <section class="card">
+      <div class="panel-title">Contents</div>
+      <div class="table-wrap"><table class="grid packet-list">
+        <thead><tr><th></th><th>Document</th><th>Filed as</th><th class="num">Pages</th><th class="num">Size</th><th></th></tr></thead>
+        <tbody>
+          <tr class="fixed"><td>${icon("check", 14)}</td><td class="att-name">${icon("doc", 15)} <span>${esc(courtForm(a).title.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase()))}</span></td><td>The account</td><td class="num"></td><td></td><td></td></tr>
+          ${rows}
+        </tbody>
+      </table></div>
+      ${list.length ? "" : `<p class="hint">Statements and check copies read on Bank records are added here automatically. Add anything else to file with it below.</p>`}
+      <div class="card-actions">
+        <label class="btn btn-sm">${icon("plus")} Add documents<input type="file" data-acct-upload="attachment" accept=".pdf,image/png,image/jpeg,image/webp" multiple hidden></label>
+        <span class="spacer"></span>
+        <span class="hint">${included.length} document${included.length === 1 ? "" : "s"}, ${pages} page${pages === 1 ? "" : "s"} after the account</span>
+      </div>
+      <p class="hint">Files are kept in this browser only, and aren't part of the accounting's export file.</p>
+    </section>
+    <section class="card">
+      <div class="panel-title">How to file it</div>
+      <div class="choices packet-choices">
+        <label class="choice"><input type="radio" name="packet-separate" data-abind="packet.separate" data-kind="boolstr" value="false"${a.packet.separate ? "" : " checked"}><span>One PDF: the account, then the attachments</span></label>
+        <label class="choice"><input type="radio" name="packet-separate" data-abind="packet.separate" data-kind="boolstr" value="true"${a.packet.separate ? " checked" : ""}><span>The account and the attachments as separate PDFs</span></label>
+      </div>
+      <label class="field inline split-field"><span class="label">Split into parts of at most</span><input type="number" min="1" step="1" class="input num" data-abind="packet.maxPages" data-kind="int" value="${a.packet.maxPages ?? ""}" placeholder="No limit"><span class="hint">pages</span></label>
+      <p class="hint">For an e-filing size limit. Parts download together in a .zip.</p>
+    </section>
+    ${p.status || p.error || p.built.length
+      ? `<section class="card">
+          ${p.building ? `<p class="status"><span class="spinner"></span> ${esc(p.status)}</p>` : ""}
+          ${p.error ? `<p class="bad">${esc(p.error)}</p>` : ""}
+          ${!p.building && p.built.length ? `<p class="ok">${icon("check-circle")} ${p.built.map((b) => `${esc(b.name)} (${b.pages} pages)`).join(", ")}</p>` : ""}
+          ${!p.building && p.status ? `<p class="hint">${esc(p.status)}</p>` : ""}
+        </section>`
+      : ""}
+    ${p.previewing ? `<div class="pdf-frame" id="packet-preview">${p.building ? `<p class="hint pad">Putting the packet together…</p>` : p.previewNote ? `<div class="pad"><p>${esc(p.previewNote)}</p></div>` : ""}</div>` : ""}
+  </div>`;
 }
